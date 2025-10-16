@@ -1,0 +1,17 @@
+{
+  "name": "bulamu",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace=apps/frontend",
+    "dev:backend": "npm run dev --workspace=apps/backend",
+    "dev": "npm run dev:backend & npm run dev:frontend"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
