@@ -1,6 +1,9 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import jwt from '@fastify/jwt';
 import dotenv from 'dotenv';
+import { clinicRoutes } from './routes/clinic.routes';
+import { authRoutes } from './routes/auth.routes';
 
 dotenv.config();
 
@@ -8,15 +11,22 @@ const server = Fastify({
   logger: true
 });
 
-// Register CORS
 server.register(cors, {
   origin: process.env.FRONTEND_URL || 'http://localhost:3000'
 });
 
-// Health check route
+server.register(jwt, {
+  secret: process.env.JWT_SECRET || 'fallback_secret'
+});
+
+// Health check
 server.get('/health', async (request, reply) => {
   return { status: 'ok', service: 'Bulamu API' };
 });
+
+// Register routes
+server.register(clinicRoutes);
+server.register(authRoutes);
 
 const start = async () => {
   try {
@@ -29,4 +39,3 @@ const start = async () => {
 };
 
 start();
-
