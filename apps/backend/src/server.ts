@@ -8,6 +8,8 @@ import { patientRoutes } from './routes/patient.routes';
 import { appointmentRoutes } from './routes/appointment.routes';
 import { consultationRoutes } from './routes/consultation.routes';
 import { dashboardRoutes } from './routes/dashboard.routes';
+import { invoiceRoutes } from './routes/invoice.routes';
+import { userRoutes } from './routes/user.routes';
 
 dotenv.config();
 
@@ -35,6 +37,8 @@ server.register(patientRoutes);
 server.register(appointmentRoutes);
 server.register(consultationRoutes);
 server.register(dashboardRoutes);
+server.register(invoiceRoutes);
+server.register(userRoutes);
 
 
 // Start server

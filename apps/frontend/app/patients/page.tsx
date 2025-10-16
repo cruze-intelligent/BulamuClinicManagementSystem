@@ -50,8 +50,15 @@ export default function PatientsPage() {
           <div className="space-y-3">
             {patients.map((patient: any) => (
               <Card key={patient.id} className="p-4">
-                <h3 className="font-semibold">{patient.name}</h3>
-                <p className="text-sm text-muted-foreground">{patient.phone}</p>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold">{patient.name}</h3>
+                    <p className="text-sm text-muted-foreground">{patient.phone}</p>
+                  </div>
+                  <Link href={`/patients/${patient.id}`}>
+                    <Button size="sm" variant="outline">View History</Button>
+                  </Link>
+                </div>
               </Card>
             ))}
           </div>

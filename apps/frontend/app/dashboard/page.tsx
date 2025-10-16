@@ -6,12 +6,14 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { PatientSearch } from '@/components/patient-search';
+import { useAuth } from '@/lib/useAuth';
 
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { hasRole } = useAuth();
 
   useEffect(() => {
     fetchDashboard();
@@ -71,17 +73,21 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Quick Actions */}
+                {/* Quick Actions */}
         <div className="grid grid-cols-3 gap-4 mb-8">
-          <Link href="/patients/register">
+        {hasRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF') && (
+            <Link href="/patients/register">
             <Button className="w-full">+ Register Patient</Button>
-          </Link>
-          <Link href="/appointments/book">
+            </Link>
+        )}
+        {hasRole('ADMIN', 'DOCTOR') && (
+            <Link href="/appointments/book">
             <Button className="w-full">+ Book Appointment</Button>
-          </Link>
-          <Link href="/patients">
+            </Link>
+        )}
+        <Link href="/patients">
             <Button className="w-full" variant="outline">View Patients</Button>
-          </Link>
+        </Link>
         </div>
 
         {/* Today's Appointments */}
