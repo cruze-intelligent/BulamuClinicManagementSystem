@@ -75,6 +75,9 @@ export default function AppointmentsPage() {
                   <div className="flex gap-2">
                     {apt.status === 'SCHEDULED' && (
                       <>
+                        <Link href={`/consultations/record?appointmentId=${apt.id}`}>
+                          <Button size="sm">Record</Button>
+                        </Link>
                         <Button size="sm" onClick={() => updateStatus(apt.id, 'COMPLETED')}>Complete</Button>
                         <Button size="sm" variant="destructive" onClick={() => updateStatus(apt.id, 'CANCELLED')}>Cancel</Button>
                       </>

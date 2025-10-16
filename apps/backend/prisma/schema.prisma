@@ -42,6 +42,7 @@ model Patient {
   clinicId     String
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
   appointments Appointment[]
+  consultations Consultation[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -66,6 +67,7 @@ model Appointment {
   time        String
   status      AppointmentStatus @default(SCHEDULED)
   notes       String?
+  consultation Consultation?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -80,3 +82,53 @@ enum AppointmentStatus {
   CANCELLED
   NO_SHOW
 }
+
+model Consultation {
+  id            String   @id @default(uuid())
+  appointmentId String   @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  diagnosis     String
+  symptoms      String
+  prescriptions Prescription[]
+  invoice       Invoice?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([patientId])
+}
+
+model Prescription {
+  id              String       @id @default(uuid())
+  consultationId  String
+  consultation    Consultation @relation(fields: [consultationId], references: [id])
+  medication      String
+  dosage          String
+  frequency       String
+  duration        String
+  createdAt       DateTime     @default(now())
+
+  @@index([consultationId])
+}
+
+model Invoice {
+  id              String       @id @default(uuid())
+  consultationId  String       @unique
+  consultation    Consultation @relation(fields: [consultationId], references: [id])
+  clinicId        String
+  amount          Float
+  status          InvoiceStatus @default(PENDING)
+  paidAt          DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([clinicId, status])
+}
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
