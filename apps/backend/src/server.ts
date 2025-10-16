@@ -4,6 +4,7 @@ import jwt from '@fastify/jwt';
 import dotenv from 'dotenv';
 import { clinicRoutes } from './routes/clinic.routes';
 import { authRoutes } from './routes/auth.routes';
+import { patientRoutes } from './routes/patient.routes';
 
 dotenv.config();
 
@@ -27,6 +28,10 @@ server.get('/health', async (request, reply) => {
 // Register routes
 server.register(clinicRoutes);
 server.register(authRoutes);
+server.register(patientRoutes);
+
+
+// Start server
 
 const start = async () => {
   try {
