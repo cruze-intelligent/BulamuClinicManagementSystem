@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { clinicRoutes } from './routes/clinic.routes';
 import { authRoutes } from './routes/auth.routes';
 import { patientRoutes } from './routes/patient.routes';
+import { appointmentRoutes } from './routes/appointment.routes';
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ server.get('/health', async (request, reply) => {
 server.register(clinicRoutes);
 server.register(authRoutes);
 server.register(patientRoutes);
+server.register(appointmentRoutes);
 
 
 // Start server

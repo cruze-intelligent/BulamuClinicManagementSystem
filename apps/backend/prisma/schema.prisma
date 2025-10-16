@@ -16,6 +16,7 @@ model User {
   clinicId  String
   clinic    Clinic   @relation(fields: [clinicId], references: [id])
   isActive  Boolean  @default(true)
+  appointments Appointment[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -35,13 +36,14 @@ model Clinic {
 }
 
 model Patient {
-  id        String   @id @default(uuid())
-  name      String
-  phone     String
-  clinicId  String
-  clinic    Clinic   @relation(fields: [clinicId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String        @id @default(uuid())
+  name         String
+  phone        String
+  clinicId     String
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  appointments Appointment[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   @@index([clinicId])
 }
@@ -51,4 +53,30 @@ enum Role {
   DOCTOR
   NURSE
   STAFF
+}
+
+model Appointment {
+  id          String   @id @default(uuid())
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id])
+  doctorId    String
+  doctor      User     @relation(fields: [doctorId], references: [id])
+  clinicId    String
+  date        DateTime
+  time        String
+  status      AppointmentStatus @default(SCHEDULED)
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clinicId, date])
+  @@index([patientId])
+  @@index([doctorId])
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
 }
