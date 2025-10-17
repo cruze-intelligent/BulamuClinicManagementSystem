@@ -1,13 +1,11 @@
 'use client';
 
-
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { PatientSearch } from '@/components/patient-search';
 import { useAuth } from '@/lib/useAuth';
-
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -50,7 +48,7 @@ export default function Dashboard() {
         
         {/* Search */}
         <div className="mb-6">
-         <PatientSearch />
+          <PatientSearch />
         </div>
 
         {/* Stats Grid */}
@@ -63,31 +61,35 @@ export default function Dashboard() {
             <h3 className="text-sm text-muted-foreground">Today's Appointments</h3>
             <p className="text-3xl font-bold">{stats.todayAppointments}</p>
           </Card>
-          <Card className="p-6">
-            <h3 className="text-sm text-muted-foreground">Pending Invoices</h3>
-            <p className="text-3xl font-bold">{stats.pendingInvoices}</p>
-          </Card>
-          <Card className="p-6">
-            <h3 className="text-sm text-muted-foreground">Total Revenue</h3>
-            <p className="text-3xl font-bold">UGX {stats.totalRevenue.toLocaleString()}</p>
-          </Card>
+          {hasRole('ADMIN', 'DOCTOR') && (
+            <Card className="p-6">
+              <h3 className="text-sm text-muted-foreground">Pending Invoices</h3>
+              <p className="text-3xl font-bold">{stats.pendingInvoices}</p>
+            </Card>
+          )}
+          {hasRole('ADMIN') && (
+            <Card className="p-6">
+              <h3 className="text-sm text-muted-foreground">Total Revenue</h3>
+              <p className="text-3xl font-bold">UGX {stats.totalRevenue.toLocaleString()}</p>
+            </Card>
+          )}
         </div>
 
-                {/* Quick Actions */}
+        {/* Quick Actions */}
         <div className="grid grid-cols-3 gap-4 mb-8">
-        {hasRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF') && (
+          {hasRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF') && (
             <Link href="/patients/register">
-            <Button className="w-full">+ Register Patient</Button>
+              <Button className="w-full">+ Register Patient</Button>
             </Link>
-        )}
-        {hasRole('ADMIN', 'DOCTOR') && (
+          )}
+          {hasRole('ADMIN', 'DOCTOR') && (
             <Link href="/appointments/book">
-            <Button className="w-full">+ Book Appointment</Button>
+              <Button className="w-full">+ Book Appointment</Button>
             </Link>
-        )}
-        <Link href="/patients">
+          )}
+          <Link href="/patients">
             <Button className="w-full" variant="outline">View Patients</Button>
-        </Link>
+          </Link>
         </div>
 
         {/* Today's Appointments */}
