@@ -13,6 +13,7 @@ import { userRoutes } from './routes/user.routes';
 import { reportsRoutes } from './routes/reports.routes';
 import { inventoryRoutes } from './routes/inventory.routes';
 import { labRoutes } from './routes/lab.routes';
+import { leadsRoutes } from './routes/leads.routes';
 
 dotenv.config();
 
@@ -45,6 +46,7 @@ server.register(userRoutes);
 server.register(reportsRoutes);
 server.register(inventoryRoutes);
 server.register(labRoutes);
+server.register(leadsRoutes);
 
 
 // Start server

@@ -3,13 +3,19 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/useAuth';
+import { useState, useEffect } from 'react';
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, hasRole } = useAuth();
+  const [mounted, setMounted] = useState(false);
 
-  if (!user) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted || !user) return null;
 
   const isActive = (path: string) => pathname === path;
 

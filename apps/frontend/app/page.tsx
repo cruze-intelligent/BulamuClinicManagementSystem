@@ -31,22 +31,35 @@ export default function Home() {
   const handleDemoRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // TODO: Save to database (we'll add this later)
-    console.log('Demo request:', formData);
-    
-    setSubmitted(true);
-    setTimeout(() => {
-      setShowDemoModal(false);
-      setSubmitted(false);
-      setFormData({
-        clinicName: '',
-        contactPerson: '',
-        phone: '',
-        email: '',
-        preferredPlan: 'PROFESSIONAL',
-        message: ''
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
       });
-    }, 3000);
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSubmitted(true);
+        setTimeout(() => {
+          setShowDemoModal(false);
+          setSubmitted(false);
+          setFormData({
+            clinicName: '',
+            contactPerson: '',
+            phone: '',
+            email: '',
+            preferredPlan: 'PROFESSIONAL',
+            message: ''
+          });
+        }, 3000);
+      } else {
+        alert('Error submitting request. Please try again.');
+      }
+    } catch (error) {
+      alert('Error connecting to server');
+    }
   };
 
   return (
