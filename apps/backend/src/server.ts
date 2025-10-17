@@ -10,6 +10,9 @@ import { consultationRoutes } from './routes/consultation.routes';
 import { dashboardRoutes } from './routes/dashboard.routes';
 import { invoiceRoutes } from './routes/invoice.routes';
 import { userRoutes } from './routes/user.routes';
+import { reportsRoutes } from './routes/reports.routes';
+import { inventoryRoutes } from './routes/inventory.routes';
+import { labRoutes } from './routes/lab.routes';
 
 dotenv.config();
 
@@ -39,6 +42,9 @@ server.register(consultationRoutes);
 server.register(dashboardRoutes);
 server.register(invoiceRoutes);
 server.register(userRoutes);
+server.register(reportsRoutes);
+server.register(inventoryRoutes);
+server.register(labRoutes);
 
 
 // Start server

@@ -43,6 +43,7 @@ model Patient {
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
   appointments Appointment[]
   consultations Consultation[]
+  labTests LabTest[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -93,6 +94,7 @@ model Consultation {
   symptoms      String
   prescriptions Prescription[]
   invoice       Invoice?
+  labTests LabTest[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -132,3 +134,41 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+model Medicine {
+  id          String   @id @default(uuid())
+  clinicId    String
+  name        String
+  quantity    Int
+  unit        String
+  reorderLevel Int
+  price       Float
+  expiryDate  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clinicId])
+}
+
+model LabTest {
+  id              String   @id @default(uuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id])
+  consultationId  String?
+  consultation    Consultation? @relation(fields: [consultationId], references: [id])
+  testName        String
+  results         String
+  status          LabStatus @default(PENDING)
+  orderedBy       String
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([patientId])
+  @@index([consultationId])
+}
+
+enum LabStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
