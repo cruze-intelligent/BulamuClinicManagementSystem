@@ -1,10 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
+import { requireRole } from '../middleware/rbac.middleware';
 import bcrypt from 'bcrypt';
 
 export async function clinicRoutes(fastify: FastifyInstance) {
   
-  fastify.post('/clinics/register', async (request, reply) => {
+  // Register new clinic (SUPER_ADMIN only)
+  fastify.post('/clinics/register', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
     const { name, phone, address, adminEmail, adminPassword, adminName } = request.body as any;
 
     try {

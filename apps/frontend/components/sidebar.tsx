@@ -19,6 +19,7 @@ export function Sidebar() {
   };
 
   const navItems = [
+    { name: 'Super Admin', path: '/super-admin', icon: '👑', roles: ['SUPER_ADMIN'] },
     { name: 'Dashboard', path: '/dashboard', icon: '📊', roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
     { name: 'Patients', path: '/patients', icon: '👥', roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
     { name: 'Appointments', path: '/appointments', icon: '📅', roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
