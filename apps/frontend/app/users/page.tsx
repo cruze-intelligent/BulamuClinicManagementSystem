@@ -46,30 +46,32 @@ export default function UsersPage() {
     const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          ...formData,
-          clinicId: currentUser.clinicId
+            ...formData,
+            clinicId: currentUser.clinicId
         })
-      });
+        });
 
-      const data = await response.json();
-      if (data.success) {
+        const data = await response.json();
+        if (data.success) {
         alert('User added!');
         setShowForm(false);
-        setFormData({ email: '', password: '', name: '', role: 'STAFF' });
+        setFormData({ email: '', password: '', name: '', role: 'DOCTOR' });
         fetchUsers();
-      }
-    } catch (error) {
-      alert('Error adding user');
+        } else {
+        alert(`Error: ${data.error || 'Failed to add user'}`);
+        }
+    } catch (error: any) {
+        console.error('Add user error:', error);
+        alert('Error adding user. Check console for details.');
     }
-  };
-
+    };
   const deactivateUser = async (id: string) => {
     const token = localStorage.getItem('token');
 
@@ -139,6 +141,7 @@ export default function UsersPage() {
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 >
                   <option value="DOCTOR">Doctor</option>
+                  <option value="PHARMACIST">Pharmacist</option>
                   <option value="NURSE">Nurse</option>
                   <option value="STAFF">Staff</option>
                 </select>

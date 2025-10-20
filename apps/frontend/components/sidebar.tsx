@@ -25,18 +25,17 @@ export function Sidebar() {
   };
 
   const navItems = [
-    { name: 'Super Admin', path: '/super-admin', icon: '👑', roles: ['SUPER_ADMIN'] },
-    { name: 'Dashboard', path: '/dashboard', icon: '📊', roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
-    { name: 'Patients', path: '/patients', icon: '👥', roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
-    { name: 'Appointments', path: '/appointments', icon: '📅', roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
-    { name: 'Consultations', path: '/consultations', icon: '💊', roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
-    { name: 'Lab Tests', path: '/lab', icon: '🔬', roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
-    { name: 'Inventory', path: '/inventory', icon: '💊', roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
-    { name: 'Invoices', path: '/invoices', icon: '💰', roles: ['ADMIN', 'DOCTOR'] },
-    { name: 'Reports', path: '/reports', icon: '📈', roles: ['ADMIN', 'DOCTOR'] },
-    { name: 'Staff', path: '/users', icon: '👔', roles: ['ADMIN'] },
-  ];
-
+  { name: 'Super Admin', path: '/super-admin', icon: '👑', roles: ['SUPER_ADMIN'] },
+  { name: 'Dashboard', path: '/dashboard', icon: '📊', roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
+  { name: 'Patients', path: '/patients', icon: '👥', roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
+  { name: 'Appointments', path: '/appointments', icon: '📅', roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
+  { name: 'Consultations', path: '/consultations', icon: '💊', roles: ['ADMIN', 'DOCTOR', 'PHARMACIST'] },
+  { name: 'Lab Tests', path: '/lab', icon: '🔬', roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
+  { name: 'Inventory', path: '/inventory', icon: '💊', roles: ['ADMIN', 'PHARMACIST'] },
+  { name: 'Invoices', path: '/invoices', icon: '💰', roles: ['ADMIN'] },
+  { name: 'Reports', path: '/reports', icon: '📈', roles: ['ADMIN'] },
+  { name: 'Staff', path: '/users', icon: '👔', roles: ['ADMIN'] },
+];
   const filteredNavItems = navItems.filter(item => hasRole(...item.roles));
 
   return (
