@@ -1,41 +1,41 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
+import {
+  createConsultationOffline,
+  listLocalPatients,
+  getCurrentClinicId,
+} from '@/lib/local-first';
 
-export default function RecordConsultation() {
+function RecordConsultationForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const appointmentId = searchParams.get('appointmentId');
-  
-  const [appointment, setAppointment] = useState<any>(null);
+  const appointmentId = searchParams.get('appointmentId') || `apt-${Date.now()}`;
+  const queryPatientId = searchParams.get('patientId') || '';
+
+  const [patientId, setPatientId] = useState(queryPatientId);
+  const [patientName, setPatientName] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
   const [symptoms, setSymptoms] = useState('');
   const [prescriptions, setPrescriptions] = useState([
-    { medication: '', dosage: '', frequency: '', duration: '' }
+    { medication: '', dosage: '', frequency: '', duration: '' },
   ]);
-  const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (appointmentId) fetchAppointment();
-  }, [appointmentId]);
-
-  const fetchAppointment = async () => {
-    const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/appointments/${user.clinicId}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    const data = await response.json();
-    const apt = data.appointments.find((a: any) => a.id === appointmentId);
-    setAppointment(apt);
-  };
+    const clinicId = getCurrentClinicId();
+    if (clinicId && queryPatientId) {
+      listLocalPatients(clinicId).then((patients) => {
+        const found = patients.find((p) => p.id === queryPatientId);
+        if (found) setPatientName(found.name);
+      });
+    }
+  }, [queryPatientId]);
 
   const addPrescription = () => {
     setPrescriptions([...prescriptions, { medication: '', dosage: '', frequency: '', duration: '' }]);
@@ -51,94 +51,87 @@ export default function RecordConsultation() {
     e.preventDefault();
     setLoading(true);
 
-    const token = localStorage.getItem('token');
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/consultations`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          appointmentId,
-          patientId: appointment.patientId,
-          diagnosis,
-          symptoms,
-          prescriptions: prescriptions.filter(p => p.medication),
-          amount: amount ? parseFloat(amount) : null
-        })
+      const clinicId = getCurrentClinicId() || 'default-clinic';
+      const validPrescriptions = prescriptions.filter((p) => p.medication.trim() !== '');
+
+      await createConsultationOffline({
+        appointmentId,
+        patientId: patientId || 'walk-in-patient',
+        clinicId,
+        diagnosis,
+        symptoms,
+        prescriptions: validPrescriptions,
+        patientName,
       });
 
-      const data = await response.json();
-      if (data.success) {
-        alert('Consultation recorded!');
-        window.location.href = '/appointments';
-      }
-    } catch (error) {
-      alert('Error recording consultation');
+      router.push('/consultations');
+    } catch (error: any) {
+      alert(`Error recording consultation: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  if (!appointment) return <div className="p-8">Loading...</div>;
-
   return (
     <div className="min-h-screen p-8 bg-slate-50">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2">Record Consultation</h1>
-        <p className="text-muted-foreground mb-6">Patient: {appointment.patient.name}</p>
+        <h1 className="text-3xl font-bold mb-1 text-slate-800">Record Clinical Encounter</h1>
+        <p className="text-sm text-slate-500 mb-6">
+          {patientName ? `Patient: ${patientName}` : 'Offline-first Clinical Decision & Triage Record'}
+        </p>
 
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <Label htmlFor="symptoms">Symptoms</Label>
-              <Input 
-                id="symptoms" 
+              <Label htmlFor="symptoms">Symptoms / Presenting Complaints</Label>
+              <Input
+                id="symptoms"
                 value={symptoms}
                 onChange={(e) => setSymptoms(e.target.value)}
-                placeholder="Fever, headache..."
+                placeholder="e.g. High fever, chills, joint pain"
                 required
               />
             </div>
 
             <div>
-              <Label htmlFor="diagnosis">Diagnosis</Label>
-              <Input 
-                id="diagnosis" 
+              <Label htmlFor="diagnosis">Primary Diagnosis</Label>
+              <Input
+                id="diagnosis"
                 value={diagnosis}
                 onChange={(e) => setDiagnosis(e.target.value)}
-                placeholder="Malaria, Common cold..."
+                placeholder="e.g. Confirmed Malaria (RDT+), Severe Acute Respiratory Infection"
                 required
               />
             </div>
 
             <div>
               <div className="flex justify-between items-center mb-2">
-                <Label>Prescriptions</Label>
-                <Button type="button" size="sm" onClick={addPrescription}>+ Add</Button>
+                <Label>Prescriptions / Therapeutics</Label>
+                <Button type="button" size="sm" variant="outline" onClick={addPrescription}>
+                  + Add Medication
+                </Button>
               </div>
-              
+
               {prescriptions.map((rx, index) => (
                 <div key={index} className="grid grid-cols-4 gap-2 mb-2">
-                  <Input 
-                    placeholder="Medication"
+                  <Input
+                    placeholder="Medication (e.g. Coartem)"
                     value={rx.medication}
                     onChange={(e) => updatePrescription(index, 'medication', e.target.value)}
                   />
-                  <Input 
-                    placeholder="Dosage"
+                  <Input
+                    placeholder="Dosage (e.g. 1 tab)"
                     value={rx.dosage}
                     onChange={(e) => updatePrescription(index, 'dosage', e.target.value)}
                   />
-                  <Input 
-                    placeholder="Frequency"
+                  <Input
+                    placeholder="Frequency (e.g. BD)"
                     value={rx.frequency}
                     onChange={(e) => updatePrescription(index, 'frequency', e.target.value)}
                   />
-                  <Input 
-                    placeholder="Duration"
+                  <Input
+                    placeholder="Duration (e.g. 3 days)"
                     value={rx.duration}
                     onChange={(e) => updatePrescription(index, 'duration', e.target.value)}
                   />
@@ -146,23 +139,20 @@ export default function RecordConsultation() {
               ))}
             </div>
 
-            <div>
-              <Label htmlFor="amount">Consultation Fee (UGX)</Label>
-              <Input 
-                id="amount" 
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="50000"
-              />
-            </div>
-
             <Button type="submit" disabled={loading} className="w-full">
-              {loading ? 'Recording...' : 'Record Consultation'}
+              {loading ? 'Saving Record...' : 'Save Consultation (Offline Ready)'}
             </Button>
           </form>
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function RecordConsultation() {
+  return (
+    <Suspense fallback={<div className="p-8">Loading consultation form...</div>}>
+      <RecordConsultationForm />
+    </Suspense>
   );
 }

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Bulamu">
+  <rect width="512" height="512" rx="96" fill="#0f766e"/>
+  <path d="M256 96c63 0 116 49 116 110 0 84-95 165-116 181-21-16-116-97-116-181 0-61 53-110 116-110Z" fill="#ccfbf1"/>
+  <path d="M236 164h40v52h52v40h-52v52h-40v-52h-52v-40h52v-52Z" fill="#0f766e"/>
+  <path d="M132 406h248" stroke="#f8fafc" stroke-width="32" stroke-linecap="round"/>
+</svg>

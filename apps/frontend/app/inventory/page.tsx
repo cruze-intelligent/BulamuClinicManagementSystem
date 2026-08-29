@@ -5,9 +5,17 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  listLocalInventory,
+  addMedicineOffline,
+  cacheInventory,
+  getCurrentClinicId,
+  subscribeToLocalChanges,
+  LocalMedicine,
+} from '@/lib/local-first';
 
 export default function InventoryPage() {
-  const [medicines, setMedicines] = useState([]);
+  const [medicines, setMedicines] = useState<LocalMedicine[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -15,82 +23,62 @@ export default function InventoryPage() {
     unit: 'tablets',
     reorderLevel: '',
     price: '',
-    expiryDate: ''
+    expiryDate: '',
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchInventory();
-  }, []);
+  const loadInventory = async () => {
+    const clinicId = getCurrentClinicId();
+    if (!clinicId) return;
 
-  const fetchInventory = async () => {
-    const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const localData = await listLocalInventory(clinicId);
+    setMedicines(localData);
+    setLoading(false);
 
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/inventory/${user.clinicId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      const data = await response.json();
-      if (data.success) setMedicines(data.medicines);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+    if (navigator.onLine) {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/inventory/${clinicId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.medicines)) {
+          await cacheInventory(data.medicines);
+          const updated = await listLocalInventory(clinicId);
+          setMedicines(updated);
+        }
+      } catch (err) {
+        console.warn('Inventory fetch failed, using local stock:', err);
+      }
     }
   };
+
+  useEffect(() => {
+    loadInventory();
+    const unsubscribe = subscribeToLocalChanges(loadInventory);
+    return () => unsubscribe();
+  }, []);
 
   const addMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const clinicId = getCurrentClinicId() || 'default-clinic';
 
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/inventory`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          ...formData,
-          clinicId: user.clinicId,
-          quantity: parseInt(formData.quantity),
-          reorderLevel: parseInt(formData.reorderLevel),
-          price: parseFloat(formData.price)
-        })
+      await addMedicineOffline({
+        clinicId,
+        name: formData.name,
+        quantity: parseInt(formData.quantity) || 0,
+        unit: formData.unit,
+        reorderLevel: parseInt(formData.reorderLevel) || 0,
+        price: parseFloat(formData.price) || 0,
+        expiryDate: formData.expiryDate || undefined,
       });
 
-      alert('Medicine added!');
       setShowForm(false);
       setFormData({ name: '', quantity: '', unit: 'tablets', reorderLevel: '', price: '', expiryDate: '' });
-      fetchInventory();
-    } catch (error) {
-      alert('Error adding medicine');
-    }
-  };
-
-  const updateQuantity = async (id: string, currentQty: number) => {
-    const newQty = prompt('Enter new quantity:', currentQty.toString());
-    if (!newQty) return;
-
-    const token = localStorage.getItem('token');
-
-    try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/inventory/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ quantity: parseInt(newQty) })
-      });
-
-      fetchInventory();
-    } catch (error) {
-      alert('Error updating quantity');
+      loadInventory();
+    } catch (error: any) {
+      alert(`Error adding medicine: ${error.message}`);
     }
   };
 
@@ -98,7 +86,10 @@ export default function InventoryPage() {
     <div className="min-h-screen p-8 bg-slate-50">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">Inventory 💊</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800">Pharmacy & Inventory 💊</h1>
+            <p className="text-sm text-slate-500 mt-1">Local-First Stock Management</p>
+          </div>
           <Button onClick={() => setShowForm(!showForm)}>
             {showForm ? 'Cancel' : '+ Add Medicine'}
           </Button>
@@ -113,13 +104,13 @@ export default function InventoryPage() {
                   id="name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Paracetamol"
+                  placeholder="e.g. Coartem 20/120"
                   required
                 />
               </div>
 
               <div>
-                <Label htmlFor="quantity">Quantity</Label>
+                <Label htmlFor="quantity">Quantity in Stock</Label>
                 <Input
                   id="quantity"
                   type="number"
@@ -133,19 +124,20 @@ export default function InventoryPage() {
                 <Label htmlFor="unit">Unit</Label>
                 <select
                   id="unit"
-                  className="w-full p-2 border rounded"
+                  className="w-full p-2 border rounded bg-white"
                   value={formData.unit}
                   onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                 >
                   <option value="tablets">Tablets</option>
                   <option value="bottles">Bottles</option>
                   <option value="boxes">Boxes</option>
+                  <option value="vials">Vials</option>
                   <option value="ml">ML</option>
                 </select>
               </div>
 
               <div>
-                <Label htmlFor="reorderLevel">Reorder Level</Label>
+                <Label htmlFor="reorderLevel">Reorder Level Threshold</Label>
                 <Input
                   id="reorderLevel"
                   type="number"
@@ -176,45 +168,58 @@ export default function InventoryPage() {
                 />
               </div>
 
-              <Button type="submit" className="col-span-2">Add to Inventory</Button>
+              <Button type="submit" className="col-span-2">
+                Add to Inventory (Offline Ready)
+              </Button>
             </form>
           </Card>
         )}
 
         {loading ? (
-          <p>Loading...</p>
+          <p className="text-slate-500">Loading stock levels...</p>
+        ) : medicines.length === 0 ? (
+          <Card className="p-8 text-center text-slate-500">
+            No medicine stock items found. Click above to add medicine to inventory (works offline).
+          </Card>
         ) : (
           <div className="grid grid-cols-3 gap-4">
-            {medicines.map((med: any) => (
+            {medicines.map((med) => (
               <Card key={med.id} className="p-4">
-                <h3 className="font-bold text-lg mb-2">{med.name}</h3>
-                <div className="space-y-1 text-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-bold text-lg text-slate-800">{med.name}</h3>
+                  {med.syncStatus === 'pending' && (
+                    <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+                      Pending Sync
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1 text-sm text-slate-600">
                   <p>
-                    <span className="font-semibold">Stock:</span>{' '}
-                    <span className={med.quantity <= med.reorderLevel ? 'text-red-600 font-bold' : ''}>
+                    <span className="font-semibold text-slate-700">Stock:</span>{' '}
+                    <span className={med.quantity <= med.reorderLevel ? 'text-rose-600 font-bold' : 'text-slate-800'}>
                       {med.quantity} {med.unit}
                     </span>
                   </p>
-                  <p><span className="font-semibold">Reorder at:</span> {med.reorderLevel}</p>
-                  <p><span className="font-semibold">Price:</span> UGX {med.price.toLocaleString()}</p>
+                  <p>
+                    <span className="font-semibold text-slate-700">Reorder at:</span> {med.reorderLevel}
+                  </p>
+                  <p>
+                    <span className="font-semibold text-slate-700">Price:</span> UGX {med.price.toLocaleString()}
+                  </p>
                   {med.expiryDate && (
-                    <p><span className="font-semibold">Expires:</span> {new Date(med.expiryDate).toLocaleDateString()}</p>
+                    <p>
+                      <span className="font-semibold text-slate-700">Expires:</span>{' '}
+                      {new Date(med.expiryDate).toLocaleDateString()}
+                    </p>
                   )}
                 </div>
-                
+
                 {med.quantity <= med.reorderLevel && (
-                  <div className="mt-2 p-2 bg-red-50 text-red-600 text-xs rounded">
-                    ⚠️ Low stock - Reorder soon!
+                  <div className="mt-3 p-2 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded font-medium">
+                    ⚠️ Low Stock Alert - Stock replenishment required
                   </div>
                 )}
-
-                <Button 
-                  size="sm" 
-                  className="w-full mt-3"
-                  onClick={() => updateQuantity(med.id, med.quantity)}
-                >
-                  Update Quantity
-                </Button>
               </Card>
             ))}
           </div>

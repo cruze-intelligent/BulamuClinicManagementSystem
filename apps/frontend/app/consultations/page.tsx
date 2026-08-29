@@ -2,98 +2,90 @@
 
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import {
+  listLocalConsultations,
+  subscribeToLocalChanges,
+  LocalConsultation,
+} from '@/lib/local-first';
 
 export default function ConsultationsPage() {
-  const [consultations, setConsultations] = useState([]);
+  const [consultations, setConsultations] = useState<LocalConsultation[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchConsultations();
-  }, []);
-
-  const fetchConsultations = async () => {
-    const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-
-    try {
-      const patientsRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/patients/${user.clinicId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const patientsData = await patientsRes.json();
-      
-      if (patientsData.success && patientsData.patients.length > 0) {
-        const allConsultations = [];
-        for (const patient of patientsData.patients) {
-          const consultRes = await fetch(
-            `${process.env.NEXT_PUBLIC_API_URL}/consultations/patient/${patient.id}`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          );
-          const consultData = await consultRes.json();
-          if (consultData.success) {
-            allConsultations.push(...consultData.consultations.map((c: any) => ({
-              ...c,
-              patientName: patient.name
-            })));
-          }
-        }
-        setConsultations(allConsultations);
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
+  const loadConsultations = async () => {
+    const localData = await listLocalConsultations();
+    setConsultations(localData);
+    setLoading(false);
   };
+
+  useEffect(() => {
+    loadConsultations();
+    const unsubscribe = subscribeToLocalChanges(loadConsultations);
+    return () => unsubscribe();
+  }, []);
 
   return (
     <div className="min-h-screen p-8 bg-slate-50">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Consultations</h1>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800">Consultation History</h1>
+            <p className="text-sm text-slate-500 mt-1">Local-First Clinical Records</p>
+          </div>
+          <Link href="/consultations/record">
+            <Button>+ Record Encounter</Button>
+          </Link>
+        </div>
 
         {loading ? (
-          <p>Loading...</p>
+          <p className="text-slate-500">Loading consultations...</p>
         ) : consultations.length === 0 ? (
-          <p>No consultations found</p>
+          <Card className="p-8 text-center text-slate-500">
+            No consultations recorded yet. Click above to record a clinical encounter (works offline).
+          </Card>
         ) : (
           <div className="space-y-4">
-            {consultations.map((consult: any) => (
+            {consultations.map((consult) => (
               <Card key={consult.id} className="p-6">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-lg text-slate-800">
+                        {consult.patient?.name || 'Patient'} — {consult.diagnosis}
+                      </h3>
+                      {consult.syncStatus === 'pending' && (
+                        <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+                          Pending Sync
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-500">
+                      {new Date(consult.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
                 <div className="mb-4">
-                  <h3 className="font-bold text-lg">{consult.patientName} - {consult.diagnosis}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(consult.createdAt).toLocaleDateString()}
+                  <p className="text-sm text-slate-700">
+                    <strong className="font-semibold">Symptoms / Complaints:</strong> {consult.symptoms}
                   </p>
                 </div>
 
-                <div className="mb-4">
-                  <p className="text-sm"><strong>Symptoms:</strong> {consult.symptoms}</p>
-                </div>
-
-                {consult.prescriptions.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="font-semibold mb-2">Prescriptions:</h4>
-                    {consult.prescriptions.map((rx: any) => (
-                      <div key={rx.id} className="bg-slate-50 p-3 rounded mb-2">
-                        <p className="font-medium">{rx.medication}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {rx.dosage} • {rx.frequency} • {rx.duration}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {consult.invoice && (
-                  <div className="border-t pt-4">
-                    <p className="text-sm">
-                      <strong>Fee:</strong> UGX {consult.invoice.amount.toLocaleString()}
-                      <span className={`ml-2 px-2 py-1 rounded text-xs ${
-                        consult.invoice.status === 'PAID' ? 'bg-green-100' : 'bg-yellow-100'
-                      }`}>
-                        {consult.invoice.status}
-                      </span>
-                    </p>
+                {consult.prescriptions && consult.prescriptions.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-sm text-slate-800 mb-2">Prescriptions & Dosage:</h4>
+                    <div className="space-y-1.5">
+                      {consult.prescriptions.map((rx, idx) => (
+                        <div key={idx} className="bg-slate-100 p-2.5 rounded-md text-sm text-slate-800">
+                          <span className="font-medium text-blue-900">{rx.medication}</span>
+                          <span className="text-slate-500 ml-2">
+                            {rx.dosage} • {rx.frequency} • {rx.duration}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </Card>

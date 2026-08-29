@@ -4,88 +4,104 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import {
+  listLocalAppointments,
+  cacheAppointments,
+  getCurrentClinicId,
+  subscribeToLocalChanges,
+  LocalAppointment,
+} from '@/lib/local-first';
 
 export default function AppointmentsPage() {
-  const [appointments, setAppointments] = useState([]);
+  const [appointments, setAppointments] = useState<LocalAppointment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchAppointments();
-  }, []);
+  const loadAppointments = async () => {
+    const clinicId = getCurrentClinicId();
+    if (!clinicId) return;
 
-  const fetchAppointments = async () => {
-    const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const localData = await listLocalAppointments(clinicId);
+    setAppointments(localData);
+    setLoading(false);
 
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/appointments/${user.clinicId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      const data = await response.json();
-      if (data.success) setAppointments(data.appointments);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+    if (navigator.onLine) {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/appointments/${clinicId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.appointments)) {
+          await cacheAppointments(data.appointments);
+          const updated = await listLocalAppointments(clinicId);
+          setAppointments(updated);
+        }
+      } catch (err) {
+        console.warn('Appointments fetch failed, using local records:', err);
+      }
     }
   };
 
-  const updateStatus = async (id: string, status: string) => {
-    const token = localStorage.getItem('token');
-
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/appointments/${id}`, {
-      method: 'PATCH',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({ status })
-    });
-
-    fetchAppointments();
-  };
+  useEffect(() => {
+    loadAppointments();
+    const unsubscribe = subscribeToLocalChanges(loadAppointments);
+    return () => unsubscribe();
+  }, []);
 
   return (
     <div className="min-h-screen p-8 bg-slate-50">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">Appointments</h1>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-800">Appointments</h1>
+            <p className="text-sm text-slate-500 mt-1">Local-First Triage & Visit Queue</p>
+          </div>
           <Link href="/appointments/book">
             <Button>+ Book Appointment</Button>
           </Link>
         </div>
 
         {loading ? (
-          <p>Loading...</p>
+          <p className="text-slate-500">Loading appointments...</p>
+        ) : appointments.length === 0 ? (
+          <Card className="p-8 text-center text-slate-500">
+            No appointments found. Click above to book an appointment (works offline).
+          </Card>
         ) : (
           <div className="space-y-3">
-            {appointments.map((apt: any) => (
+            {appointments.map((apt) => (
               <Card key={apt.id} className="p-4">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-semibold">{apt.patient.name}</h3>
-                    <p className="text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-slate-800">{apt.patient?.name || 'Patient'}</h3>
+                      {apt.syncStatus === 'pending' && (
+                        <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
+                          Pending Sync
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-slate-500">
                       {new Date(apt.date).toLocaleDateString()} at {apt.time}
                     </p>
-                    <p className="text-sm">Dr. {apt.doctor.name}</p>
-                    {apt.notes && <p className="text-sm mt-1">{apt.notes}</p>}
+                    <p className="text-sm text-slate-600">Dr. {apt.doctor?.name || 'Assigned Clinician'}</p>
+                    {apt.notes && <p className="text-sm text-slate-500 mt-1">{apt.notes}</p>}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     {apt.status === 'SCHEDULED' && (
-                      <>
-                        <Link href={`/consultations/record?appointmentId=${apt.id}`}>
-                          <Button size="sm">Record</Button>
-                        </Link>
-                        <Button size="sm" onClick={() => updateStatus(apt.id, 'COMPLETED')}>Complete</Button>
-                        <Button size="sm" variant="destructive" onClick={() => updateStatus(apt.id, 'CANCELLED')}>Cancel</Button>
-                      </>
+                      <Link href={`/consultations/record?appointmentId=${apt.id}&patientId=${apt.patientId}`}>
+                        <Button size="sm">Record Consultation</Button>
+                      </Link>
                     )}
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      apt.status === 'COMPLETED' ? 'bg-green-100' : 
-                      apt.status === 'CANCELLED' ? 'bg-red-100' : 'bg-blue-100'
-                    }`}>
+                    <span
+                      className={`text-xs px-2.5 py-1 rounded font-medium ${
+                        apt.status === 'COMPLETED'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : apt.status === 'CANCELLED'
+                            ? 'bg-rose-100 text-rose-800'
+                            : 'bg-blue-100 text-blue-800'
+                      }`}
+                    >
                       {apt.status}
                     </span>
                   </div>

@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
+import { PwaRuntime } from '@/components/pwa-runtime';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -12,6 +13,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <>
+      <PwaRuntime />
       {showSidebar && <Sidebar />}
       <div className={showSidebar ? 'ml-64' : ''}>
         {children}

@@ -15,8 +15,20 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bulamu - Your clinic, digitized",
-  description: "Clinic management system for Uganda",
+  title: "Bulamu Rural Clinic",
+  description: "Offline-first clinic management system for Uganda",
+  applicationName: "Bulamu",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Bulamu",
+  },
+  icons: {
+    icon: "/icons/icon.svg",
+    apple: "/icons/icon.svg",
+  },
+  themeColor: "#0f766e",
 };
 
 export default function RootLayout({

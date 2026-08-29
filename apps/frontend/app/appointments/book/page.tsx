@@ -1,13 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
+import {
+  listLocalPatients,
+  createAppointmentOffline,
+  getCurrentUser,
+  getCurrentClinicId,
+  LocalPatient,
+} from '@/lib/local-first';
 
 export default function BookAppointment() {
-  const [patients, setPatients] = useState([]);
+  const router = useRouter();
+  const [patients, setPatients] = useState<LocalPatient[]>([]);
   const [patientId, setPatientId] = useState('');
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
@@ -15,51 +24,36 @@ export default function BookAppointment() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchPatients();
+    const clinicId = getCurrentClinicId();
+    if (clinicId) {
+      listLocalPatients(clinicId).then(setPatients).catch(console.error);
+    }
   }, []);
-
-  const fetchPatients = async () => {
-    const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${user.clinicId}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const data = await response.json();
-    if (data.success) setPatients(data.patients);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/appointments`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ 
-          patientId, 
-          doctorId: user.id, 
-          clinicId: user.clinicId, 
-          date, 
-          time, 
-          notes 
-        })
+      const user = getCurrentUser();
+      const clinicId = user.clinicId || 'default-clinic';
+      const doctorId = user.id || 'default-doctor';
+      const selectedPatient = patients.find((p) => p.id === patientId);
+
+      await createAppointmentOffline({
+        patientId,
+        doctorId,
+        clinicId,
+        date,
+        time,
+        notes,
+        patientName: selectedPatient?.name,
+        doctorName: user.name || 'Staff Clinician',
       });
 
-      const data = await response.json();
-      if (data.success) {
-        alert('Appointment booked!');
-        setPatientId(''); setDate(''); setTime(''); setNotes('');
-      }
-    } catch (error) {
-      alert('Error booking appointment');
+      router.push('/appointments');
+    } catch (error: any) {
+      alert(`Error booking appointment: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -68,25 +62,28 @@ export default function BookAppointment() {
   return (
     <div className="min-h-screen p-8 bg-slate-50">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Book Appointment</h1>
-        
+        <h1 className="text-3xl font-bold mb-2 text-slate-800">Book Appointment</h1>
+        <p className="text-sm text-slate-500 mb-6">Works offline with background sync</p>
+
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label>Patient</Label>
-              <select 
-                className="w-full p-2 border rounded" 
+              <select
+                className="w-full p-2.5 border border-slate-300 rounded-md bg-white text-slate-800"
                 value={patientId}
                 onChange={(e) => setPatientId(e.target.value)}
                 required
               >
-                <option value="">Select patient</option>
-                {patients.map((p: any) => (
-                  <option key={p.id} value={p.id}>{p.name} - {p.phone}</option>
+                <option value="">Select patient from local registry</option>
+                {patients.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.phone})
+                  </option>
                 ))}
               </select>
             </div>
-            
+
             <div>
               <Label htmlFor="date">Date</Label>
               <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -98,12 +95,17 @@ export default function BookAppointment() {
             </div>
 
             <div>
-              <Label htmlFor="notes">Notes</Label>
-              <Input id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Routine checkup" />
+              <Label htmlFor="notes">Notes / Reason for Visit</Label>
+              <Input
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Fever, routine antenatal checkup"
+              />
             </div>
 
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Booking...' : 'Book Appointment'}
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? 'Booking...' : 'Book Appointment (Offline Ready)'}
             </Button>
           </form>
         </Card>

@@ -1,12 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
+import { createPatientOffline, getCurrentClinicId } from '@/lib/local-first';
 
 export default function RegisterPatient() {
+  const router = useRouter();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
@@ -15,30 +18,19 @@ export default function RegisterPatient() {
     e.preventDefault();
     setLoading(true);
 
-    const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ name, phone, clinicId: user.clinicId })
+      const clinicId = getCurrentClinicId() || 'default-clinic';
+      await createPatientOffline({
+        name,
+        phone,
+        clinicId,
       });
 
-      const data = await response.json();
-
-      if (data.success) {
-        alert('Patient registered!');
-        setName('');
-        setPhone('');
-      } else {
-        alert('Registration failed!');
-      }
-    } catch (error) {
-      alert('Error connecting to server');
+      setName('');
+      setPhone('');
+      router.push('/patients');
+    } catch (error: any) {
+      alert(`Error saving patient: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -47,34 +39,35 @@ export default function RegisterPatient() {
   return (
     <div className="min-h-screen p-8 bg-slate-50">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Register New Patient</h1>
-        
+        <h1 className="text-3xl font-bold mb-2 text-slate-800">Register New Patient</h1>
+        <p className="text-sm text-slate-500 mb-6">Works offline with background sync</p>
+
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="name">Patient Name</Label>
-              <Input 
-                id="name" 
+              <Label htmlFor="name">Patient Full Name</Label>
+              <Input
+                id="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="John Mukasa"
-                required 
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input 
-                id="phone" 
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="0756123456"
-                required 
+                placeholder="e.g. John Mukasa"
+                required
               />
             </div>
 
-            <Button type="submit" disabled={loading}>
-              {loading ? 'Registering...' : 'Register Patient'}
+            <div>
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="e.g. 0756123456"
+                required
+              />
+            </div>
+
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? 'Saving...' : 'Register Patient (Offline Ready)'}
             </Button>
           </form>
         </Card>
