@@ -9,7 +9,9 @@
   "scripts": {
     "dev:frontend": "npm run dev --workspace=apps/frontend",
     "dev:backend": "npm run dev --workspace=apps/backend",
-    "dev": "npm run dev:backend & npm run dev:frontend"
+    "dev": "node scripts/dev.mjs",
+    "prisma:generate": "npm exec --workspace=apps/backend -- prisma generate",
+    "postinstall": "npm run prisma:generate"
   },
   "engines": {
     "node": ">=18.0.0"

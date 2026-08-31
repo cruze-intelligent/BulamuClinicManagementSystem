@@ -260,6 +260,25 @@ export async function cachePatients(patients: Array<Omit<LocalPatient, "syncStat
   emitLocalChange();
 }
 
+export async function refreshPatientsFromServer(clinicId: string): Promise<LocalPatient[]> {
+  const apiUrl = getApiUrl();
+  if (!apiUrl) {
+    return listLocalPatients(clinicId);
+  }
+
+  const response = await fetch(`${apiUrl}/patients/${encodeURIComponent(clinicId)}`, {
+    headers: getAuthHeaders(),
+  });
+  const data = await response.json();
+
+  if (!response.ok || !data.success || !Array.isArray(data.patients)) {
+    throw new Error(data.error || "Unable to refresh patients");
+  }
+
+  await cachePatients(data.patients);
+  return listLocalPatients(clinicId);
+}
+
 export async function createPatientOffline(input: {
   name: string;
   phone: string;
