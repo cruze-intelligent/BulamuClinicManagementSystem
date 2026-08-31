@@ -3,9 +3,9 @@ import { google } from 'googleapis';
 
 export async function leadsRoutes(fastify: FastifyInstance) {
   
-  // Submit demo request to Google Sheets
+  // Submit access request to Google Sheets
   fastify.post('/leads', async (request, reply) => {
-    const { clinicName, contactPerson, phone, email, preferredPlan, message } = request.body as any;
+    const { facilityName, clinicName, facilityType, contactPerson, phone, email, preferredPlan, message } = request.body as any;
 
     try {
       // Set up Google Sheets auth
@@ -22,12 +22,13 @@ export async function leadsRoutes(fastify: FastifyInstance) {
       // Append row to sheet
       await sheets.spreadsheets.values.append({
         spreadsheetId: process.env.GOOGLE_SHEET_ID,
-        range: 'Sheet1!A:G',
+        range: 'Sheet1!A:H',
         valueInputOption: 'USER_ENTERED',
         requestBody: {
           values: [[
             new Date().toISOString(),
-            clinicName,
+            facilityName || clinicName,
+            facilityType || 'Clinic',
             contactPerson,
             phone,
             email,

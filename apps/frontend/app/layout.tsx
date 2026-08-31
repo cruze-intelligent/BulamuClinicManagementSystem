@@ -1,7 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/sidebar";
 import ClientLayout from "./client-layout";
 
 const geistSans = Geist({
@@ -15,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bulamu Rural Clinic",
-  description: "Offline-first clinic management system for Uganda",
+  title: "Bulamu Medical Facility OS",
+  description: "Offline-first medical facility management system for Uganda",
   applicationName: "Bulamu",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
@@ -28,6 +27,9 @@ export const metadata: Metadata = {
     icon: "/icons/icon.svg",
     apple: "/icons/icon.svg",
   },
+};
+
+export const viewport: Viewport = {
   themeColor: "#0f766e",
 };
 

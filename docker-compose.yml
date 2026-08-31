@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: bulamu
       POSTGRES_USER: bulamu_user
-      POSTGRES_PASSWORD: bulamu_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bulamu_local_password}
     ports:
       - "5432:5432"
     volumes:
@@ -23,9 +23,9 @@ services:
     ports:
       - "4000:4000"
     environment:
-      DATABASE_URL: "postgresql://bulamu_user:bulamu_password@postgres:5432/bulamu?schema=public"
-      JWT_SECRET: "bulamu_production_secret_key_2026"
-      FRONTEND_URL: "http://localhost:3000"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://bulamu_user:bulamu_local_password@postgres:5432/bulamu?schema=public}
+      JWT_SECRET: ${JWT_SECRET:-bulamu_local_development_secret}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       - postgres
 
@@ -38,7 +38,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: "http://localhost:4000"
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     depends_on:
       - backend
 

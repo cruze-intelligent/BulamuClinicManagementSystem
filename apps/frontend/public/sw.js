@@ -1,7 +1,16 @@
-const CACHE_NAME = "bulamu-shell-v1";
+const CACHE_NAME = "bulamu-shell-v2";
 const APP_SHELL = [
   "/",
+  "/auth/login",
   "/dashboard",
+  "/appointments",
+  "/appointments/book",
+  "/consultations",
+  "/consultations/record",
+  "/help",
+  "/inventory",
+  "/lab",
+  "/reports",
   "/patients",
   "/patients/register",
   "/offline",

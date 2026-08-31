@@ -1,179 +1,315 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card } from '@/components/ui/card';
+import { useRouter } from 'next/navigation';
+import {
+  Activity,
+  Building2,
+  CheckCircle2,
+  ClipboardCheck,
+  Crown,
+  DatabaseZap,
+  PauseCircle,
+  PlayCircle,
+  Plus,
+  Users,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/useAuth';
-import { useRouter } from 'next/navigation';
+
+const facilityTypes = [
+  { value: 'CLINIC', label: 'Clinic' },
+  { value: 'HEALTH_CENTRE_II', label: 'Health Centre II' },
+  { value: 'HEALTH_CENTRE_III', label: 'Health Centre III' },
+  { value: 'HEALTH_CENTRE_IV', label: 'Health Centre IV' },
+  { value: 'HOSPITAL', label: 'Hospital' },
+  { value: 'LABORATORY', label: 'Laboratory' },
+  { value: 'PHARMACY', label: 'Pharmacy' },
+  { value: 'COMMUNITY_OUTREACH', label: 'Community Outreach' },
+  { value: 'MOBILE_UNIT', label: 'Mobile Unit' },
+];
+
+type Facility = {
+  id: string;
+  name: string;
+  facilityType: string;
+  phone: string;
+  address: string;
+  isActive: boolean;
+  createdAt: string;
+  users: number;
+  patients: number;
+  admin: { name: string; email: string; isActive: boolean } | null;
+};
+
+type Overview = {
+  clinicCount: number;
+  activeClinicCount: number;
+  userCount: number;
+  patientCount: number;
+  appointmentCount: number;
+  consultationCount: number;
+  revenue: number;
+  evaluationEndsAt: string;
+  clinics: Facility[];
+};
+
+const emptyForm = {
+  name: '',
+  facilityType: 'CLINIC',
+  phone: '',
+  address: '',
+  adminName: '',
+  adminEmail: '',
+  adminPassword: '',
+};
+
+function facilityLabel(value: string) {
+  return facilityTypes.find((item) => item.value === value)?.label || value.replaceAll('_', ' ');
+}
 
 export default function SuperAdminPage() {
   const { hasRole } = useAuth();
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    phone: '',
-    address: '',
-    adminName: '',
-    adminEmail: '',
-    adminPassword: ''
-  });
+  const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [formData, setFormData] = useState(emptyForm);
+
+  const fetchOverview = async () => {
+    const token = localStorage.getItem('token');
+    setLoading(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/super-admin/overview`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (data.success) setOverview(data.overview);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!hasRole('SUPER_ADMIN')) {
       router.push('/dashboard');
+      return;
     }
+    fetchOverview();
   }, [hasRole, router]);
 
-  const createClinic = async (e: React.FormEvent) => {
+  const createFacility = async (e: React.FormEvent) => {
     e.preventDefault();
     const token = localStorage.getItem('token');
 
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(formData)
-      });
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(formData),
+    });
 
-      const data = await response.json();
-      if (data.success) {
-        alert(`Clinic created! Admin can login with:\nEmail: ${formData.adminEmail}\nPassword: ${formData.adminPassword}`);
-        setShowForm(false);
-        setFormData({
-          name: '',
-          phone: '',
-          address: '',
-          adminName: '',
-          adminEmail: '',
-          adminPassword: ''
-        });
-      } else {
-        alert('Error creating clinic');
-      }
-    } catch (error) {
-      alert('Error creating clinic');
+    const data = await response.json();
+    if (data.success) {
+      setShowForm(false);
+      setFormData(emptyForm);
+      await fetchOverview();
+      alert(`Facility authorized. Login: ${formData.adminEmail} / ${formData.adminPassword}`);
+    } else {
+      alert(data.error || 'Error creating facility');
     }
+  };
+
+  const updateFacilityStatus = async (facility: Facility) => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/${facility.id}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ isActive: !facility.isActive }),
+    });
+    const data = await response.json();
+    if (data.success) await fetchOverview();
+    else alert(data.error || 'Could not update facility status');
   };
 
   if (!hasRole('SUPER_ADMIN')) return null;
 
+  const stats = [
+    { label: 'Facilities', value: overview?.clinicCount || 0, icon: Building2 },
+    { label: 'Active Facilities', value: overview?.activeClinicCount || 0, icon: CheckCircle2 },
+    { label: 'Active Users', value: overview?.userCount || 0, icon: Users },
+    { label: 'Patients', value: overview?.patientCount || 0, icon: Activity },
+    { label: 'Consultations', value: overview?.consultationCount || 0, icon: ClipboardCheck },
+    { label: 'Revenue', value: `UGX ${(overview?.revenue || 0).toLocaleString()}`, icon: DatabaseZap },
+  ];
+
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold">Super Admin Panel 👑</h1>
-          <p className="text-muted-foreground">Manage Bulamu clinics and system settings</p>
+    <main className="mx-auto max-w-7xl space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold uppercase text-emerald-700">
+            <Crown className="size-4" aria-hidden="true" />
+            Super Admin God Mode
+          </div>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Facility authorization console</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Authorize medical facilities, monitor national readiness, suspend access when needed, and verify the
+            two-week evaluation environment across facility types.
+          </p>
         </div>
+        <Button onClick={() => setShowForm((value) => !value)}>
+          <Plus className="size-4" aria-hidden="true" />
+          {showForm ? 'Close form' : 'Authorize facility'}
+        </Button>
+      </header>
 
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          <Card className="p-6">
-            <h3 className="text-sm text-muted-foreground">Total Clinics</h3>
-            <p className="text-3xl font-bold">2</p>
+      <section className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {stats.map((stat) => (
+          <Card key={stat.label} className="gap-3 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase text-slate-500">{stat.label}</p>
+              <stat.icon className="size-4 text-emerald-700" aria-hidden="true" />
+            </div>
+            <p className="text-2xl font-semibold text-slate-950">{stat.value}</p>
           </Card>
-          <Card className="p-6">
-            <h3 className="text-sm text-muted-foreground">Active Users</h3>
-            <p className="text-3xl font-bold">5</p>
-          </Card>
-          <Card className="p-6">
-            <h3 className="text-sm text-muted-foreground">Total Revenue</h3>
-            <p className="text-3xl font-bold">UGX 600k</p>
-          </Card>
-        </div>
+        ))}
+      </section>
 
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold">Clinic Management</h2>
-          <Button onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : '+ Create New Clinic'}
-          </Button>
-        </div>
+      <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
+        <Card className="rounded-lg p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">Authorized facilities</h2>
+              <p className="text-sm text-slate-500">Includes clinics, hospitals, labs, pharmacies, outreach, and mobile units.</p>
+            </div>
+            {loading && <span className="text-sm text-slate-500">Loading...</span>}
+          </div>
+          <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-3">Facility</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Admin</th>
+                  <th className="px-4 py-3">Records</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {(overview?.clinics || []).map((facility) => (
+                  <tr key={facility.id} className="bg-white">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-950">{facility.name}</p>
+                      <p className="text-xs text-slate-500">{facility.address}</p>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">{facilityLabel(facility.facilityType)}</td>
+                    <td className="px-4 py-3">
+                      <p className="text-slate-800">{facility.admin?.name || 'Not assigned'}</p>
+                      <p className="text-xs text-slate-500">{facility.admin?.email || 'Create admin to activate'}</p>
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {facility.patients} patients / {facility.users} users
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-1 text-xs font-medium ${
+                        facility.isActive ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                      }`}>
+                        {facility.isActive ? 'Active' : 'Suspended'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button size="sm" variant="outline" onClick={() => updateFacilityStatus(facility)}>
+                        {facility.isActive ? <PauseCircle className="size-4" /> : <PlayCircle className="size-4" />}
+                        {facility.isActive ? 'Suspend' : 'Reactivate'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
 
-        {showForm && (
-          <Card className="p-6 mb-6">
-            <h3 className="font-bold mb-4">Create New Clinic</h3>
-            <form onSubmit={createClinic} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">Clinic Name</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Kampala Medical Center"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="phone">Clinic Phone</Label>
-                  <Input
-                    id="phone"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="0700123456"
-                    required
-                  />
-                </div>
+        <Card className="rounded-lg p-5">
+          <h2 className="text-lg font-semibold text-slate-950">Research alignment</h2>
+          <div className="mt-4 space-y-3 text-sm text-slate-600">
+            {[
+              'HMIS 105 outpatient reporting',
+              'FHIR R4 patient bundle export',
+              'Offline-first local queue and sync',
+              'Tier 2 edge clinic deployment path',
+              'Role-based access for facility teams',
+              'Super-admin governance and authorization',
+            ].map((item) => (
+              <div key={item} className="flex items-center gap-2">
+                <CheckCircle2 className="size-4 text-emerald-700" aria-hidden="true" />
+                <span>{item}</span>
               </div>
+            ))}
+          </div>
+          <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            Two-week evaluation ends:{' '}
+            <strong>{overview?.evaluationEndsAt ? new Date(overview.evaluationEndsAt).toLocaleDateString() : 'after authorization'}</strong>
+          </div>
+        </Card>
+      </section>
 
-              <div>
-                <Label htmlFor="address">Address</Label>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Kampala, Uganda"
-                  required
-                />
-              </div>
-
-              <div className="border-t pt-4 mt-4">
-                <h4 className="font-semibold mb-3">Clinic Admin Account</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="adminName">Admin Name</Label>
-                    <Input
-                      id="adminName"
-                      value={formData.adminName}
-                      onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
-                      placeholder="Dr. John Doe"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="adminEmail">Admin Email</Label>
-                    <Input
-                      id="adminEmail"
-                      type="email"
-                      value={formData.adminEmail}
-                      onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
-                      placeholder="admin@clinic.ug"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <Label htmlFor="adminPassword">Admin Password</Label>
-                  <Input
-                    id="adminPassword"
-                    type="password"
-                    value={formData.adminPassword}
-                    onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
-                    placeholder="Strong password"
-                    required
-                  />
-                </div>
-              </div>
-
-              <Button type="submit" className="w-full">Create Clinic & Admin</Button>
-            </form>
-          </Card>
-        )}
-      </div>
-    </div>
+      {showForm && (
+        <Card className="rounded-lg p-5">
+          <h2 className="text-lg font-semibold text-slate-950">Authorize a medical facility</h2>
+          <form onSubmit={createFacility} className="mt-4 grid gap-4 md:grid-cols-2">
+            <div>
+              <Label htmlFor="name">Facility name</Label>
+              <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
+            </div>
+            <div>
+              <Label htmlFor="facilityType">Facility type</Label>
+              <select
+                id="facilityType"
+                className="mt-2 h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                value={formData.facilityType}
+                onChange={(e) => setFormData({ ...formData, facilityType: e.target.value })}
+              >
+                {facilityTypes.map((type) => (
+                  <option key={type.value} value={type.value}>{type.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="phone">Facility phone</Label>
+              <Input id="phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} required />
+            </div>
+            <div>
+              <Label htmlFor="address">Location</Label>
+              <Input id="address" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} required />
+            </div>
+            <div>
+              <Label htmlFor="adminName">Facility admin name</Label>
+              <Input id="adminName" value={formData.adminName} onChange={(e) => setFormData({ ...formData, adminName: e.target.value })} required />
+            </div>
+            <div>
+              <Label htmlFor="adminEmail">Facility admin email</Label>
+              <Input id="adminEmail" type="email" value={formData.adminEmail} onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })} required />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="adminPassword">Temporary admin password</Label>
+              <Input id="adminPassword" type="password" value={formData.adminPassword} onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })} required />
+            </div>
+            <div className="md:col-span-2">
+              <Button type="submit" className="w-full">Authorize facility and create admin</Button>
+            </div>
+          </form>
+        </Card>
+      )}
+    </main>
   );
 }

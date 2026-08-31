@@ -11,6 +11,10 @@
     "dev:backend": "npm run dev --workspace=apps/backend",
     "dev": "node scripts/dev.mjs",
     "prisma:generate": "npm exec --workspace=apps/backend -- prisma generate",
+    "db:migrate": "npm exec --workspace=apps/backend -- prisma migrate dev",
+    "db:deploy": "npm exec --workspace=apps/backend -- prisma migrate deploy",
+    "seed": "npm run seed --workspace=apps/backend",
+    "setup:local": "npm run prisma:generate && npm run db:migrate && npm run seed",
     "postinstall": "npm run prisma:generate"
   },
   "engines": {

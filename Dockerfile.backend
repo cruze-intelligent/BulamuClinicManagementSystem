@@ -1,4 +1,4 @@
-# Backend Dockerfile for Bulamu Clinic Management System (Fastify + Prisma)
+# Backend Dockerfile for Bulamu Medical Facility OS (Fastify + Prisma)
 FROM node:20-alpine AS builder
 
 WORKDIR /app

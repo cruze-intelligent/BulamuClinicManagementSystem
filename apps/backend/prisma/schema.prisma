@@ -26,6 +26,7 @@ model User {
 model Clinic {
   id        String   @id @default(uuid())
   name      String
+  facilityType FacilityType @default(CLINIC)
   phone     String
   address   String
   users     User[]
@@ -33,6 +34,18 @@ model Clinic {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum FacilityType {
+  CLINIC
+  HEALTH_CENTRE_II
+  HEALTH_CENTRE_III
+  HEALTH_CENTRE_IV
+  HOSPITAL
+  LABORATORY
+  PHARMACY
+  COMMUNITY_OUTREACH
+  MOBILE_UNIT
 }
 
 model Patient {

@@ -1,6 +1,6 @@
-# Deployment Guide - Bulamu Rural Health System (PWA + Cloud API)
+# Deployment Guide - Bulamu Medical Facility OS (PWA + Cloud API)
 
-This guide provides deployment instructions for hosting the **Bulamu Clinic Management System** across both cloud platforms and edge micro-servers (e.g. Raspberry Pi in deep-rural Health Centre II/III facilities).
+This guide provides deployment instructions for hosting **Bulamu Medical Facility OS** across both cloud platforms and edge micro-servers (e.g. Raspberry Pi in deep-rural Health Centre II/III facilities). Bulamu supports clinics, health centres, hospitals, laboratories, pharmacies, mobile units, and community outreach teams.
 
 ---
 
@@ -8,7 +8,7 @@ This guide provides deployment instructions for hosting the **Bulamu Clinic Mana
 
 - **Frontend (Installable PWA)**: Hosted on Vercel, Netlify, Cloudflare Pages, or custom domain web server. Endpoints download and cache app shell via Service Worker (`sw.js`) and store patient data in browser IndexedDB.
 - **Backend (API & Sync Engine)**: Fastify + Prisma Node.js backend hosted on **Laravel Cloud**, **Railway**, **Render**, **Fly.io**, or **Supabase** (PostgreSQL).
-- **Edge Micro-Server (Tier 2 Clinic)**: Single-board computer (Raspberry Pi 4/5) running Docker Compose locally inside solar-powered clinic intranet.
+- **Edge Micro-Server (Tier 2 Facility)**: Single-board computer (Raspberry Pi 4/5) running Docker Compose locally inside a solar-powered facility intranet.
 
 ---
 
@@ -26,7 +26,7 @@ This guide provides deployment instructions for hosting the **Bulamu Clinic Mana
      PORT=4000
      DATABASE_URL=postgresql://...
      JWT_SECRET=your_secure_secret_key
-     FRONTEND_URL=https://your-custom-clinic-pwa-domain.com
+     FRONTEND_URL=https://your-custom-facility-pwa-domain.com
      ```
    - Build & Migration Commands:
      ```bash
@@ -57,7 +57,7 @@ This guide provides deployment instructions for hosting the **Bulamu Clinic Mana
    ```
 3. Custom Domain & HTTPS:
    - Configure HTTPS SSL certificate (required for PWA Service Worker & Web App Manifest installation).
-   - Mobile users on Android/iOS will receive the "Install App" prompt for offline usage.
+- Mobile users on Android/iOS will receive the "Install App" prompt for offline usage where supported by the browser.
 
 ---
 
@@ -71,7 +71,7 @@ cd ras
 docker-compose up -d --build
 ```
 
-- Clinic staff connect Android tablets via Wi-Fi to the local micro-server IP.
+- Facility staff connect Android tablets via Wi-Fi to the local micro-server IP.
 - Data writes directly to local IndexedDB and syncs to local micro-server.
 - When 3G/4G cellular signal is available, micro-server automatically pushes delta updates to the central national cloud DB.
 

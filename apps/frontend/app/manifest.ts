@@ -2,10 +2,10 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Bulamu Rural Clinic",
+    name: "Bulamu Medical Facility OS",
     short_name: "Bulamu",
     description:
-      "Offline-first clinic management for rural Ugandan health facilities.",
+      "Offline-first operations for Ugandan medical facilities.",
     start_url: "/dashboard",
     scope: "/",
     display: "standalone",

@@ -1,111 +1,134 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { CheckCircle2, RefreshCw, WifiOff } from "lucide-react";
+import { useCallback, useEffect, useState } from 'react';
+import { CheckCircle2, Download, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import {
   countPendingMutations,
   flushSyncQueue,
-  pullSyncUpdates,
   getCurrentClinicId,
+  pullSyncUpdates,
   subscribeToLocalChanges,
-} from "@/lib/local-first";
+} from '@/lib/local-first';
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+};
 
 export function PwaRuntime() {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
-  const handleManualSync = async () => {
-    if (!navigator.onLine || syncing) return;
+  const refreshPending = useCallback(() => {
+    countPendingMutations().then(setPending).catch(console.error);
+  }, []);
+
+  const syncData = useCallback(async () => {
     setSyncing(true);
     try {
       await flushSyncQueue();
       const clinicId = getCurrentClinicId();
-      if (clinicId) {
-        await pullSyncUpdates(clinicId);
-      }
+      if (clinicId) await pullSyncUpdates(clinicId);
     } catch (error) {
-      console.error("Manual sync failed:", error);
+      console.error('Manual sync failed:', error);
     } finally {
       setSyncing(false);
-      countPendingMutations().then(setPending).catch(console.error);
+      refreshPending();
     }
+  }, [refreshPending]);
+
+  const handleManualSync = async () => {
+    if (!navigator.onLine || syncing) return;
+    await syncData();
+  };
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
   };
 
   useEffect(() => {
     setOnline(navigator.onLine);
 
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(console.error);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(console.error);
     }
-
-    const refreshPending = () => {
-      countPendingMutations().then(setPending).catch(console.error);
-    };
 
     const sync = async () => {
       const isOnline = navigator.onLine;
       setOnline(isOnline);
       refreshPending();
-
       if (!isOnline) return;
+      await syncData();
+    };
 
-      setSyncing(true);
-      try {
-        await flushSyncQueue();
-        const clinicId = getCurrentClinicId();
-        if (clinicId) {
-          await pullSyncUpdates(clinicId);
-        }
-      } catch (error) {
-        console.error("Auto sync failed:", error);
-      } finally {
-        setSyncing(false);
-        refreshPending();
-      }
+    const beforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
     };
 
     const unsubscribe = subscribeToLocalChanges(refreshPending);
-    window.addEventListener("online", sync);
-    window.addEventListener("offline", sync);
+    window.addEventListener('online', sync);
+    window.addEventListener('offline', sync);
+    window.addEventListener('beforeinstallprompt', beforeInstallPrompt);
     refreshPending();
     sync();
 
     return () => {
       unsubscribe();
-      window.removeEventListener("online", sync);
-      window.removeEventListener("offline", sync);
+      window.removeEventListener('online', sync);
+      window.removeEventListener('offline', sync);
+      window.removeEventListener('beforeinstallprompt', beforeInstallPrompt);
     };
-  }, []);
+  }, [refreshPending, syncData]);
 
   const label = !online
-    ? "Offline Mode"
+    ? 'Offline'
     : syncing
-      ? "Syncing..."
+      ? 'Syncing'
       : pending > 0
-        ? `${pending} pending sync`
-        : "Local Sync OK";
+        ? `${pending} pending`
+        : 'Synced';
 
   return (
-    <div
-      onClick={handleManualSync}
-      title={online ? "Click to trigger manual sync" : "Working offline"}
-      className={`fixed bottom-4 right-4 z-50 flex cursor-pointer min-h-10 items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-medium transition-all shadow-md ${
-        !online
-          ? "border-amber-300 bg-amber-50 text-amber-900"
-          : pending > 0
-            ? "border-blue-300 bg-blue-50 text-blue-900"
-            : "border-emerald-300 bg-emerald-50 text-emerald-900"
-      }`}
-    >
-      {!online ? (
-        <WifiOff className="h-4 w-4 text-amber-600" aria-hidden="true" />
-      ) : syncing ? (
-        <RefreshCw className="h-4 w-4 animate-spin text-blue-600" aria-hidden="true" />
-      ) : (
-        <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+    <div className="fixed bottom-4 right-4 z-50 flex flex-wrap items-center justify-end gap-2">
+      {installPrompt && (
+        <button
+          type="button"
+          onClick={handleInstall}
+          className="flex min-h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-md transition-colors hover:bg-slate-50"
+        >
+          <Download className="size-4" aria-hidden="true" />
+          Install app
+        </button>
       )}
-      <span>{label}</span>
+      <button
+        type="button"
+        onClick={handleManualSync}
+        title={online ? 'Click to trigger manual sync' : 'Working offline with local queue'}
+        className={`flex min-h-10 items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium shadow-md transition-colors ${
+          !online
+            ? 'border-amber-300 bg-amber-50 text-amber-900'
+            : pending > 0
+              ? 'border-blue-300 bg-blue-50 text-blue-900'
+              : 'border-emerald-300 bg-emerald-50 text-emerald-900'
+        }`}
+      >
+        {!online ? (
+          <WifiOff className="size-4 text-amber-600" aria-hidden="true" />
+        ) : syncing ? (
+          <RefreshCw className="size-4 animate-spin text-blue-600" aria-hidden="true" />
+        ) : pending > 0 ? (
+          <Wifi className="size-4 text-blue-600" aria-hidden="true" />
+        ) : (
+          <CheckCircle2 className="size-4 text-emerald-600" aria-hidden="true" />
+        )}
+        <span>{label}</span>
+      </button>
     </div>
   );
 }
