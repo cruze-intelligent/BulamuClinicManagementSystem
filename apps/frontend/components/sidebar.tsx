@@ -18,6 +18,9 @@ import {
   ShieldCheck,
   Stethoscope,
   Users,
+  ArrowRightLeft,
+  MapPinned,
+  History,
 } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 
@@ -28,9 +31,12 @@ const navItems = [
   { name: 'Appointments', path: '/appointments', icon: CalendarDays, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
   { name: 'Consultations', path: '/consultations', icon: Stethoscope, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST'] },
   { name: 'Lab Tests', path: '/lab', icon: FlaskConical, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
+  { name: 'Referrals', path: '/referrals', icon: ArrowRightLeft, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
+  { name: 'Household Visit', path: '/chw-visit', icon: MapPinned, roles: ['NURSE', 'STAFF'] },
   { name: 'Inventory', path: '/inventory', icon: Package, roles: ['ADMIN', 'PHARMACIST'] },
   { name: 'Invoices', path: '/invoices', icon: Receipt, roles: ['ADMIN'] },
   { name: 'Reports', path: '/reports', icon: BarChart3, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { name: 'Sync Activity', path: '/sync-activity', icon: History, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { name: 'Staff', path: '/users', icon: ClipboardList, roles: ['ADMIN'] },
   { name: 'Help & FAQ', path: '/help', icon: HelpCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
 ];

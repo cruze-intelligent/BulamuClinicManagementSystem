@@ -40,14 +40,20 @@ Facility admin credentials are generated during God Mode authorization. Document
 4. Open God Mode and authorize a facility.
 5. Sign in as the created facility admin.
 6. Complete the first-run walkthrough.
-7. Register a patient.
+7. Register a patient (include sex, date of birth, geography, and consent).
 8. Book an appointment.
 9. Record a consultation and prescription.
 10. Add a lab test and inventory item.
-11. Generate facility reports.
-12. Export FHIR patients.
-13. Switch the browser offline and show local-first behavior.
-14. Return online and trigger manual sync.
+11. For a female patient, record a reproductive-health observation and confirm it appears in the patient's timeline.
+12. Create a referral to another facility, then sign in as that facility's admin/doctor to accept it.
+13. Sign in as Nurse/Front Desk Staff at a Community Outreach or Mobile Unit facility and log a household visit via "Household Visit" - check a danger sign and confirm the referral prompt appears.
+14. Generate facility reports (Overview and HMIS 105 - confirm all 7 sections render, including the new family planning, maternal health, services, and referral sections).
+15. As Admin, open Reports and use "Push to DHIS2" (requires DHIS2 integration configured first, or confirm it correctly reports "not configured yet").
+16. Export FHIR patients and confirm the bundle includes Encounter and Observation resources, not just Patient.
+17. Open "Sync Activity" as Admin and confirm the audit log shows the patient registration and reproductive-health entries.
+18. Switch the browser offline and show local-first behavior (register a patient, log a household visit).
+19. Return online and trigger manual sync.
+20. As a Front Desk Staff account, use "Forgot your password?" from the login page and confirm the reset flow completes.
 
 Before step 3, verify that PostgreSQL is reachable, migrations have been applied, and seeded access accounts exist.
 
@@ -69,21 +75,31 @@ Before step 3, verify that PostgreSQL is reachable, migrations have been applied
 - Install prompt visible in supported browsers
 - Offline fallback page available at `/offline`
 - Core routes cached after first visit
-- IndexedDB stores local patient, appointment, consultation, lab, and inventory data
+- IndexedDB stores local patient, appointment, consultation, lab, inventory, and reproductive-health data
 - Sync badge shows offline, pending, syncing, and synced states
+- Household visits recorded offline at `/chw-visit` sync through the same mutation queue
 
 ## 6. Research Alignment Checklist
 
-- DHIS2-facing national aggregation: covered through reporting direction and export readiness
-- UgandaEMR/OpenMRS interoperability: covered through FHIR R4 patient bundle export
-- HMIS reporting burden: covered through HMIS 105 monthly outpatient report
-- Rural facility hierarchy: covered through facility type selection and God Mode authorization
-- Offline-first architecture: covered through PWA cache, IndexedDB, and mutation queue
+- DHIS2-facing national aggregation: HMIS 105 reporting plus a configurable `dataValueSets` push (Reports → Push to DHIS2)
+- UgandaEMR/OpenMRS interoperability: FHIR R4 export with Patient, Encounter, and Observation resources
+- HMIS reporting burden: HMIS 105 monthly outpatient report across 7 sections (attendance by age/gender cohort, epidemic surveillance, essential medicines, family planning, maternal health, other tracked services, referrals out)
+- Rural facility hierarchy: facility type selection, God Mode authorization, district/sub-county/parish fields, and inter-facility referrals
+- Community health worker mobile capture: `/chw-visit` simplified offline triage form for Community Outreach / Mobile Unit facilities
+- Offline-first architecture: PWA cache, IndexedDB, mutation queue, timestamp-based last-write-wins with logged conflicts, tombstone deletes
 - Edge deployment: documented in `DEPLOYMENT.md` for micro-server scenarios
-- Governance: covered through super-admin authorization and suspension controls
-- Capacity building: covered through first-run walkthrough and Help & FAQ
+- Governance: super-admin authorization, suspension controls, and an audit log for patient/reproductive-health/user/invoice writes
+- Capacity building: first-run walkthrough, Help & FAQ, and the role-specific training tracks below
 
-## 7. FAQs
+## 7. Role-Specific Training Tracks
+
+Per the research document's structured competency guidance, training is organized into three tracks:
+
+- **Basic** (Front Desk Staff, Nurse): patient registration and consent, appointment booking, offline usage and the sync badge, household visits (Community Outreach/Mobile Unit staff).
+- **Intermediate** (Doctor, Pharmacist, facility Admin): consultations and prescriptions, reproductive-health tracking, lab and inventory workflows, referrals, HMIS 105 reporting, staff management, Sync Activity review.
+- **Advanced** (facility Admin, Super Admin): DHIS2 integration configuration, God Mode facility authorization, audit log review, and production go-live checklist ownership.
+
+## 8. FAQs
 
 **Is Bulamu only for clinics?**  
 No. It supports multiple medical facility types, including health centres, hospitals, labs, pharmacies, mobile units, and outreach teams.
@@ -95,7 +111,7 @@ Yes. Core workflows are local-first and queued for sync.
 The Super Admin creates and authorizes facility accounts from God Mode.
 
 **What should evaluators test first?**  
-Facility authorization, patient registration, appointment booking, consultation recording, HMIS 105 reporting, FHIR export, and offline sync.
+Facility authorization, patient registration and consent, appointment booking, consultation recording, reproductive-health tracking, referrals between facilities, household visits, HMIS 105 reporting, FHIR export, DHIS2 push configuration, the Sync Activity panel, password reset, and offline sync.
 
 **What must be completed before handling live patient data?**  
-Complete security hardening, audit logging, password reset, real deployment secrets, vulnerability remediation, and formal data-protection review.
+Password reset and audit logging are now implemented. Still required before go-live: real deployment secrets (rotate all seeded passwords and `JWT_SECRET`), MFA, moving the session token from `localStorage` to an httpOnly cookie, formal data-protection review, and physical/device-level security for any edge micro-server deployment.

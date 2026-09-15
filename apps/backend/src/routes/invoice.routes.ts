@@ -1,13 +1,16 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
+import { recordAudit } from '../lib/audit';
 
 export async function invoiceRoutes(fastify: FastifyInstance) {
-  
+
   // Get all invoices for clinic
   fastify.get('/invoices/:clinicId', { preHandler: [authenticate] }, async (request, reply) => {
-    const { clinicId } = request.params as any;
+    const { clinicId: requestedClinicId } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, requestedClinicId);
+    if (!clinicId) return;
     const { status } = request.query as any;
 
     try {
@@ -42,12 +45,25 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
     const { id } = request.params as any;
 
     try {
+      const existing = await prisma.invoice.findUnique({ where: { id } });
+      if (!existing) {
+        return reply.status(404).send({ error: 'Invoice not found' });
+      }
+      if (!assertClinicMatch(request, reply, existing.clinicId)) return;
+
       const invoice = await prisma.invoice.update({
         where: { id },
-        data: { 
+        data: {
           status: 'PAID',
           paidAt: new Date()
         }
+      });
+
+      const authUser = getAuthUser(request);
+      await recordAudit({
+        entity: 'Invoice', recordId: invoice.id, clinicId: invoice.clinicId,
+        action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
+        metadata: { status: 'PAID', amount: invoice.amount },
       });
 
       return { success: true, invoice };

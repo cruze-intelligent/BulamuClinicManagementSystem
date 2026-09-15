@@ -2,6 +2,16 @@ export type LocalPatient = {
   id: string;
   name: string;
   phone: string;
+  sex?: "FEMALE" | "MALE" | "OTHER";
+  dateOfBirth?: string;
+  village?: string;
+  parish?: string;
+  subCounty?: string;
+  district?: string;
+  nextOfKinName?: string;
+  nextOfKinPhone?: string;
+  consentGivenAt?: string;
+  consentGivenBy?: string;
   clinicId: string;
   createdAt: string;
   updatedAt: string;
@@ -38,6 +48,7 @@ export type LocalConsultation = {
   patientId: string;
   diagnosis: string;
   symptoms: string;
+  serviceTags?: string[];
   prescriptions: LocalPrescription[];
   patient?: { name: string; phone: string };
   createdAt: string;
@@ -74,9 +85,27 @@ export type LocalMedicine = {
   syncStatus: "pending" | "synced" | "failed";
 };
 
+export type LocalReproductiveHealthRecord = {
+  id: string;
+  patientId: string;
+  recordedById?: string;
+  lastMenstrualPeriodDate?: string;
+  cycleLengthDays?: number;
+  flowDurationDays?: number;
+  familyPlanningMethod: "NONE" | "CONDOM" | "PILL" | "INJECTABLE" | "IMPLANT" | "IUD" | "NATURAL" | "PERMANENT" | "OTHER";
+  pregnancyStatus: "UNKNOWN" | "NOT_PREGNANT" | "PREGNANT" | "POSTPARTUM";
+  gravida?: number;
+  para?: number;
+  notes?: string;
+  recordedBy?: { name: string };
+  createdAt: string;
+  updatedAt: string;
+  syncStatus: "pending" | "synced" | "failed";
+};
+
 export type LocalMutation = {
   id: string;
-  entity: "patient" | "appointment" | "consultation" | "labTest" | "inventory";
+  entity: "patient" | "appointment" | "consultation" | "labTest" | "inventory" | "reproductiveHealth";
   action: "upsert" | "delete";
   recordId: string;
   clinicId: string;
@@ -92,7 +121,7 @@ type StoredUser = {
 };
 
 const DB_NAME = "bulamu-local-first";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const PATIENT_STORE = "patients";
 const APPOINTMENT_STORE = "appointments";
@@ -100,6 +129,7 @@ const CONSULTATION_STORE = "consultations";
 const LAB_STORE = "lab_tests";
 const INVENTORY_STORE = "inventory";
 const MUTATION_STORE = "mutations";
+const REPRODUCTIVE_HEALTH_STORE = "reproductive_health";
 
 const LOCAL_CHANGE_EVENT = "bulamu-local-change";
 
@@ -185,6 +215,11 @@ function openDb() {
         const store = db.createObjectStore(MUTATION_STORE, { keyPath: "id" });
         store.createIndex("clinicId", "clinicId");
         store.createIndex("createdAt", "createdAt");
+      }
+
+      if (!db.objectStoreNames.contains(REPRODUCTIVE_HEALTH_STORE)) {
+        const store = db.createObjectStore(REPRODUCTIVE_HEALTH_STORE, { keyPath: "id" });
+        store.createIndex("patientId", "patientId");
       }
     };
 
@@ -283,12 +318,31 @@ export async function createPatientOffline(input: {
   name: string;
   phone: string;
   clinicId: string;
+  sex?: LocalPatient["sex"];
+  dateOfBirth?: string;
+  village?: string;
+  parish?: string;
+  subCounty?: string;
+  district?: string;
+  nextOfKinName?: string;
+  nextOfKinPhone?: string;
+  consentGiven?: boolean;
 }): Promise<LocalPatient> {
   const now = new Date().toISOString();
   const patient: LocalPatient = {
     id: createId(),
     name: input.name,
     phone: input.phone,
+    sex: input.sex,
+    dateOfBirth: input.dateOfBirth,
+    village: input.village,
+    parish: input.parish,
+    subCounty: input.subCounty,
+    district: input.district,
+    nextOfKinName: input.nextOfKinName,
+    nextOfKinPhone: input.nextOfKinPhone,
+    consentGivenAt: input.consentGiven ? now : undefined,
+    consentGivenBy: input.consentGiven ? getCurrentUser().id : undefined,
     clinicId: input.clinicId,
     createdAt: now,
     updatedAt: now,
@@ -305,6 +359,15 @@ export async function createPatientOffline(input: {
       id: patient.id,
       name: patient.name,
       phone: patient.phone,
+      sex: patient.sex,
+      dateOfBirth: patient.dateOfBirth,
+      village: patient.village,
+      parish: patient.parish,
+      subCounty: patient.subCounty,
+      district: patient.district,
+      nextOfKinName: patient.nextOfKinName,
+      nextOfKinPhone: patient.nextOfKinPhone,
+      consentGiven: Boolean(input.consentGiven),
       clinicId: patient.clinicId,
       createdAt: patient.createdAt,
       updatedAt: patient.updatedAt,
@@ -430,6 +493,7 @@ export async function createConsultationOffline(input: {
   clinicId: string;
   diagnosis: string;
   symptoms: string;
+  serviceTags?: string[];
   prescriptions: LocalPrescription[];
   patientName?: string;
 }): Promise<LocalConsultation> {
@@ -440,6 +504,7 @@ export async function createConsultationOffline(input: {
     patientId: input.patientId,
     diagnosis: input.diagnosis,
     symptoms: input.symptoms,
+    serviceTags: input.serviceTags,
     prescriptions: input.prescriptions,
     patient: input.patientName ? { name: input.patientName, phone: "" } : undefined,
     createdAt: now,
@@ -459,6 +524,7 @@ export async function createConsultationOffline(input: {
       patientId: consultation.patientId,
       diagnosis: consultation.diagnosis,
       symptoms: consultation.symptoms,
+      serviceTags: consultation.serviceTags || [],
       prescriptions: consultation.prescriptions,
       createdAt: consultation.createdAt,
       updatedAt: consultation.updatedAt,
@@ -631,6 +697,94 @@ export async function addMedicineOffline(input: {
   return medicine;
 }
 
+/* ================= REPRODUCTIVE HEALTH ================= */
+
+export async function listLocalReproductiveHealth(patientId: string): Promise<LocalReproductiveHealthRecord[]> {
+  const records = await getAllRecords<LocalReproductiveHealthRecord>(REPRODUCTIVE_HEALTH_STORE);
+  return records
+    .filter((r) => r.patientId === patientId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function cacheReproductiveHealth(records: Array<Omit<LocalReproductiveHealthRecord, "syncStatus">>) {
+  await Promise.all(
+    records.map((record) =>
+      putRecord<LocalReproductiveHealthRecord>(REPRODUCTIVE_HEALTH_STORE, {
+        ...record,
+        syncStatus: "synced",
+      })
+    )
+  );
+  emitLocalChange();
+}
+
+export async function addReproductiveHealthRecordOffline(input: {
+  patientId: string;
+  clinicId: string;
+  lastMenstrualPeriodDate?: string;
+  cycleLengthDays?: number;
+  flowDurationDays?: number;
+  familyPlanningMethod: LocalReproductiveHealthRecord["familyPlanningMethod"];
+  pregnancyStatus: LocalReproductiveHealthRecord["pregnancyStatus"];
+  gravida?: number;
+  para?: number;
+  notes?: string;
+}): Promise<LocalReproductiveHealthRecord> {
+  const now = new Date().toISOString();
+  const currentUser = getCurrentUser();
+  const record: LocalReproductiveHealthRecord = {
+    id: createId(),
+    patientId: input.patientId,
+    recordedById: currentUser.id,
+    lastMenstrualPeriodDate: input.lastMenstrualPeriodDate,
+    cycleLengthDays: input.cycleLengthDays,
+    flowDurationDays: input.flowDurationDays,
+    familyPlanningMethod: input.familyPlanningMethod,
+    pregnancyStatus: input.pregnancyStatus,
+    gravida: input.gravida,
+    para: input.para,
+    notes: input.notes,
+    createdAt: now,
+    updatedAt: now,
+    syncStatus: "pending",
+  };
+
+  const mutation: LocalMutation = {
+    id: createId(),
+    entity: "reproductiveHealth",
+    action: "upsert",
+    recordId: record.id,
+    clinicId: input.clinicId,
+    payload: {
+      id: record.id,
+      patientId: record.patientId,
+      recordedById: record.recordedById,
+      lastMenstrualPeriodDate: record.lastMenstrualPeriodDate,
+      cycleLengthDays: record.cycleLengthDays,
+      flowDurationDays: record.flowDurationDays,
+      familyPlanningMethod: record.familyPlanningMethod,
+      pregnancyStatus: record.pregnancyStatus,
+      gravida: record.gravida,
+      para: record.para,
+      notes: record.notes,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    },
+    createdAt: now,
+    attempts: 0,
+  };
+
+  await putRecord(REPRODUCTIVE_HEALTH_STORE, record);
+  await putRecord(MUTATION_STORE, mutation);
+  emitLocalChange();
+
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    flushSyncQueue().catch(console.error);
+  }
+
+  return record;
+}
+
 /* ================= BACKGROUND SYNC & FLUSH ================= */
 
 export async function flushSyncQueue() {
@@ -666,6 +820,7 @@ export async function flushSyncQueue() {
             consultation: CONSULTATION_STORE,
             labTest: LAB_STORE,
             inventory: INVENTORY_STORE,
+            reproductiveHealth: REPRODUCTIVE_HEALTH_STORE,
           };
           const targetStore = storeMap[item.entity];
           if (targetStore) {
@@ -700,6 +855,7 @@ export async function pullSyncUpdates(clinicId: string) {
       if (data.consultations?.length) await cacheConsultations(data.consultations);
       if (data.labTests?.length) await cacheLabTests(data.labTests);
       if (data.inventory?.length) await cacheInventory(data.inventory);
+      if (data.reproductiveHealth?.length) await cacheReproductiveHealth(data.reproductiveHealth);
 
       localStorage.setItem(`lastSyncedAt_${clinicId}`, data.syncedAt || new Date().toISOString());
     }

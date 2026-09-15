@@ -17,10 +17,24 @@ model User {
   clinic    Clinic   @relation(fields: [clinicId], references: [id])
   isActive  Boolean  @default(true)
   appointments Appointment[]
+  reproductiveHealthRecords ReproductiveHealthRecord[]
+  passwordResetTokens PasswordResetToken[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([clinicId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Clinic {
@@ -29,11 +43,34 @@ model Clinic {
   facilityType FacilityType @default(CLINIC)
   phone     String
   address   String
+  district      String?
+  subCounty     String?
+  parish        String?
+  parentFacilityId String?
+  parentFacility   Clinic?  @relation("FacilityHierarchy", fields: [parentFacilityId], references: [id])
+  childFacilities  Clinic[] @relation("FacilityHierarchy")
   users     User[]
   patients  Patient[]
+  referralsFrom Referral[] @relation("ReferralFrom")
+  referralsTo   Referral[] @relation("ReferralTo")
+  dhis2Integration Dhis2Integration?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Dhis2Integration {
+  id             String   @id @default(uuid())
+  clinicId       String   @unique
+  clinic         Clinic   @relation(fields: [clinicId], references: [id])
+  baseUrl        String
+  username       String
+  encryptedPassword String
+  orgUnitId      String
+  dataElementMap Json     @default("{}")
+  lastPushedAt   DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 enum FacilityType {
@@ -52,15 +89,99 @@ model Patient {
   id           String        @id @default(uuid())
   name         String
   phone        String
+  sex          Sex?
+  dateOfBirth  DateTime?
+  village      String?
+  parish       String?
+  subCounty    String?
+  district     String?
+  nextOfKinName  String?
+  nextOfKinPhone String?
+  consentGivenAt  DateTime?
+  consentGivenBy  String?
   clinicId     String
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
   appointments Appointment[]
   consultations Consultation[]
   labTests LabTest[]
+  reproductiveHealthRecords ReproductiveHealthRecord[]
+  referrals    Referral[]
+  deletedAt    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   @@index([clinicId])
+}
+
+model Referral {
+  id           String   @id @default(uuid())
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id])
+  fromClinicId String
+  fromClinic   Clinic   @relation("ReferralFrom", fields: [fromClinicId], references: [id])
+  toClinicId   String
+  toClinic     Clinic   @relation("ReferralTo", fields: [toClinicId], references: [id])
+  reason       String
+  status       ReferralStatus @default(PENDING)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([fromClinicId])
+  @@index([toClinicId])
+  @@index([patientId])
+}
+
+enum ReferralStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+}
+
+enum Sex {
+  FEMALE
+  MALE
+  OTHER
+}
+
+model ReproductiveHealthRecord {
+  id                      String   @id @default(uuid())
+  patientId               String
+  patient                 Patient  @relation(fields: [patientId], references: [id])
+  recordedById            String
+  recordedBy              User     @relation(fields: [recordedById], references: [id])
+  lastMenstrualPeriodDate DateTime?
+  cycleLengthDays         Int?
+  flowDurationDays        Int?
+  familyPlanningMethod    FamilyPlanningMethod @default(NONE)
+  pregnancyStatus         PregnancyStatus @default(UNKNOWN)
+  gravida                 Int?
+  para                    Int?
+  notes                   String?
+  deletedAt               DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([patientId])
+}
+
+enum FamilyPlanningMethod {
+  NONE
+  CONDOM
+  PILL
+  INJECTABLE
+  IMPLANT
+  IUD
+  NATURAL
+  PERMANENT
+  OTHER
+}
+
+enum PregnancyStatus {
+  UNKNOWN
+  NOT_PREGNANT
+  PREGNANT
+  POSTPARTUM
 }
 
 enum Role {
@@ -84,6 +205,7 @@ model Appointment {
   status      AppointmentStatus @default(SCHEDULED)
   notes       String?
   consultation Consultation?
+  deletedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -107,9 +229,11 @@ model Consultation {
   patient       Patient  @relation(fields: [patientId], references: [id])
   diagnosis     String
   symptoms      String
+  serviceTags   String[] @default([])
   prescriptions Prescription[]
   invoice       Invoice?
   labTests LabTest[]
+  deletedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -158,6 +282,7 @@ model Medicine {
   reorderLevel Int
   price       Float
   expiryDate  DateTime?
+  deletedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -175,6 +300,7 @@ model LabTest {
   status          LabStatus @default(PENDING)
   orderedBy       String
   completedAt     DateTime?
+  deletedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -186,4 +312,40 @@ enum LabStatus {
   PENDING
   COMPLETED
   CANCELLED
+}
+
+model SyncConflictLog {
+  id               String   @id @default(uuid())
+  entity           String
+  recordId         String
+  clinicId         String
+  mutationId       String
+  incomingUpdatedAt DateTime
+  currentUpdatedAt  DateTime
+  createdAt        DateTime @default(now())
+
+  @@index([clinicId])
+  @@index([recordId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entity     String
+  recordId   String
+  clinicId   String
+  action     AuditAction
+  actorUserId String
+  actorRole  String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([clinicId])
+  @@index([entity, recordId])
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DEACTIVATE
+  DELETE
 }

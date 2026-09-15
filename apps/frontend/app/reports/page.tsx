@@ -4,14 +4,40 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { getCurrentClinicId } from '@/lib/local-first';
+import { useAuth } from '@/lib/useAuth';
 
 export default function ReportsPage() {
+  const { hasRole } = useAuth();
   const [activeTab, setActiveTab] = useState<'overview' | 'hmis105'>('overview');
   const [report, setReport] = useState<any>(null);
   const [hmisReport, setHmisReport] = useState<any>(null);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(false);
+  const [pushingDhis2, setPushingDhis2] = useState(false);
+
+  const pushToDhis2 = async () => {
+    setPushingDhis2(true);
+    const token = localStorage.getItem('token');
+    const clinicId = getCurrentClinicId();
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/reports/hmis-105/${clinicId}/push-dhis2?month=${month}&year=${year}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await response.json();
+      if (data.success) {
+        alert('Pushed to DHIS2 successfully.' + (data.unmappedFigures?.length ? ` ${data.unmappedFigures.length} figures have no dataElement mapping configured yet.` : ''));
+      } else {
+        alert(`DHIS2 push failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      alert('Could not reach the Bulamu API to push to DHIS2');
+    } finally {
+      setPushingDhis2(false);
+    }
+  };
 
   const fetchOverviewReport = async () => {
     setLoading(true);
@@ -183,14 +209,21 @@ export default function ReportsPage() {
         {/* HMIS 105 Tab Content */}
         {activeTab === 'hmis105' && hmisReport && (
           <Card className="p-6">
-            <div className="border-b pb-4 mb-6">
-              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                Ministry of Health Uganda Standard
-              </span>
-              <h2 className="text-2xl font-bold text-slate-800 mt-2">{hmisReport.reportTitle}</h2>
-              <p className="text-sm text-slate-500">
-                Facility: {hmisReport.facilityName} | Period: {hmisReport.period}
-              </p>
+            <div className="border-b pb-4 mb-6 flex justify-between items-start">
+              <div>
+                <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                  Ministry of Health Uganda Standard
+                </span>
+                <h2 className="text-2xl font-bold text-slate-800 mt-2">{hmisReport.reportTitle}</h2>
+                <p className="text-sm text-slate-500">
+                  Facility: {hmisReport.facilityName} | Period: {hmisReport.period}
+                </p>
+              </div>
+              {hasRole('ADMIN', 'SUPER_ADMIN') && (
+                <Button variant="outline" onClick={pushToDhis2} disabled={pushingDhis2}>
+                  {pushingDhis2 ? 'Pushing...' : '🔄 Push to DHIS2'}
+                </Button>
+              )}
             </div>
 
             <div className="space-y-6">
@@ -243,6 +276,50 @@ export default function ReportsPage() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-slate-800 mb-2">Section 4: Family Planning</h3>
+                <p className="text-sm text-slate-600 mb-2">
+                  Total records this period: <strong>{hmisReport.section4_familyPlanning.totalRecorded}</strong>
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(hmisReport.section4_familyPlanning.byMethod).map(([method, count]: any) => (
+                    <span key={method} className="text-xs bg-slate-100 px-2 py-1 rounded">{method}: {count}</span>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-slate-800 mb-2">Section 5: Maternal Health</h3>
+                <p className="text-sm text-slate-600">
+                  Pregnant clients: <strong>{hmisReport.section5_maternalHealth.pregnantClients}</strong> | Postpartum: <strong>{hmisReport.section5_maternalHealth.postpartumClients}</strong>
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-slate-800 mb-2">Section 6: Other Tracked Services</h3>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(hmisReport.section6_services.byTag).map(([tag, count]: any) => (
+                    <span key={tag} className="text-xs bg-slate-100 px-2 py-1 rounded">{tag.replaceAll('_', ' ')}: {count}</span>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-slate-800 mb-2">Section 7: Referrals Out</h3>
+                <p className="text-sm text-slate-600 mb-2">
+                  Total referred: <strong>{hmisReport.section7_referrals.totalReferred}</strong>
+                </p>
+                {hmisReport.section7_referrals.referrals?.length > 0 && (
+                  <div className="space-y-1">
+                    {hmisReport.section7_referrals.referrals.map((r: any, i: number) => (
+                      <div key={i} className="text-xs text-slate-600">
+                        → {r.toFacility}: {r.reason} ({r.status})
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </Card>

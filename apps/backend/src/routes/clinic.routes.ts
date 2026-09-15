@@ -1,9 +1,26 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { requireRole } from '../middleware/rbac.middleware';
+import { authenticate } from '../middleware/auth.middleware';
 import bcrypt from 'bcrypt';
 
 export async function clinicRoutes(fastify: FastifyInstance) {
+  // Facility directory: non-sensitive listing any authenticated staff member
+  // can see, so a clinic can pick a destination when referring a patient.
+  fastify.get('/clinics', { preHandler: [authenticate] }, async (_request, reply) => {
+    try {
+      const clinics = await prisma.clinic.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, facilityType: true, district: true, subCounty: true, parish: true },
+        orderBy: { name: 'asc' },
+      });
+
+      return { success: true, clinics };
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.get('/super-admin/overview', { preHandler: [requireRole('SUPER_ADMIN')] }, async (_request, reply) => {
     try {
       const [clinicCount, activeClinicCount, userCount, patientCount, appointmentCount, consultationCount, revenue, clinics] =

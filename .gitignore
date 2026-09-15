@@ -5,3 +5,4 @@ dist/
 .next/
 *.log
 .DS_Store
+apps/backend/test/.env.test.local

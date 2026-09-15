@@ -25,6 +25,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://bulamu_user:bulamu_local_password@postgres:5432/bulamu?schema=public}
       JWT_SECRET: ${JWT_SECRET:-bulamu_local_development_secret}
+      INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:-bulamu_local_development_secret}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     depends_on:
       - postgres

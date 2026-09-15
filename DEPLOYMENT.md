@@ -26,8 +26,10 @@ This guide provides deployment instructions for hosting **Bulamu Medical Facilit
      PORT=4000
      DATABASE_URL=postgresql://...
      JWT_SECRET=your_secure_secret_key
+     INTEGRATION_ENCRYPTION_KEY=another_long_random_secret
      FRONTEND_URL=https://your-custom-facility-pwa-domain.com
      ```
+   - `INTEGRATION_ENCRYPTION_KEY` encrypts third-party integration credentials at rest (currently DHIS2). Generate it the same way as `JWT_SECRET` and never reuse one for the other.
    - Build & Migration Commands:
      ```bash
      cd apps/backend
@@ -38,10 +40,14 @@ This guide provides deployment instructions for hosting **Bulamu Medical Facilit
 
 3. **Endpoints**:
    - `/health` - Service health status
-   - `/sync/push` - Background LWW delta mutation receiver
+   - `/sync/push` - Offline mutation receiver (timestamp-based last-write-wins, tombstone deletes, conflict logging)
    - `/sync/pull` - Catch-up delta query
    - `/reports/hmis-105/:clinicId` - Ministry of Health Uganda Outpatient Monthly Report
+   - `/reports/hmis-105/:clinicId/push-dhis2` - Pushes the report to a configured DHIS2 instance
    - `/reports/fhir/patients/:clinicId` - HL7 FHIR R4 JSON Bundle Export
+   - `/referrals` - Inter-facility patient referrals
+   - `/patients/:patientId/reproductive-health` - Reproductive-health observation timeline
+   - `/audit-log/:clinicId`, `/sync-conflicts/:clinicId` - Sync Activity panel data
 
 ---
 

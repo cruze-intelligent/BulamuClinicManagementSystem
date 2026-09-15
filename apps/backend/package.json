@@ -6,7 +6,9 @@
     "dev": "nodemon --exitcrash --exec tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
@@ -22,11 +24,14 @@
     "googleapis": "^164.0.0"
   },
   "devDependencies": {
+    "@embedded-postgres/windows-x64": "^18.4.0-beta.17",
     "@types/bcrypt": "^6.0.0",
     "@types/node": "^24.8.0",
+    "embedded-postgres": "^18.4.0-beta.17",
     "nodemon": "^3.1.10",
     "prisma": "^6.17.1",
     "tsx": "^4.20.6",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1"
   }
 }

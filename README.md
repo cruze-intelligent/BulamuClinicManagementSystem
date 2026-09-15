@@ -43,15 +43,29 @@ Sign-in requires three things:
 
 If `/auth/login` fails, check the backend console first. Missing `DATABASE_URL`, unapplied migrations, or unseeded users will prevent authentication.
 
+## Testing
+
+```bash
+npm test --workspace=apps/backend    # Vitest against a real, ephemeral Postgres (embedded-postgres - no Docker or system install needed)
+npm test --workspace=apps/frontend   # Vitest + Testing Library for logic-bearing pure functions
+```
+
+CI (`.github/workflows/ci.yml`) runs type-checking, both test suites, and both production builds on every push.
+
 ## Core Capabilities
 
 - Facility authorization from Super Admin God Mode
 - Facility type selection during public access request and internal authorization
-- Role-based access for SUPER_ADMIN, ADMIN, DOCTOR, PHARMACIST, NURSE, and STAFF
-- Patient registry, appointment booking, consultations, prescriptions, lab tests, invoices, and inventory
+- Role-based access for SUPER_ADMIN, ADMIN, DOCTOR, PHARMACIST, NURSE, and STAFF (patients are records, not accounts - no patient login)
+- Patient registry with demographics, geography, consent capture, appointment booking, consultations, prescriptions, lab tests, invoices, and inventory
+- Reproductive-health tracking (cycle history, family planning, pregnancy status) for female patients, feeding directly into HMIS reporting
+- Inter-facility referrals (`/referrals`) and a facility hierarchy (district/sub-county/parish)
+- Community health worker household-visit capture (`/chw-visit`) for Community Outreach / Mobile Unit facilities, fully offline
 - Installable PWA with service worker, app-shell caching, IndexedDB local records, offline mutation queue, and sync status badge
-- HMIS 105 outpatient reporting and epidemic surveillance categories
-- FHIR R4 patient bundle export for interoperability work
+- Timestamp-based deterministic sync conflict resolution with tombstone deletes and a Sync Activity panel (audit log + conflict log)
+- HMIS 105 outpatient reporting across 7 sections (attendance by age/gender cohort, epidemic surveillance, essential medicines, family planning, maternal health, other services, referrals)
+- FHIR R4 export (Patient, Encounter, Observation resources) and a configurable DHIS2 `dataValueSets` push for interoperability work
+- Password reset flow and an audit log for patient/reproductive-health/user/invoice writes
 
 ## Research PDF Alignment
 

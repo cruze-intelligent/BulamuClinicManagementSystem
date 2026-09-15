@@ -1,0 +1,38 @@
+export function calculateAgeYears(dateOfBirth: Date, referenceDate: Date = new Date()): number {
+  let age = referenceDate.getFullYear() - dateOfBirth.getFullYear();
+  const monthDiff = referenceDate.getMonth() - dateOfBirth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && referenceDate.getDate() < dateOfBirth.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+export function calculateAgeDays(dateOfBirth: Date, referenceDate: Date = new Date()): number {
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.floor((referenceDate.getTime() - dateOfBirth.getTime()) / msPerDay);
+}
+
+export type HmisAgeCohort = '0-28 days' | '29 days-4 years' | '5-9 years' | '10-19 years' | '20+ years';
+
+export const HMIS_AGE_COHORTS: HmisAgeCohort[] = [
+  '0-28 days',
+  '29 days-4 years',
+  '5-9 years',
+  '10-19 years',
+  '20+ years',
+];
+
+/**
+ * HMIS 105 age-cohort bucketing (0-28 days, 29 days-4 years, 5-9 years, ...),
+ * per the Ministry of Health Uganda Outpatient Monthly Report format.
+ */
+export function getHmisAgeCohort(dateOfBirth: Date, referenceDate: Date = new Date()): HmisAgeCohort {
+  const days = calculateAgeDays(dateOfBirth, referenceDate);
+  const years = calculateAgeYears(dateOfBirth, referenceDate);
+
+  if (days <= 28) return '0-28 days';
+  if (years <= 4) return '29 days-4 years';
+  if (years <= 9) return '5-9 years';
+  if (years <= 19) return '10-19 years';
+  return '20+ years';
+}

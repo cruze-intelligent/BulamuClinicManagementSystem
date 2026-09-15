@@ -95,6 +95,12 @@ export default function LoginPage() {
             </Button>
           </form>
 
+          <div className="mt-4 text-center">
+            <a href="/auth/forgot-password" className="text-sm text-emerald-700 hover:underline">
+              Forgot your password?
+            </a>
+          </div>
+
           <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
             Access is controlled by your facility administrator or Bulamu super administrator.
           </div>

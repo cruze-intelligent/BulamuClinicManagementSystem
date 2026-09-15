@@ -1,12 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, resolveClinicScope, assertClinicMatch } from '../middleware/auth.middleware';
 
 export async function appointmentRoutes(fastify: FastifyInstance) {
-  
+
   // Create appointment
   fastify.post('/appointments', { preHandler: [authenticate] }, async (request, reply) => {
-    const { patientId, doctorId, clinicId, date, time, notes } = request.body as any;
+    const { patientId, doctorId, clinicId: requestedClinicId, date, time, notes } = request.body as any;
+    const clinicId = resolveClinicScope(request, reply, requestedClinicId);
+    if (!clinicId) return;
 
     try {
       const appointment = await prisma.appointment.create({
@@ -22,16 +24,19 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
 
   // Get appointments for clinic (by date)
   fastify.get('/appointments/:clinicId', { preHandler: [authenticate] }, async (request, reply) => {
-    const { clinicId } = request.params as any;
+    const { clinicId: requestedClinicId } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, requestedClinicId);
+    if (!clinicId) return;
     const { date } = request.query as any;
 
     try {
       const appointments = await prisma.appointment.findMany({
-        where: { 
+        where: {
           clinicId,
+          deletedAt: null,
           ...(date && { date: new Date(date) })
         },
-        include: { 
+        include: {
           patient: true, 
           doctor: { select: { id: true, name: true } } 
         },
@@ -50,6 +55,12 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
     const { status } = request.body as any;
 
     try {
+      const existing = await prisma.appointment.findUnique({ where: { id } });
+      if (!existing) {
+        return reply.status(404).send({ error: 'Appointment not found' });
+      }
+      if (!assertClinicMatch(request, reply, existing.clinicId)) return;
+
       const appointment = await prisma.appointment.update({
         where: { id },
         data: { status }

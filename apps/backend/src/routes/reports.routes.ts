@@ -1,12 +1,19 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { requireRole } from '../middleware/rbac.middleware';
+import { resolveClinicScope, getAuthUser } from '../middleware/auth.middleware';
+import { computeHmis105Report } from '../services/hmis105.service';
+import { encryptSecret, decryptSecret } from '../lib/crypto';
+import { buildDataValueSet, pushDataValueSet } from '../services/dhis2.service';
+import { recordAudit } from '../lib/audit';
 
 export async function reportsRoutes(fastify: FastifyInstance) {
-  
+
   // Standard Monthly report
   fastify.get('/reports/monthly/:clinicId', { preHandler: [requireRole('ADMIN', 'DOCTOR')] }, async (request, reply) => {
-    const { clinicId } = request.params as any;
+    const { clinicId: requestedClinicId } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, requestedClinicId);
+    if (!clinicId) return;
     const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = request.query as any;
 
     try {
@@ -14,27 +21,27 @@ export async function reportsRoutes(fastify: FastifyInstance) {
       const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
 
       const [totalPatients, totalAppointments, totalConsultations, revenue, topDiagnoses] = await Promise.all([
-        prisma.patient.count({ 
-          where: { 
-            clinicId, 
-            createdAt: { gte: startDate, lte: endDate } 
-          } 
+        prisma.patient.count({
+          where: {
+            clinicId,
+            createdAt: { gte: startDate, lte: endDate }
+          }
         }),
-        prisma.appointment.count({ 
-          where: { 
-            clinicId, 
-            date: { gte: startDate, lte: endDate } 
-          } 
+        prisma.appointment.count({
+          where: {
+            clinicId,
+            date: { gte: startDate, lte: endDate }
+          }
         }),
-        prisma.consultation.count({ 
-          where: { 
+        prisma.consultation.count({
+          where: {
             createdAt: { gte: startDate, lte: endDate },
             appointment: { clinicId }
-          } 
+          }
         }),
-        prisma.invoice.aggregate({ 
-          where: { 
-            clinicId, 
+        prisma.invoice.aggregate({
+          where: {
+            clinicId,
             status: 'PAID',
             paidAt: { gte: startDate, lte: endDate }
           },
@@ -70,74 +77,109 @@ export async function reportsRoutes(fastify: FastifyInstance) {
 
   // Ministry of Health Uganda HMIS 105 Outpatient Monthly Report
   fastify.get('/reports/hmis-105/:clinicId', { preHandler: [requireRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF')] }, async (request, reply) => {
-    const { clinicId } = request.params as any;
+    const { clinicId: requestedClinicId } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, requestedClinicId);
+    if (!clinicId) return;
     const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = request.query as any;
 
     try {
-      const startDate = new Date(Number(year), Number(month) - 1, 1);
-      const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
+      const report = await computeHmis105Report(clinicId, Number(month), Number(year));
+      return { success: true, ...report };
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
+  });
 
-      const clinic = await prisma.clinic.findUnique({ where: { id: clinicId } });
-      const consultations = await prisma.consultation.findMany({
-        where: {
-          createdAt: { gte: startDate, lte: endDate },
-          patient: { clinicId },
+  // Configure a facility's DHIS2 integration (ADMIN/SUPER_ADMIN only).
+  // Credentials are encrypted at rest and never echoed back in responses.
+  fastify.put('/clinics/:clinicId/dhis2-integration', { preHandler: [requireRole('ADMIN', 'SUPER_ADMIN')] }, async (request, reply) => {
+    const { clinicId: requestedClinicId } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, requestedClinicId);
+    if (!clinicId) return;
+    const { baseUrl, username, password, orgUnitId, dataElementMap } = request.body as any;
+
+    try {
+      const integration = await prisma.dhis2Integration.upsert({
+        where: { clinicId },
+        update: {
+          baseUrl, username, orgUnitId,
+          dataElementMap: dataElementMap || {},
+          ...(password ? { encryptedPassword: encryptSecret(password) } : {}),
         },
-        include: { patient: true, prescriptions: true, labTests: true },
+        create: {
+          clinicId, baseUrl, username, orgUnitId,
+          dataElementMap: dataElementMap || {},
+          encryptedPassword: encryptSecret(password || ''),
+        },
       });
 
-      const medicines = await prisma.medicine.findMany({ where: { clinicId } });
+      const { encryptedPassword, ...safeIntegration } = integration;
+      return { success: true, integration: safeIntegration };
+    } catch (error: any) {
+      return reply.status(400).send({ error: error.message });
+    }
+  });
 
-      let malariaCases = 0;
-      let feverCases = 0;
-      let dysenteryCases = 0;
-      let measlesCases = 0;
-      let meningitisCases = 0;
-      let respiratoryCases = 0;
-      let otherCases = 0;
+  fastify.get('/clinics/:clinicId/dhis2-integration', { preHandler: [requireRole('ADMIN', 'SUPER_ADMIN')] }, async (request, reply) => {
+    const { clinicId: requestedClinicId } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, requestedClinicId);
+    if (!clinicId) return;
 
-      consultations.forEach((c) => {
-        const diag = c.diagnosis.toLowerCase();
-        if (diag.includes('malaria')) malariaCases++;
-        else if (diag.includes('fever') || diag.includes('pyrexia')) feverCases++;
-        else if (diag.includes('dysentery') || diag.includes('diarrhea') || diag.includes('diarrhoea')) dysenteryCases++;
-        else if (diag.includes('measles')) measlesCases++;
-        else if (diag.includes('meningitis')) meningitisCases++;
-        else if (diag.includes('respiratory') || diag.includes('cough') || diag.includes('pneumonia')) respiratoryCases++;
-        else otherCases++;
+    try {
+      const integration = await prisma.dhis2Integration.findUnique({ where: { clinicId } });
+      if (!integration) return { success: true, integration: null };
+
+      const { encryptedPassword, ...safeIntegration } = integration;
+      return { success: true, integration: safeIntegration };
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
+  });
+
+  // Push the computed HMIS 105 figures to the facility's configured DHIS2
+  // instance, per the research doc's "push completed datasets into DHIS2"
+  // architecture. Dormant (400s with a clear message) until a facility has
+  // configured real org-unit credentials via the route above.
+  fastify.post('/reports/hmis-105/:clinicId/push-dhis2', { preHandler: [requireRole('ADMIN', 'SUPER_ADMIN')] }, async (request, reply) => {
+    const { clinicId: requestedClinicId } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, requestedClinicId);
+    if (!clinicId) return;
+    const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = request.query as any;
+
+    try {
+      const integration = await prisma.dhis2Integration.findUnique({ where: { clinicId } });
+      if (!integration) {
+        return reply.status(400).send({ error: 'DHIS2 integration is not configured for this facility yet' });
+      }
+
+      const report = await computeHmis105Report(clinicId, Number(month), Number(year));
+      const period = `${year}${String(month).padStart(2, '0')}`;
+
+      const { dataValueSet, unmappedFigures } = buildDataValueSet({
+        report,
+        dataElementMap: (integration.dataElementMap as Record<string, string>) || {},
+        orgUnitId: integration.orgUnitId,
+        period,
       });
 
-      const lowStockMedicines = medicines.filter((m) => m.quantity <= m.reorderLevel);
+      const result = await pushDataValueSet(dataValueSet, {
+        baseUrl: integration.baseUrl,
+        username: integration.username,
+        password: decryptSecret(integration.encryptedPassword),
+      });
 
-      return {
-        success: true,
-        reportTitle: 'HMIS 105: Health Unit Outpatient Monthly Report',
-        facilityName: clinic?.name || 'Uganda Rural Health Centre',
-        period: `${month}/${year}`,
-        section1_attendance: {
-          totalOutpatients: consultations.length,
-          newAttenders: consultations.length, // Simplified
-          reAttenders: 0,
-        },
-        section2_epidemicSurveillance: [
-          { condition: 'Suspected Fever / Unconfirmed Malaria', cases: feverCases },
-          { condition: 'Confirmed Malaria', cases: malariaCases },
-          { condition: 'Dysentery / Acute Diarrhea', cases: dysenteryCases },
-          { condition: 'Measles', cases: measlesCases },
-          { condition: 'Bacterial Meningitis', cases: meningitisCases },
-          { condition: 'Severe Acute Respiratory Infections (SARI)', cases: respiratoryCases },
-          { condition: 'Other General Conditions', cases: otherCases },
-        ],
-        section3_essentialMedicines: {
-          totalTracked: medicines.length,
-          stockOutAlerts: lowStockMedicines.length,
-          lowStockList: lowStockMedicines.map((m) => ({
-            name: m.name,
-            currentQuantity: m.quantity,
-            reorderLevel: m.reorderLevel,
-          })),
-        },
-      };
+      if (result.success) {
+        await prisma.dhis2Integration.update({ where: { clinicId }, data: { lastPushedAt: new Date() } });
+      }
+
+      const authUser = getAuthUser(request);
+      await recordAudit({
+        entity: 'Dhis2Integration', recordId: integration.id, clinicId,
+        action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
+        metadata: { period, pushSuccess: result.success, unmappedFigures },
+      });
+
+      return { success: result.success, status: result.status, unmappedFigures, response: result.response };
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });
     }
@@ -145,42 +187,73 @@ export async function reportsRoutes(fastify: FastifyInstance) {
 
   // HL7 FHIR R4 JSON Export for interoperability (DHIS2, UgandaEMR, OpenHIM)
   fastify.get('/reports/fhir/patients/:clinicId', { preHandler: [requireRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF')] }, async (request, reply) => {
-    const { clinicId } = request.params as any;
+    const { clinicId: requestedClinicId } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, requestedClinicId);
+    if (!clinicId) return;
 
     try {
       const patients = await prisma.patient.findMany({
-        where: { clinicId },
-        include: { consultations: true, labTests: true },
+        where: { clinicId, deletedAt: null },
+        include: {
+          consultations: { where: { deletedAt: null } },
+          labTests: true,
+          reproductiveHealthRecords: { where: { deletedAt: null } },
+        },
       });
 
-      const fhirBundle = {
-        resourceType: 'Bundle',
-        type: 'collection',
-        timestamp: new Date().toISOString(),
-        total: patients.length,
-        entry: patients.map((patient) => ({
+      const entries: any[] = [];
+
+      for (const patient of patients) {
+        entries.push({
           fullUrl: `urn:uuid:${patient.id}`,
           resource: {
             resourceType: 'Patient',
             id: patient.id,
             active: true,
-            name: [
-              {
-                use: 'official',
-                text: patient.name,
-              },
-            ],
-            telecom: [
-              {
-                system: 'phone',
-                value: patient.phone,
-              },
-            ],
-            meta: {
-              lastUpdated: patient.updatedAt.toISOString(),
-            },
+            gender: patient.sex ? patient.sex.toLowerCase() : undefined,
+            birthDate: patient.dateOfBirth ? patient.dateOfBirth.toISOString().slice(0, 10) : undefined,
+            name: [{ use: 'official', text: patient.name }],
+            telecom: [{ system: 'phone', value: patient.phone }],
+            meta: { lastUpdated: patient.updatedAt.toISOString() },
           },
-        })),
+        });
+
+        for (const consultation of patient.consultations) {
+          entries.push({
+            fullUrl: `urn:uuid:${consultation.id}`,
+            resource: {
+              resourceType: 'Encounter',
+              id: consultation.id,
+              status: 'finished',
+              subject: { reference: `urn:uuid:${patient.id}` },
+              reasonCode: [{ text: consultation.diagnosis }],
+              meta: { lastUpdated: consultation.updatedAt.toISOString() },
+            },
+          });
+        }
+
+        for (const rh of patient.reproductiveHealthRecords) {
+          entries.push({
+            fullUrl: `urn:uuid:${rh.id}`,
+            resource: {
+              resourceType: 'Observation',
+              id: rh.id,
+              status: 'final',
+              subject: { reference: `urn:uuid:${patient.id}` },
+              code: { coding: [{ system: 'http://loinc.org', code: '21840-4', display: 'Last menstrual period start date' }] },
+              valueDateTime: rh.lastMenstrualPeriodDate ? rh.lastMenstrualPeriodDate.toISOString() : undefined,
+              meta: { lastUpdated: rh.updatedAt.toISOString() },
+            },
+          });
+        }
+      }
+
+      const fhirBundle = {
+        resourceType: 'Bundle',
+        type: 'collection',
+        timestamp: new Date().toISOString(),
+        total: entries.length,
+        entry: entries,
       };
 
       reply.header('Content-Disposition', `attachment; filename="fhir-patients-${clinicId}.json"`);
