@@ -3,3 +3,7 @@ node_modules
 .env
 
 /src/generated/prisma
+
+# Local document storage (dev / edge micro-server) - a cloud deploy needs
+# object storage instead, since Render's free-tier disk is ephemeral.
+/uploads

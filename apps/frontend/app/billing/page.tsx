@@ -75,8 +75,8 @@ export default function BillingPage() {
 
   if (!hasRole('ADMIN')) {
     return (
-      <div className="min-h-screen bg-slate-50 p-8">
-        <Card className="mx-auto max-w-lg p-6 text-center text-slate-600">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8">
+        <Card className="mx-auto max-w-lg p-6 text-center text-slate-600 dark:text-slate-400">
           Only your facility administrator can manage billing.
         </Card>
       </div>
@@ -84,24 +84,24 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8">
       <div className="mx-auto max-w-2xl">
-        <h1 className="mb-2 text-3xl font-bold text-slate-800">Billing & Subscription</h1>
-        <p className="mb-6 text-sm text-slate-500">Manage your facility&apos;s Bulamu subscription.</p>
+        <h1 className="mb-2 text-3xl font-bold text-slate-800 dark:text-slate-200">Billing & Subscription</h1>
+        <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">Manage your facility&apos;s Bulamu subscription.</p>
 
         <Card className="p-6">
           {loading ? (
-            <p className="text-sm text-slate-500">Loading...</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Loading...</p>
           ) : subscription ? (
             <>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-slate-500">Status</p>
-                  <p className="text-xl font-semibold text-slate-800">{STATUS_LABEL[subscription.status]}</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Status</p>
+                  <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">{STATUS_LABEL[subscription.status]}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-slate-500">Monthly fee</p>
-                  <p className="text-xl font-semibold text-slate-800">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Monthly fee</p>
+                  <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">
                     {subscription.amount.toLocaleString()} {subscription.currency}
                   </p>
                 </div>
@@ -133,7 +133,7 @@ export default function BillingPage() {
               )}
             </>
           ) : (
-            <p className="text-sm text-slate-500">No subscription found for your facility.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">No subscription found for your facility.</p>
           )}
         </Card>
       </div>

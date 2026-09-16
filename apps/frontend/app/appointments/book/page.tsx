@@ -60,17 +60,17 @@ export default function BookAppointment() {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2 text-slate-800">Book Appointment</h1>
-        <p className="text-sm text-slate-500 mb-6">Works offline with background sync</p>
+        <h1 className="text-3xl font-bold mb-2 text-slate-800 dark:text-slate-200">Book Appointment</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Works offline with background sync</p>
 
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label>Patient</Label>
               <select
-                className="w-full p-2.5 border border-slate-300 rounded-md bg-white text-slate-800"
+                className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
                 value={patientId}
                 onChange={(e) => setPatientId(e.target.value)}
                 required

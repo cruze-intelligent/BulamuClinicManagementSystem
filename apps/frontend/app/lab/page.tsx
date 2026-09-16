@@ -97,12 +97,12 @@ export default function LabTestsPage() {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Laboratory Diagnostic Tests 🔬</h1>
-            <p className="text-sm text-slate-500 mt-1">Local-First Diagnostic Orders & Results</p>
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Laboratory Diagnostic Tests 🔬</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Local-First Diagnostic Orders & Results</p>
           </div>
           <Button onClick={() => setShowForm(!showForm)}>
             {showForm ? 'Cancel' : '+ Order Lab Test'}
@@ -115,7 +115,7 @@ export default function LabTestsPage() {
               <div>
                 <Label>Patient</Label>
                 <select
-                  className="w-full p-2.5 border border-slate-300 rounded-md bg-white text-slate-800"
+                  className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
                   value={formData.patientId}
                   onChange={(e) => setFormData({ ...formData, patientId: e.target.value })}
                   required
@@ -148,9 +148,9 @@ export default function LabTestsPage() {
         )}
 
         {loading ? (
-          <p className="text-slate-500">Loading diagnostic tests...</p>
+          <p className="text-slate-500 dark:text-slate-400">Loading diagnostic tests...</p>
         ) : tests.length === 0 ? (
-          <Card className="p-8 text-center text-slate-500">
+          <Card className="p-8 text-center text-slate-500 dark:text-slate-400">
             No lab tests ordered yet. Click above to order a lab test (works offline).
           </Card>
         ) : (
@@ -160,7 +160,7 @@ export default function LabTestsPage() {
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-slate-800">{test.patient?.name || 'Patient'}</h3>
+                      <h3 className="font-semibold text-slate-800 dark:text-slate-200">{test.patient?.name || 'Patient'}</h3>
                       {test.syncStatus === 'pending' && (
                         <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
                           Pending Sync
@@ -168,11 +168,11 @@ export default function LabTestsPage() {
                       )}
                     </div>
                     <p className="text-sm font-medium text-blue-700 mt-1">{test.testName}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                       Ordered by {test.orderedBy} • {new Date(test.createdAt).toLocaleDateString()}
                     </p>
                     {test.results && (
-                      <div className="text-sm mt-2 bg-slate-100 p-2.5 rounded-md text-slate-800">
+                      <div className="text-sm mt-2 bg-slate-100 dark:bg-slate-800 p-2.5 rounded-md text-slate-800 dark:text-slate-200">
                         <strong className="font-medium">Result:</strong> {test.results}
                       </div>
                     )}

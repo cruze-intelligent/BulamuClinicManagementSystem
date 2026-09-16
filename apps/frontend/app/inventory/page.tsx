@@ -83,12 +83,12 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Pharmacy & Inventory 💊</h1>
-            <p className="text-sm text-slate-500 mt-1">Local-First Stock Management</p>
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Pharmacy & Inventory 💊</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Local-First Stock Management</p>
           </div>
           <Button onClick={() => setShowForm(!showForm)}>
             {showForm ? 'Cancel' : '+ Add Medicine'}
@@ -124,7 +124,7 @@ export default function InventoryPage() {
                 <Label htmlFor="unit">Unit</Label>
                 <select
                   id="unit"
-                  className="w-full p-2 border rounded bg-white"
+                  className="w-full p-2 border rounded bg-white dark:bg-slate-900"
                   value={formData.unit}
                   onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                 >
@@ -176,9 +176,9 @@ export default function InventoryPage() {
         )}
 
         {loading ? (
-          <p className="text-slate-500">Loading stock levels...</p>
+          <p className="text-slate-500 dark:text-slate-400">Loading stock levels...</p>
         ) : medicines.length === 0 ? (
-          <Card className="p-8 text-center text-slate-500">
+          <Card className="p-8 text-center text-slate-500 dark:text-slate-400">
             No medicine stock items found. Click above to add medicine to inventory (works offline).
           </Card>
         ) : (
@@ -186,7 +186,7 @@ export default function InventoryPage() {
             {medicines.map((med) => (
               <Card key={med.id} className="p-4">
                 <div className="flex justify-between items-start mb-2">
-                  <h3 className="font-bold text-lg text-slate-800">{med.name}</h3>
+                  <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">{med.name}</h3>
                   {med.syncStatus === 'pending' && (
                     <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
                       Pending Sync
@@ -194,22 +194,22 @@ export default function InventoryPage() {
                   )}
                 </div>
 
-                <div className="space-y-1 text-sm text-slate-600">
+                <div className="space-y-1 text-sm text-slate-600 dark:text-slate-400">
                   <p>
-                    <span className="font-semibold text-slate-700">Stock:</span>{' '}
-                    <span className={med.quantity <= med.reorderLevel ? 'text-rose-600 font-bold' : 'text-slate-800'}>
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">Stock:</span>{' '}
+                    <span className={med.quantity <= med.reorderLevel ? 'text-rose-600 font-bold' : 'text-slate-800 dark:text-slate-200'}>
                       {med.quantity} {med.unit}
                     </span>
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-700">Reorder at:</span> {med.reorderLevel}
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">Reorder at:</span> {med.reorderLevel}
                   </p>
                   <p>
-                    <span className="font-semibold text-slate-700">Price:</span> UGX {med.price.toLocaleString()}
+                    <span className="font-semibold text-slate-700 dark:text-slate-300">Price:</span> UGX {med.price.toLocaleString()}
                   </p>
                   {med.expiryDate && (
                     <p>
-                      <span className="font-semibold text-slate-700">Expires:</span>{' '}
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">Expires:</span>{' '}
                       {new Date(med.expiryDate).toLocaleDateString()}
                     </p>
                   )}

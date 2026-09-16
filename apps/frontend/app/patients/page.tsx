@@ -43,12 +43,12 @@ export default function PatientsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Patients</h1>
-            <p className="text-sm text-slate-500 mt-1">Local-First Clinical Registry</p>
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Patients</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Local-First Clinical Registry</p>
           </div>
           <Link href="/patients/register">
             <Button>+ Register Patient</Button>
@@ -56,9 +56,9 @@ export default function PatientsPage() {
         </div>
 
         {loading ? (
-          <p className="text-slate-500">Loading local records...</p>
+          <p className="text-slate-500 dark:text-slate-400">Loading local records...</p>
         ) : patients.length === 0 ? (
-          <Card className="p-8 text-center text-slate-500">
+          <Card className="p-8 text-center text-slate-500 dark:text-slate-400">
             No patients recorded yet. Click above to register a patient (works offline).
           </Card>
         ) : (
@@ -67,14 +67,14 @@ export default function PatientsPage() {
               <Card key={patient.id} className="p-4 flex justify-between items-center">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-slate-800">{patient.name}</h3>
+                    <h3 className="font-semibold text-slate-800 dark:text-slate-200">{patient.name}</h3>
                     {patient.syncStatus === 'pending' && (
                       <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
                         Pending Sync
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-slate-500">{patient.phone}</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{patient.phone}</p>
                 </div>
                 <Link href={`/patients/${patient.id}`}>
                   <Button size="sm" variant="outline">

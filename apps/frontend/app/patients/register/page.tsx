@@ -57,10 +57,10 @@ export default function RegisterPatient() {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2 text-slate-800">Register New Patient</h1>
-        <p className="text-sm text-slate-500 mb-6">Works offline with background sync</p>
+        <h1 className="text-3xl font-bold mb-2 text-slate-800 dark:text-slate-200">Register New Patient</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Works offline with background sync</p>
 
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -114,7 +114,7 @@ export default function RegisterPatient() {
             </div>
 
             <div className="border-t pt-4">
-              <p className="text-sm font-medium text-slate-600 mb-2">Home Address (optional)</p>
+              <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">Home Address (optional)</p>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="village">Village</Label>

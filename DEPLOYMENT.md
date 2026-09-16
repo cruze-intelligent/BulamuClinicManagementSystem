@@ -12,13 +12,19 @@ facilities without reliable internet.
   Postgres tier auto-expires after ~30 days, so a standalone free Postgres provider is used instead for anything
   meant to stay live.
 - **Backend (API + sync engine)**: Render free Web Service, built from this repo directly (`render.yaml` blueprint
-  included at the repo root).
-- **Frontend (installable PWA)**: Vercel free tier, Next.js project rooted at `apps/frontend`.
+  included at the repo root). Hostinger shared/business hosting plans don't run Node.js processes, so the backend
+  cannot live there - it needs Render (or any other Node host) regardless of where the frontend is hosted.
+- **Frontend (installable PWA)**: statically exported with `next build` (`output: "export"` in
+  `apps/frontend/next.config.ts`) and uploaded to **Hostinger** shared hosting as plain HTML/CSS/JS - no Node.js
+  required on that side. Every page is a client component that talks to the backend over `NEXT_PUBLIC_API_URL`, so a
+  static export is a full-fidelity build, not a stripped-down one. (Vercel's free tier is a drop-in alternative if
+  you'd rather deploy from git pushes rather than uploading built files.)
 - **Edge micro-server (Tier 2 facility)**: Raspberry Pi running Docker Compose locally, for deep-rural facilities
   without reliable connectivity (section 4).
 
-Both the Render free Web Service and Vercel's free serverless functions spin down after a period of inactivity - the
-first request after idling takes 30-50 seconds to "wake up." This is expected free-tier behavior, not a bug.
+The Render free Web Service spins down after a period of inactivity - the first request after idling takes 30-50
+seconds to "wake up." This is expected free-tier behavior, not a bug. Hostinger static hosting has no such cold
+start; only the backend call the page makes on load will feel that delay.
 
 ---
 
@@ -65,18 +71,34 @@ first request after idling takes 30-50 seconds to "wake up." This is expected fr
    ```
    Copy the returned `ipnId` into the `PESAPAL_IPN_ID` environment variable on the Render service and redeploy.
 
-### C. Frontend - Vercel
+### C. Frontend - Hostinger (static export)
 
-1. In Vercel, **Add New Project**, import this GitHub repo.
-2. Set **Root Directory** to `apps/frontend` in the project settings.
-3. Set the environment variable:
-   ```env
-   NEXT_PUBLIC_API_URL=<your Render backend URL, from step B>
+The frontend builds to plain static files (`apps/frontend/out/`) - no Node.js runtime needed on the host, which
+matches Hostinger's shared/business hosting plans.
+
+1. Set `NEXT_PUBLIC_API_URL` to your Render backend URL before building - it's baked in at build time:
+   ```bash
+   # apps/frontend/.env.production.local
+   NEXT_PUBLIC_API_URL=https://<your-backend>.onrender.com
    ```
-   `NEXT_PUBLIC_*` variables are baked in at build time, so set this before the first deploy (or redeploy after
-   changing it).
-4. Deploy. Once you have the Vercel URL, go back to the Render backend and set `FRONTEND_URL` to it, then redeploy
-   the backend so CORS allows requests from it.
+2. Build from the repo root:
+   ```bash
+   npm ci
+   npm run build --workspace=apps/frontend
+   ```
+   This produces a fully static site in `apps/frontend/out/` - every route is its own `<route>/index.html` (from
+   `trailingSlash: true`), so there's no SPA rewrite rule to configure on the server.
+3. In Hostinger's hPanel, open **File Manager** (or connect via FTP/SFTP) and upload the *contents* of `out/`
+   (not the folder itself) into `public_html` for the domain/subdomain you want the app on.
+4. Point the domain/subdomain at that document root in hPanel.
+5. Go back to the Render backend and set `FRONTEND_URL` to your Hostinger domain, then redeploy the backend so CORS
+   allows requests from it.
+6. Any future change requires rebuilding (`npm run build --workspace=apps/frontend`) and re-uploading `out/` - a
+   static export has no server-side rendering or incremental revalidation, so nothing updates on its own between
+   deploys.
+
+Prefer deploying from git pushes instead of manual uploads? Vercel's free tier works too - same build, same
+`NEXT_PUBLIC_API_URL` env var, `apps/frontend` as the project root, deploy-on-push instead of File Manager uploads.
 
 ### D. Going from sandbox to live payments
 

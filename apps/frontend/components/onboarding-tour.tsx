@@ -78,8 +78,8 @@ export function OnboardingTour() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm">
-      <section className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-200 p-6">
+      <section className="w-full max-w-2xl rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl">
+        <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 p-6">
           <div className="flex items-center gap-4">
             <div className="flex size-11 items-center justify-center rounded-md bg-emerald-700 text-white">
               <Icon className="size-5" aria-hidden="true" />
@@ -88,13 +88,13 @@ export function OnboardingTour() {
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
                 Step {step + 1} of {steps.length}
               </p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">{current.title}</h2>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">{current.title}</h2>
             </div>
           </div>
           <button
             type="button"
             onClick={close}
-            className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            className="rounded-md p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 hover:dark:bg-slate-800 hover:text-slate-900 hover:dark:text-slate-100"
             aria-label="Close walkthrough"
           >
             <X className="size-5" aria-hidden="true" />
@@ -102,18 +102,18 @@ export function OnboardingTour() {
         </div>
 
         <div className="p-6">
-          <p className="text-base leading-7 text-slate-600">{current.body}</p>
+          <p className="text-base leading-7 text-slate-600 dark:text-slate-400">{current.body}</p>
           <div className="mt-6 grid grid-cols-5 gap-2">
             {steps.map((item, index) => (
               <div
                 key={item.title}
-                className={`h-1.5 rounded-full ${index <= step ? 'bg-emerald-700' : 'bg-slate-200'}`}
+                className={`h-1.5 rounded-full ${index <= step ? 'bg-emerald-700' : 'bg-slate-200 dark:bg-slate-700'}`}
               />
             ))}
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-200 p-6">
+        <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 p-6">
           <Button
             type="button"
             variant="outline"

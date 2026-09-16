@@ -63,7 +63,7 @@ export default function LoginPage() {
       <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_440px]">
         <section>
           <div className="flex items-center gap-3">
-            <div className="flex size-11 items-center justify-center rounded-md bg-emerald-500 text-slate-950">
+            <div className="flex size-11 items-center justify-center rounded-md bg-emerald-500 text-slate-950 dark:text-slate-50">
               <ShieldCheck className="size-6" aria-hidden="true" />
             </div>
             <div>
@@ -80,21 +80,21 @@ export default function LoginPage() {
           </p>
           <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
             {['Role based', 'PWA enabled', 'FHIR ready'].map((item) => (
-              <div key={item} className="rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+              <div key={item} className="rounded-md border border-white/10 bg-white dark:bg-slate-900/5 px-4 py-3 text-sm text-slate-200">
                 {item}
               </div>
             ))}
           </div>
-          <p className="mt-10 text-sm text-slate-400">A product of Cruze Intelligent Systems (U) Ltd.</p>
+          <p className="mt-10 text-sm text-slate-400 dark:text-slate-500">A product of Cruze Intelligent Systems (U) Ltd.</p>
         </section>
 
-        <Card className="rounded-lg border-slate-800 bg-white p-6 text-slate-950 shadow-2xl">
+        <Card className="rounded-lg border-slate-800 bg-white dark:bg-slate-900 p-6 text-slate-950 dark:text-slate-50 shadow-2xl">
           <div className="mb-6">
-            <div className="flex size-10 items-center justify-center rounded-md bg-slate-100 text-slate-700">
+            <div className="flex size-10 items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
               <LockKeyhole className="size-5" aria-hidden="true" />
             </div>
             <h2 className="mt-4 text-2xl font-semibold tracking-tight">Sign in</h2>
-            <p className="mt-1 text-sm text-slate-500">Use your assigned facility or super-admin account.</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Use your assigned facility or super-admin account.</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -122,7 +122,7 @@ export default function LoginPage() {
             </a>
           </div>
 
-          <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          <div className="mt-6 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-4 text-sm text-slate-600 dark:text-slate-400">
             Access is controlled by your facility administrator or Bulamu super administrator.
           </div>
         </Card>

@@ -64,8 +64,8 @@ function ResetPasswordForm() {
   if (!token) {
     return (
       <main className="min-h-screen bg-slate-950 px-6 py-10 text-white flex items-center justify-center">
-        <Card className="w-full max-w-md rounded-lg border-slate-800 bg-white p-6 text-slate-950 shadow-2xl">
-          <p className="text-sm text-slate-600">This reset link is missing its token. Request a new one from the login page.</p>
+        <Card className="w-full max-w-md rounded-lg border-slate-800 bg-white dark:bg-slate-900 p-6 text-slate-950 dark:text-slate-50 shadow-2xl">
+          <p className="text-sm text-slate-600 dark:text-slate-400">This reset link is missing its token. Request a new one from the login page.</p>
         </Card>
       </main>
     );
@@ -73,7 +73,7 @@ function ResetPasswordForm() {
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-10 text-white flex items-center justify-center">
-      <Card className="w-full max-w-md rounded-lg border-slate-800 bg-white p-6 text-slate-950 shadow-2xl">
+      <Card className="w-full max-w-md rounded-lg border-slate-800 bg-white dark:bg-slate-900 p-6 text-slate-950 dark:text-slate-50 shadow-2xl">
         <h1 className="text-2xl font-semibold tracking-tight">Set a new password</h1>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">

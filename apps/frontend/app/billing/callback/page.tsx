@@ -37,20 +37,20 @@ export default function BillingCallbackPage() {
   }, []);
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-8">
+    <main className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950 p-8">
       <Card className="max-w-md p-8 text-center">
         {status === 'checking' && (
           <>
-            <Loader2 className="mx-auto size-10 animate-spin text-slate-400" aria-hidden="true" />
-            <h1 className="mt-4 text-xl font-semibold text-slate-800">Confirming your payment...</h1>
-            <p className="mt-2 text-sm text-slate-500">This usually takes a few seconds.</p>
+            <Loader2 className="mx-auto size-10 animate-spin text-slate-400 dark:text-slate-500" aria-hidden="true" />
+            <h1 className="mt-4 text-xl font-semibold text-slate-800 dark:text-slate-200">Confirming your payment...</h1>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">This usually takes a few seconds.</p>
           </>
         )}
         {status === 'active' && (
           <>
             <CheckCircle2 className="mx-auto size-10 text-emerald-600" aria-hidden="true" />
-            <h1 className="mt-4 text-xl font-semibold text-slate-800">Subscription active</h1>
-            <p className="mt-2 text-sm text-slate-500">Thank you - your facility subscription is now active.</p>
+            <h1 className="mt-4 text-xl font-semibold text-slate-800 dark:text-slate-200">Subscription active</h1>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Thank you - your facility subscription is now active.</p>
             <Button className="mt-6 w-full" onClick={() => (window.location.href = '/dashboard')}>
               Go to Dashboard
             </Button>
@@ -59,8 +59,8 @@ export default function BillingCallbackPage() {
         {status === 'pending' && (
           <>
             <Clock className="mx-auto size-10 text-amber-500" aria-hidden="true" />
-            <h1 className="mt-4 text-xl font-semibold text-slate-800">Payment still processing</h1>
-            <p className="mt-2 text-sm text-slate-500">
+            <h1 className="mt-4 text-xl font-semibold text-slate-800 dark:text-slate-200">Payment still processing</h1>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
               We haven&apos;t received confirmation yet. If you completed payment, this can take a minute - check the
               billing page shortly.
             </p>

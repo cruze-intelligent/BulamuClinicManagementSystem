@@ -60,8 +60,8 @@ export default function HelpPage() {
             <FileQuestion className="size-4" aria-hidden="true" />
             Help & FAQ
           </div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Evaluation guidance and system readiness</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">Evaluation guidance and system readiness</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
             Use this page during onboarding, stakeholder evaluation, and facility training to verify the operating model.
           </p>
         </div>
@@ -79,20 +79,20 @@ export default function HelpPage() {
         ].map((item) => (
           <Card key={item.title} className="rounded-lg p-5">
             <item.icon className="size-5 text-emerald-700" aria-hidden="true" />
-            <h2 className="mt-3 text-lg font-semibold text-slate-950">{item.title}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{item.body}</p>
+            <h2 className="mt-3 text-lg font-semibold text-slate-950 dark:text-slate-50">{item.title}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">{item.body}</p>
           </Card>
         ))}
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <Card className="rounded-lg p-5">
-          <h2 className="text-lg font-semibold text-slate-950">Frequently asked questions</h2>
-          <div className="mt-4 divide-y divide-slate-200">
+          <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Frequently asked questions</h2>
+          <div className="mt-4 divide-y divide-slate-200 dark:divide-slate-800">
             {faqs.map((faq) => (
               <div key={faq.question} className="py-4">
-                <h3 className="font-medium text-slate-950">{faq.question}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{faq.answer}</p>
+                <h3 className="font-medium text-slate-950 dark:text-slate-50">{faq.question}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">{faq.answer}</p>
               </div>
             ))}
           </div>
@@ -101,11 +101,11 @@ export default function HelpPage() {
         <Card className="rounded-lg p-5">
           <div className="flex items-center gap-2">
             <DatabaseZap className="size-5 text-emerald-700" aria-hidden="true" />
-            <h2 className="text-lg font-semibold text-slate-950">Research sync checklist</h2>
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Research sync checklist</h2>
           </div>
           <div className="mt-4 space-y-3">
             {checklist.map((item) => (
-              <div key={item} className="flex gap-2 text-sm text-slate-700">
+              <div key={item} className="flex gap-2 text-sm text-slate-700 dark:text-slate-300">
                 <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700" aria-hidden="true" />
                 <span>{item}</span>
               </div>

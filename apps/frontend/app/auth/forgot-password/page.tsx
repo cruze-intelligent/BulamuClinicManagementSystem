@@ -31,9 +31,9 @@ export default function ForgotPasswordPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-10 text-white flex items-center justify-center">
-      <Card className="w-full max-w-md rounded-lg border-slate-800 bg-white p-6 text-slate-950 shadow-2xl">
+      <Card className="w-full max-w-md rounded-lg border-slate-800 bg-white dark:bg-slate-900 p-6 text-slate-950 dark:text-slate-50 shadow-2xl">
         <h1 className="text-2xl font-semibold tracking-tight">Reset your password</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Enter your account email. If it matches a facility account, we'll send a reset link.
         </p>
 

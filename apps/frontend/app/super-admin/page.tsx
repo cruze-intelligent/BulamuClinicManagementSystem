@@ -216,8 +216,8 @@ export default function SuperAdminPage() {
             <Crown className="size-4" aria-hidden="true" />
             Super Admin God Mode
           </div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Facility authorization console</h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">Facility authorization console</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
             Authorize medical facilities, monitor national readiness, suspend access when needed, and verify the
             two-week evaluation environment across facility types.
           </p>
@@ -232,10 +232,10 @@ export default function SuperAdminPage() {
         {stats.map((stat) => (
           <Card key={stat.label} className="gap-3 rounded-lg p-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-medium uppercase text-slate-500">{stat.label}</p>
+              <p className="text-xs font-medium uppercase text-slate-500 dark:text-slate-400">{stat.label}</p>
               <stat.icon className="size-4 text-emerald-700" aria-hidden="true" />
             </div>
-            <p className="text-2xl font-semibold text-slate-950">{stat.value}</p>
+            <p className="text-2xl font-semibold text-slate-950 dark:text-slate-50">{stat.value}</p>
           </Card>
         ))}
       </section>
@@ -244,16 +244,16 @@ export default function SuperAdminPage() {
         <Card className="rounded-lg border-amber-200 bg-amber-50 p-5">
           <div className="flex items-center gap-2">
             <ShieldAlert className="size-5 text-amber-700" aria-hidden="true" />
-            <h2 className="text-lg font-semibold text-slate-950">Pending approvals ({pending.length})</h2>
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Pending approvals ({pending.length})</h2>
           </div>
-          <p className="mt-1 text-sm text-slate-600">Self-registered facilities awaiting your review.</p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Self-registered facilities awaiting your review.</p>
           <div className="mt-4 space-y-3">
             {pending.map((facility) => (
-              <div key={facility.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-white p-4">
+              <div key={facility.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-white dark:bg-slate-900 p-4">
                 <div>
-                  <p className="font-medium text-slate-950">{facility.name}</p>
-                  <p className="text-xs text-slate-500">{facilityLabel(facility.facilityType)} - {facility.address}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="font-medium text-slate-950 dark:text-slate-50">{facility.name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{facilityLabel(facility.facilityType)} - {facility.address}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Admin: {facility.admin?.name || 'Unknown'} ({facility.admin?.email || 'n/a'})
                   </p>
                 </div>
@@ -277,14 +277,14 @@ export default function SuperAdminPage() {
         <Card className="rounded-lg p-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950">Authorized facilities</h2>
-              <p className="text-sm text-slate-500">Includes clinics, hospitals, labs, pharmacies, outreach, and mobile units.</p>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Authorized facilities</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Includes clinics, hospitals, labs, pharmacies, outreach, and mobile units.</p>
             </div>
-            {loading && <span className="text-sm text-slate-500">Loading...</span>}
+            {loading && <span className="text-sm text-slate-500 dark:text-slate-400">Loading...</span>}
           </div>
-          <div className="mt-4 overflow-hidden rounded-lg border border-slate-200">
+          <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <thead className="bg-slate-50 dark:bg-slate-800 text-xs uppercase text-slate-500 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3">Facility</th>
                   <th className="px-4 py-3">Type</th>
@@ -294,19 +294,19 @@ export default function SuperAdminPage() {
                   <th className="px-4 py-3">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200">
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {(overview?.clinics || []).map((facility) => (
-                  <tr key={facility.id} className="bg-white">
+                  <tr key={facility.id} className="bg-white dark:bg-slate-900">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-slate-950">{facility.name}</p>
-                      <p className="text-xs text-slate-500">{facility.address}</p>
+                      <p className="font-medium text-slate-950 dark:text-slate-50">{facility.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{facility.address}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{facilityLabel(facility.facilityType)}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{facilityLabel(facility.facilityType)}</td>
                     <td className="px-4 py-3">
-                      <p className="text-slate-800">{facility.admin?.name || 'Not assigned'}</p>
-                      <p className="text-xs text-slate-500">{facility.admin?.email || 'Create admin to activate'}</p>
+                      <p className="text-slate-800 dark:text-slate-200">{facility.admin?.name || 'Not assigned'}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{facility.admin?.email || 'Create admin to activate'}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                       {facility.patients} patients / {facility.users} users
                     </td>
                     <td className="px-4 py-3">
@@ -330,8 +330,8 @@ export default function SuperAdminPage() {
         </Card>
 
         <Card className="rounded-lg p-5">
-          <h2 className="text-lg font-semibold text-slate-950">Research alignment</h2>
-          <div className="mt-4 space-y-3 text-sm text-slate-600">
+          <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Research alignment</h2>
+          <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-400">
             {[
               'HMIS 105 outpatient reporting',
               'FHIR R4 patient bundle export',
@@ -355,7 +355,7 @@ export default function SuperAdminPage() {
 
       {showForm && (
         <Card className="rounded-lg p-5">
-          <h2 className="text-lg font-semibold text-slate-950">Authorize a medical facility</h2>
+          <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Authorize a medical facility</h2>
           <form onSubmit={createFacility} className="mt-4 grid gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="name">Facility name</Label>
@@ -365,7 +365,7 @@ export default function SuperAdminPage() {
               <Label htmlFor="facilityType">Facility type</Label>
               <select
                 id="facilityType"
-                className="mt-2 h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                className="mt-2 h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm"
                 value={formData.facilityType}
                 onChange={(e) => setFormData({ ...formData, facilityType: e.target.value })}
               >

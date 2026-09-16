@@ -1,11 +1,13 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import multipart from '@fastify/multipart';
 import { appointmentRoutes } from './routes/appointment.routes';
 import { authRoutes } from './routes/auth.routes';
 import { clinicRoutes } from './routes/clinic.routes';
 import { consultationRoutes } from './routes/consultation.routes';
 import { dashboardRoutes } from './routes/dashboard.routes';
+import { documentRoutes } from './routes/document.routes';
 import { inventoryRoutes } from './routes/inventory.routes';
 import { invoiceRoutes } from './routes/invoice.routes';
 import { labRoutes } from './routes/lab.routes';
@@ -44,6 +46,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     secret: jwtSecret || 'bulamu_local_development_secret',
   });
 
+  await server.register(multipart, {
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  });
+
   server.get('/health', async () => {
     return { status: 'ok', service: 'Bulamu API' };
   });
@@ -65,6 +71,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(referralRoutes);
   await server.register(auditRoutes);
   await server.register(billingRoutes);
+  await server.register(documentRoutes);
 
   return server;
 }

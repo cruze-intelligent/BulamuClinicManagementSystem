@@ -19,6 +19,7 @@ model User {
   appointments Appointment[]
   reproductiveHealthRecords ReproductiveHealthRecord[]
   passwordResetTokens PasswordResetToken[]
+  documentsUploaded Document[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -56,6 +57,7 @@ model Clinic {
   dhis2Integration Dhis2Integration?
   subscription     Subscription?
   payments         Payment[]
+  documents        Document[]
   isActive  Boolean  @default(true)
   registrationStatus RegistrationStatus @default(PENDING)
   approvedAt    DateTime?
@@ -162,6 +164,7 @@ model Patient {
   labTests LabTest[]
   reproductiveHealthRecords ReproductiveHealthRecord[]
   referrals    Referral[]
+  documents    Document[]
   deletedAt    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -382,6 +385,33 @@ model SyncConflictLog {
 
   @@index([clinicId])
   @@index([recordId])
+}
+
+model Document {
+  id             String           @id @default(uuid())
+  clinicId       String
+  clinic         Clinic           @relation(fields: [clinicId], references: [id])
+  patientId      String?
+  patient        Patient?         @relation(fields: [patientId], references: [id])
+  category       DocumentCategory @default(OTHER)
+  fileName       String
+  mimeType       String
+  fileSize       Int
+  storageKey     String
+  uploadedByUserId String
+  uploadedBy     User             @relation(fields: [uploadedByUserId], references: [id])
+  createdAt      DateTime         @default(now())
+
+  @@index([clinicId])
+  @@index([patientId])
+}
+
+enum DocumentCategory {
+  LAB_RESULT
+  CONSENT_FORM
+  ID_COPY
+  REFERRAL_LETTER
+  OTHER
 }
 
 model AuditLog {

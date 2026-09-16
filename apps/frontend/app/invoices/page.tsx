@@ -3,11 +3,13 @@
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { FileDown } from 'lucide-react';
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState([]);
   const [filter, setFilter] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchInvoices();
@@ -50,8 +52,34 @@ export default function InvoicesPage() {
     }
   };
 
+  const downloadPdf = async (id: string) => {
+    const token = localStorage.getItem('token');
+    setDownloadingId(id);
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/invoices/${id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to generate PDF');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `invoice-${id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('Error downloading invoice PDF');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Invoices</h1>
 
@@ -99,13 +127,23 @@ export default function InvoicesPage() {
                     </p>
                   </div>
                   <div className="flex gap-2 items-center">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={downloadingId === invoice.id}
+                      onClick={() => downloadPdf(invoice.id)}
+                      title="Download branded PDF"
+                    >
+                      <FileDown className="size-4" aria-hidden="true" />
+                      {downloadingId === invoice.id ? 'Preparing...' : 'PDF'}
+                    </Button>
                     {invoice.status === 'PENDING' && (
                       <Button size="sm" onClick={() => markAsPaid(invoice.id)}>
                         Mark Paid
                       </Button>
                     )}
                     <span className={`text-xs px-2 py-1 rounded ${
-                      invoice.status === 'PAID' ? 'bg-green-100' : 'bg-yellow-100'
+                      invoice.status === 'PAID' ? 'bg-green-100 dark:bg-green-900' : 'bg-yellow-100 dark:bg-yellow-900'
                     }`}>
                       {invoice.status}
                     </span>

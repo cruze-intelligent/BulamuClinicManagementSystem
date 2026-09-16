@@ -49,12 +49,12 @@ export default function AppointmentsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Appointments</h1>
-            <p className="text-sm text-slate-500 mt-1">Local-First Triage & Visit Queue</p>
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Appointments</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Local-First Triage & Visit Queue</p>
           </div>
           <Link href="/appointments/book">
             <Button>+ Book Appointment</Button>
@@ -62,9 +62,9 @@ export default function AppointmentsPage() {
         </div>
 
         {loading ? (
-          <p className="text-slate-500">Loading appointments...</p>
+          <p className="text-slate-500 dark:text-slate-400">Loading appointments...</p>
         ) : appointments.length === 0 ? (
-          <Card className="p-8 text-center text-slate-500">
+          <Card className="p-8 text-center text-slate-500 dark:text-slate-400">
             No appointments found. Click above to book an appointment (works offline).
           </Card>
         ) : (
@@ -74,18 +74,18 @@ export default function AppointmentsPage() {
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-slate-800">{apt.patient?.name || 'Patient'}</h3>
+                      <h3 className="font-semibold text-slate-800 dark:text-slate-200">{apt.patient?.name || 'Patient'}</h3>
                       {apt.syncStatus === 'pending' && (
                         <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
                           Pending Sync
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
                       {new Date(apt.date).toLocaleDateString()} at {apt.time}
                     </p>
-                    <p className="text-sm text-slate-600">Dr. {apt.doctor?.name || 'Assigned Clinician'}</p>
-                    {apt.notes && <p className="text-sm text-slate-500 mt-1">{apt.notes}</p>}
+                    <p className="text-sm text-slate-600 dark:text-slate-400">Dr. {apt.doctor?.name || 'Assigned Clinician'}</p>
+                    {apt.notes && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{apt.notes}</p>}
                   </div>
                   <div className="flex items-center gap-2">
                     {apt.status === 'SCHEDULED' && (

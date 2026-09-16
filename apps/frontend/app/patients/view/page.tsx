@@ -1,19 +1,36 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
+import { FileDown, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { calculateAgeYears } from '@/lib/age';
 import { validateReproductiveHealthForm } from '@/lib/reproductive-health-validation';
 
+const DOCUMENT_CATEGORIES = [
+  { value: 'LAB_RESULT', label: 'Lab Result' },
+  { value: 'CONSENT_FORM', label: 'Consent Form' },
+  { value: 'ID_COPY', label: 'ID Copy' },
+  { value: 'REFERRAL_LETTER', label: 'Referral Letter' },
+  { value: 'OTHER', label: 'Other' },
+];
+
 export default function PatientHistoryPage() {
-  const params = useParams();
-  const patientId = params.id as string;
+  return (
+    <Suspense fallback={<div className="p-8">Loading...</div>}>
+      <PatientHistoryContent />
+    </Suspense>
+  );
+}
+
+function PatientHistoryContent() {
+  const searchParams = useSearchParams();
+  const patientId = searchParams.get('id') || '';
   const { hasRole } = useAuth();
 
   const [patient, setPatient] = useState<any>(null);
@@ -33,11 +50,117 @@ export default function PatientHistoryPage() {
     notes: '',
   });
 
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [uploadCategory, setUploadCategory] = useState('OTHER');
+  const [uploading, setUploading] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (patientId) {
       fetchPatientHistory();
+      fetchDocuments();
     }
   }, [patientId]);
+
+  const fetchDocuments = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${patientId}/documents`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) setDocuments(data.documents);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDocumentsLoading(false);
+    }
+  };
+
+  const handleUploadDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File is too large (10MB max)');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('category', uploadCategory);
+    formData.append('file', file);
+
+    setUploading(true);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${patientId}/documents`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Upload failed');
+      setDocuments((prev) => [data.document, ...prev]);
+    } catch (error: any) {
+      alert(`Error uploading document: ${error.message}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDownloadDocument = async (docId: string, fileName: string) => {
+    const token = localStorage.getItem('token');
+    setDownloadingDocId(docId);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/documents/${docId}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('Error downloading document');
+    } finally {
+      setDownloadingDocId(null);
+    }
+  };
+
+  const handleDeleteDocument = async (docId: string) => {
+    if (!confirm('Delete this document? This cannot be undone.')) return;
+    const token = localStorage.getItem('token');
+    setDeletingDocId(docId);
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/documents/${docId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Delete failed');
+      setDocuments((prev) => prev.filter((d) => d.id !== docId));
+    } catch (error: any) {
+      alert(`Error deleting document: ${error.message}`);
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const fetchPatientHistory = async () => {
     const token = localStorage.getItem('token');
@@ -136,7 +259,7 @@ export default function PatientHistoryPage() {
   const canEditClinicalData = hasRole('NURSE', 'DOCTOR', 'ADMIN');
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
         <Link href="/patients">
           <Button variant="outline" className="mb-4">← Back to Patients</Button>
@@ -145,7 +268,7 @@ export default function PatientHistoryPage() {
         <Card className="p-6 mb-6">
           <h1 className="text-3xl font-bold mb-2">{patient.name}</h1>
           <p className="text-muted-foreground">{patient.phone}</p>
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm mt-3 text-slate-600">
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm mt-3 text-slate-600 dark:text-slate-400">
             {patient.sex && <span>Sex: {patient.sex}</span>}
             {patient.dateOfBirth && <span>Age: {calculateAgeYears(patient.dateOfBirth)} years</span>}
             {(patient.village || patient.parish || patient.subCounty || patient.district) && (
@@ -154,7 +277,7 @@ export default function PatientHistoryPage() {
               </span>
             )}
           </div>
-          <p className="text-sm mt-2 text-slate-500">
+          <p className="text-sm mt-2 text-slate-500 dark:text-slate-400">
             Patient since {new Date(patient.createdAt).toLocaleDateString()}
           </p>
         </Card>
@@ -270,7 +393,7 @@ export default function PatientHistoryPage() {
             ) : (
               <div className="space-y-3">
                 {reproductiveHealthRecords.map((record) => (
-                  <div key={record.id} className="bg-slate-50 p-3 rounded text-sm">
+                  <div key={record.id} className="bg-slate-50 dark:bg-slate-800 p-3 rounded text-sm">
                     <div className="flex justify-between">
                       <span className="font-medium">
                         {record.pregnancyStatus} · {record.familyPlanningMethod}
@@ -303,6 +426,93 @@ export default function PatientHistoryPage() {
           </Card>
         )}
 
+        <Card className="p-6 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">Documents</h2>
+          </div>
+
+          {canEditClinicalData && (
+            <div className="flex flex-wrap gap-2 items-center mb-4 pb-4 border-b">
+              <select
+                value={uploadCategory}
+                onChange={(e) => setUploadCategory(e.target.value)}
+                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                disabled={uploading}
+              >
+                {DOCUMENT_CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleUploadDocument}
+                disabled={uploading}
+                className="hidden"
+                id="document-upload-input"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="size-4" aria-hidden="true" />
+                {uploading ? 'Uploading...' : 'Upload Document'}
+              </Button>
+              <span className="text-xs text-muted-foreground">Max 10MB</span>
+            </div>
+          )}
+
+          {documentsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading documents...</p>
+          ) : documents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No documents uploaded yet</p>
+          ) : (
+            <div className="space-y-2">
+              {documents.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex justify-between items-center bg-slate-50 dark:bg-slate-800 p-3 rounded text-sm"
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{doc.fileName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {DOCUMENT_CATEGORIES.find((c) => c.value === doc.category)?.label || doc.category}
+                      {' · '}{formatFileSize(doc.fileSize)}
+                      {' · '}{new Date(doc.createdAt).toLocaleDateString()}
+                      {doc.uploadedBy?.name ? ` · ${doc.uploadedBy.name}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 items-center shrink-0 ml-3">
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      disabled={downloadingDocId === doc.id}
+                      onClick={() => handleDownloadDocument(doc.id, doc.fileName)}
+                      title="Download"
+                    >
+                      <FileDown className="size-4" aria-hidden="true" />
+                    </Button>
+                    {canEditClinicalData && (
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        disabled={deletingDocId === doc.id}
+                        onClick={() => handleDeleteDocument(doc.id)}
+                        title="Delete"
+                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                      >
+                        <Trash2 className="size-4" aria-hidden="true" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
         <h2 className="text-xl font-bold mb-4">Medical History ({consultations.length} visits)</h2>
 
         {consultations.length === 0 ? (
@@ -328,7 +538,7 @@ export default function PatientHistoryPage() {
                   <div className="mb-4">
                     <h4 className="font-semibold mb-2">Prescriptions:</h4>
                     {consult.prescriptions.map((rx: any) => (
-                      <div key={rx.id} className="bg-slate-50 p-3 rounded mb-2">
+                      <div key={rx.id} className="bg-slate-50 dark:bg-slate-800 p-3 rounded mb-2">
                         <p className="font-medium">{rx.medication}</p>
                         <p className="text-sm text-muted-foreground">
                           {rx.dosage} • {rx.frequency} • {rx.duration}
@@ -343,7 +553,7 @@ export default function PatientHistoryPage() {
                     <p className="text-sm">
                       <strong>Fee:</strong> UGX {consult.invoice.amount.toLocaleString()}
                       <span className={`ml-2 px-2 py-1 rounded text-xs ${
-                        consult.invoice.status === 'PAID' ? 'bg-green-100' : 'bg-yellow-100'
+                        consult.invoice.status === 'PAID' ? 'bg-green-100 dark:bg-green-900' : 'bg-yellow-100 dark:bg-yellow-900'
                       }`}>
                         {consult.invoice.status}
                       </span>

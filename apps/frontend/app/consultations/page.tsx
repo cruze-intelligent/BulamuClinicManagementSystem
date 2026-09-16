@@ -27,12 +27,12 @@ export default function ConsultationsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Consultation History</h1>
-            <p className="text-sm text-slate-500 mt-1">Local-First Clinical Records</p>
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Consultation History</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Local-First Clinical Records</p>
           </div>
           <Link href="/consultations/record">
             <Button>+ Record Encounter</Button>
@@ -40,9 +40,9 @@ export default function ConsultationsPage() {
         </div>
 
         {loading ? (
-          <p className="text-slate-500">Loading consultations...</p>
+          <p className="text-slate-500 dark:text-slate-400">Loading consultations...</p>
         ) : consultations.length === 0 ? (
-          <Card className="p-8 text-center text-slate-500">
+          <Card className="p-8 text-center text-slate-500 dark:text-slate-400">
             No consultations recorded yet. Click above to record a clinical encounter (works offline).
           </Card>
         ) : (
@@ -52,7 +52,7 @@ export default function ConsultationsPage() {
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-lg text-slate-800">
+                      <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">
                         {consult.patient?.name || 'Patient'} — {consult.diagnosis}
                       </h3>
                       {consult.syncStatus === 'pending' && (
@@ -61,26 +61,26 @@ export default function ConsultationsPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
                       {new Date(consult.createdAt).toLocaleString()}
                     </p>
                   </div>
                 </div>
 
                 <div className="mb-4">
-                  <p className="text-sm text-slate-700">
+                  <p className="text-sm text-slate-700 dark:text-slate-300">
                     <strong className="font-semibold">Symptoms / Complaints:</strong> {consult.symptoms}
                   </p>
                 </div>
 
                 {consult.prescriptions && consult.prescriptions.length > 0 && (
                   <div>
-                    <h4 className="font-semibold text-sm text-slate-800 mb-2">Prescriptions & Dosage:</h4>
+                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-200 mb-2">Prescriptions & Dosage:</h4>
                     <div className="space-y-1.5">
                       {consult.prescriptions.map((rx, idx) => (
-                        <div key={idx} className="bg-slate-100 p-2.5 rounded-md text-sm text-slate-800">
+                        <div key={idx} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-md text-sm text-slate-800 dark:text-slate-200">
                           <span className="font-medium text-blue-900">{rx.medication}</span>
-                          <span className="text-slate-500 ml-2">
+                          <span className="text-slate-500 dark:text-slate-400 ml-2">
                             {rx.dosage} • {rx.frequency} • {rx.duration}
                           </span>
                         </div>

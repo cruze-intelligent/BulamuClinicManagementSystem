@@ -74,10 +74,10 @@ function RecordConsultationForm() {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-1 text-slate-800">Record Clinical Encounter</h1>
-        <p className="text-sm text-slate-500 mb-6">
+        <h1 className="text-3xl font-bold mb-1 text-slate-800 dark:text-slate-200">Record Clinical Encounter</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
           {patientName ? `Patient: ${patientName}` : 'Offline-first Clinical Decision & Triage Record'}
         </p>
 

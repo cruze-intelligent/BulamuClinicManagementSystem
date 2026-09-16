@@ -6,3 +6,4 @@ dist/
 *.log
 .DS_Store
 apps/backend/test/.env.test.local
+.data/

@@ -44,12 +44,12 @@ export function PatientSearch() {
       />
       
       {query.length >= 2 && (
-        <div className="absolute top-12 left-0 right-0 bg-white shadow-lg rounded-lg max-h-96 overflow-y-auto z-10">
+        <div className="absolute top-12 left-0 right-0 bg-white dark:bg-slate-900 shadow-lg rounded-lg max-h-96 overflow-y-auto z-10">
           {searching ? (
             <div className="p-4">Searching...</div>
           ) : results.length > 0 ? (
             results.map((patient: any) => (
-              <Card key={patient.id} className="p-3 m-2 hover:bg-slate-50 cursor-pointer">
+              <Card key={patient.id} className="p-3 m-2 hover:bg-slate-50 hover:dark:bg-slate-800 cursor-pointer">
                 <h4 className="font-semibold">{patient.name}</h4>
                 <p className="text-sm text-muted-foreground">{patient.phone}</p>
               </Card>

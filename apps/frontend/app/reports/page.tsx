@@ -100,12 +100,12 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Reports & Surveillance 📊</h1>
-            <p className="text-sm text-slate-500 mt-1">
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Reports & Surveillance 📊</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               National Health Data Aggregation & Interoperability (HMIS 105 / FHIR)
             </p>
           </div>
@@ -115,7 +115,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Tab Selection */}
-        <div className="flex gap-2 mb-6 border-b border-slate-200 pb-2">
+        <div className="flex gap-2 mb-6 border-b border-slate-200 dark:border-slate-800 pb-2">
           <Button
             variant={activeTab === 'overview' ? 'default' : 'ghost'}
             onClick={() => setActiveTab('overview')}
@@ -137,9 +137,9 @@ export default function ReportsPage() {
         <Card className="p-6 mb-6">
           <div className="flex gap-4 items-end">
             <div>
-              <label className="text-sm font-medium text-slate-700">Reporting Month</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Reporting Month</label>
               <select
-                className="w-full p-2 border border-slate-300 rounded mt-1 bg-white"
+                className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded mt-1 bg-white dark:bg-slate-900"
                 value={month}
                 onChange={(e) => setMonth(Number(e.target.value))}
               >
@@ -151,10 +151,10 @@ export default function ReportsPage() {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700">Year</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Year</label>
               <input
                 type="number"
-                className="w-full p-2 border border-slate-300 rounded mt-1 bg-white"
+                className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded mt-1 bg-white dark:bg-slate-900"
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value))}
               />
@@ -173,19 +173,19 @@ export default function ReportsPage() {
           <>
             <div className="grid grid-cols-2 gap-4 mb-6">
               <Card className="p-6">
-                <h3 className="text-sm text-slate-500 font-medium">New Patients Registered</h3>
-                <p className="text-3xl font-bold text-slate-800 mt-2">{report.totalPatients}</p>
+                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">New Patients Registered</h3>
+                <p className="text-3xl font-bold text-slate-800 dark:text-slate-200 mt-2">{report.totalPatients}</p>
               </Card>
               <Card className="p-6">
-                <h3 className="text-sm text-slate-500 font-medium">Appointments Scheduled</h3>
-                <p className="text-3xl font-bold text-slate-800 mt-2">{report.totalAppointments}</p>
+                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">Appointments Scheduled</h3>
+                <p className="text-3xl font-bold text-slate-800 dark:text-slate-200 mt-2">{report.totalAppointments}</p>
               </Card>
               <Card className="p-6">
-                <h3 className="text-sm text-slate-500 font-medium">Clinical Encounters</h3>
-                <p className="text-3xl font-bold text-slate-800 mt-2">{report.totalConsultations}</p>
+                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">Clinical Encounters</h3>
+                <p className="text-3xl font-bold text-slate-800 dark:text-slate-200 mt-2">{report.totalConsultations}</p>
               </Card>
               <Card className="p-6">
-                <h3 className="text-sm text-slate-500 font-medium">Facility Revenue</h3>
+                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">Facility Revenue</h3>
                 <p className="text-3xl font-bold text-emerald-600 mt-2">
                   UGX {report.revenue.toLocaleString()}
                 </p>
@@ -193,12 +193,12 @@ export default function ReportsPage() {
             </div>
 
             <Card className="p-6">
-              <h2 className="text-xl font-bold mb-4 text-slate-800">Top Diagnoses</h2>
+              <h2 className="text-xl font-bold mb-4 text-slate-800 dark:text-slate-200">Top Diagnoses</h2>
               <div className="space-y-2">
                 {report.topDiagnoses.map((item: any, index: number) => (
-                  <div key={index} className="flex justify-between items-center p-3 bg-slate-50 rounded-md">
-                    <span className="font-medium text-slate-800">{item.diagnosis}</span>
-                    <span className="text-sm text-slate-500 font-semibold">{item._count.diagnosis} cases</span>
+                  <div key={index} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800 rounded-md">
+                    <span className="font-medium text-slate-800 dark:text-slate-200">{item.diagnosis}</span>
+                    <span className="text-sm text-slate-500 dark:text-slate-400 font-semibold">{item._count.diagnosis} cases</span>
                   </div>
                 ))}
               </div>
@@ -214,8 +214,8 @@ export default function ReportsPage() {
                 <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
                   Ministry of Health Uganda Standard
                 </span>
-                <h2 className="text-2xl font-bold text-slate-800 mt-2">{hmisReport.reportTitle}</h2>
-                <p className="text-sm text-slate-500">
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mt-2">{hmisReport.reportTitle}</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
                   Facility: {hmisReport.facilityName} | Period: {hmisReport.period}
                 </p>
               </div>
@@ -228,30 +228,30 @@ export default function ReportsPage() {
 
             <div className="space-y-6">
               <div>
-                <h3 className="font-semibold text-slate-800 mb-2">Section 1: Outpatient Attendance Summary</h3>
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 1: Outpatient Attendance Summary</h3>
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="p-4 bg-slate-50 rounded-lg text-center">
-                    <p className="text-xs text-slate-500">Total Outpatient Visits</p>
-                    <p className="text-2xl font-bold text-slate-800">{hmisReport.section1_attendance.totalOutpatients}</p>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-center">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Total Outpatient Visits</p>
+                    <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{hmisReport.section1_attendance.totalOutpatients}</p>
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-lg text-center">
-                    <p className="text-xs text-slate-500">New Attenders</p>
-                    <p className="text-2xl font-bold text-slate-800">{hmisReport.section1_attendance.newAttenders}</p>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-center">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">New Attenders</p>
+                    <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{hmisReport.section1_attendance.newAttenders}</p>
                   </div>
-                  <div className="p-4 bg-slate-50 rounded-lg text-center">
-                    <p className="text-xs text-slate-500">Re-attenders</p>
-                    <p className="text-2xl font-bold text-slate-800">{hmisReport.section1_attendance.reAttenders}</p>
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-center">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Re-attenders</p>
+                    <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{hmisReport.section1_attendance.reAttenders}</p>
                   </div>
                 </div>
               </div>
 
               <div>
-                <h3 className="font-semibold text-slate-800 mb-2">Section 2: Epidemic-Prone Disease Surveillance</h3>
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 2: Epidemic-Prone Disease Surveillance</h3>
                 <div className="space-y-2">
                   {hmisReport.section2_epidemicSurveillance.map((item: any, idx: number) => (
                     <div key={idx} className="flex justify-between items-center p-3 border rounded-md">
-                      <span className="text-sm font-medium text-slate-700">{item.condition}</span>
-                      <span className="text-sm font-bold text-slate-900 bg-slate-100 px-3 py-1 rounded">
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{item.condition}</span>
+                      <span className="text-sm font-bold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded">
                         {item.cases} cases
                       </span>
                     </div>
@@ -260,9 +260,9 @@ export default function ReportsPage() {
               </div>
 
               <div>
-                <h3 className="font-semibold text-slate-800 mb-2">Section 3: Essential Medicines Availability</h3>
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 3: Essential Medicines Availability</h3>
                 <div className="p-4 border rounded-lg bg-amber-50/50">
-                  <p className="text-sm text-slate-700">
+                  <p className="text-sm text-slate-700 dark:text-slate-300">
                     Tracked Medicines: <strong>{hmisReport.section3_essentialMedicines.totalTracked}</strong> |
                     Stock-Out Alerts: <strong className="text-rose-600">{hmisReport.section3_essentialMedicines.stockOutAlerts}</strong>
                   </p>
@@ -279,42 +279,42 @@ export default function ReportsPage() {
               </div>
 
               <div>
-                <h3 className="font-semibold text-slate-800 mb-2">Section 4: Family Planning</h3>
-                <p className="text-sm text-slate-600 mb-2">
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 4: Family Planning</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
                   Total records this period: <strong>{hmisReport.section4_familyPlanning.totalRecorded}</strong>
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(hmisReport.section4_familyPlanning.byMethod).map(([method, count]: any) => (
-                    <span key={method} className="text-xs bg-slate-100 px-2 py-1 rounded">{method}: {count}</span>
+                    <span key={method} className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{method}: {count}</span>
                   ))}
                 </div>
               </div>
 
               <div>
-                <h3 className="font-semibold text-slate-800 mb-2">Section 5: Maternal Health</h3>
-                <p className="text-sm text-slate-600">
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 5: Maternal Health</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
                   Pregnant clients: <strong>{hmisReport.section5_maternalHealth.pregnantClients}</strong> | Postpartum: <strong>{hmisReport.section5_maternalHealth.postpartumClients}</strong>
                 </p>
               </div>
 
               <div>
-                <h3 className="font-semibold text-slate-800 mb-2">Section 6: Other Tracked Services</h3>
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 6: Other Tracked Services</h3>
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(hmisReport.section6_services.byTag).map(([tag, count]: any) => (
-                    <span key={tag} className="text-xs bg-slate-100 px-2 py-1 rounded">{tag.replaceAll('_', ' ')}: {count}</span>
+                    <span key={tag} className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{tag.replaceAll('_', ' ')}: {count}</span>
                   ))}
                 </div>
               </div>
 
               <div>
-                <h3 className="font-semibold text-slate-800 mb-2">Section 7: Referrals Out</h3>
-                <p className="text-sm text-slate-600 mb-2">
+                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 7: Referrals Out</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
                   Total referred: <strong>{hmisReport.section7_referrals.totalReferred}</strong>
                 </p>
                 {hmisReport.section7_referrals.referrals?.length > 0 && (
                   <div className="space-y-1">
                     {hmisReport.section7_referrals.referrals.map((r: any, i: number) => (
-                      <div key={i} className="text-xs text-slate-600">
+                      <div key={i} className="text-xs text-slate-600 dark:text-slate-400">
                         → {r.toFacility}: {r.reason} ({r.status})
                       </div>
                     ))}

@@ -25,10 +25,10 @@ export default function SyncActivityPage() {
   }, []);
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50">
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-2">Sync Activity</h1>
-        <p className="text-sm text-slate-500 mb-6">
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
           Offline sync conflicts and who touched sensitive records, for facility oversight.
         </p>
 
@@ -37,7 +37,7 @@ export default function SyncActivityPage() {
         ) : (
           <>
             <h2 className="text-xl font-semibold mb-3">Sync Conflicts</h2>
-            <p className="text-sm text-slate-500 mb-3">
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
               An older offline edit arrived after a newer one had already synced - the older edit was not applied.
             </p>
             {conflicts.length === 0 ? (
