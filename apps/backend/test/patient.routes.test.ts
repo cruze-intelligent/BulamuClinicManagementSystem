@@ -89,4 +89,34 @@ describe('patient routes', () => {
     const response = await app.inject({ method: 'GET', url: `/patients/${clinic.id}` });
     expect(response.statusCode).toBe(401);
   });
+
+  it('fetches a single patient record directly without listing the whole clinic', async () => {
+    const clinic = await seedClinic();
+    const { user, password } = await seedUser({ clinicId: clinic.id, role: 'STAFF' });
+    const { token } = await loginAs(app, user.email, password);
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/patients',
+      headers: authHeader(token),
+      payload: { name: 'Jane Mukasa', phone: '0756111222', clinicId: clinic.id },
+    });
+    const patientId = created.json().patient.id;
+
+    const response = await app.inject({ method: 'GET', url: `/patients/record/${patientId}`, headers: authHeader(token) });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().patient.name).toBe('Jane Mukasa');
+  });
+
+  it('rejects fetching a single patient record from another clinic', async () => {
+    const clinicA = await seedClinic({ name: 'A' });
+    const clinicB = await seedClinic({ name: 'B' });
+    const { user, password } = await seedUser({ clinicId: clinicA.id, role: 'STAFF' });
+    const { token } = await loginAs(app, user.email, password);
+
+    const otherPatient = await prisma.patient.create({ data: { name: 'Other', phone: '0700', clinicId: clinicB.id } });
+
+    const response = await app.inject({ method: 'GET', url: `/patients/record/${otherPatient.id}`, headers: authHeader(token) });
+    expect(response.statusCode).toBe(403);
+  });
 });

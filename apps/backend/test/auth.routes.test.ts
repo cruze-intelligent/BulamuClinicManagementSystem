@@ -42,7 +42,107 @@ describe('auth routes', () => {
     await prisma.user.update({ where: { id: user.id }, data: { isActive: false } });
 
     const response = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: user.email, password } });
-    expect(response.statusCode).toBe(401);
+    expect(response.statusCode).toBe(403);
+    expect(response.json().reason).toBe('ACCOUNT_DEACTIVATED');
+  });
+});
+
+describe('self-service facility registration', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    await resetDb();
+    app = await buildTestApp();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('creates a pending facility and admin, and never issues a token', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        facilityName: 'New Hope Clinic', phone: '0700111222', address: 'Mbale, Uganda',
+        adminName: 'Jane Founder', adminEmail: 'jane@newhope.ug', adminPassword: 'SuperSecret123!',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.success).toBe(true);
+    expect(body.token).toBeUndefined();
+
+    const clinic = await prisma.clinic.findFirst({ where: { name: 'New Hope Clinic' } });
+    expect(clinic?.registrationStatus).toBe('PENDING');
+    expect(clinic?.isActive).toBe(false);
+
+    const admin = await prisma.user.findUnique({ where: { email: 'jane@newhope.ug' } });
+    expect(admin?.role).toBe('ADMIN');
+  });
+
+  it('ignores any role supplied in the payload and always creates an ADMIN', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        facilityName: 'Sneaky Clinic', phone: '0700111222', address: 'Kampala',
+        adminName: 'Sneaky User', adminEmail: 'sneaky@example.ug', adminPassword: 'SuperSecret123!',
+        role: 'SUPER_ADMIN',
+      },
+    });
+
+    const admin = await prisma.user.findUnique({ where: { email: 'sneaky@example.ug' } });
+    expect(admin?.role).toBe('ADMIN');
+  });
+
+  it('rejects a duplicate email', async () => {
+    const clinic = await seedClinic();
+    const { user } = await seedUser({ clinicId: clinic.id, role: 'ADMIN' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        facilityName: 'Duplicate Clinic', phone: '0700111222', address: 'Kampala',
+        adminName: 'Someone', adminEmail: user.email, adminPassword: 'SuperSecret123!',
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+  });
+
+  it('rejects a password shorter than the minimum length', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        facilityName: 'Short Password Clinic', phone: '0700111222', address: 'Kampala',
+        adminName: 'Someone', adminEmail: 'short@example.ug', adminPassword: 'short',
+      },
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('blocks login for a pending facility with a specific reason', async () => {
+    await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        facilityName: 'Pending Clinic', phone: '0700111222', address: 'Kampala',
+        adminName: 'Pending Admin', adminEmail: 'pending@example.ug', adminPassword: 'SuperSecret123!',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'pending@example.ug', password: 'SuperSecret123!' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().reason).toBe('PENDING_APPROVAL');
   });
 });
 

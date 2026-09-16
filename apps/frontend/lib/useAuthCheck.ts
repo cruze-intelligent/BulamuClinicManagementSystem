@@ -9,8 +9,9 @@ export function useAuthCheck() {
 
   useEffect(() => {
     // Skip auth check on public pages
-    const publicPages = ['/', '/auth/login'];
-    if (publicPages.includes(pathname)) return;
+    const publicPages = ['/', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
+    const publicPrefixes = ['/legal/'];
+    if (publicPages.includes(pathname) || publicPrefixes.some((prefix) => pathname.startsWith(prefix))) return;
 
     const checkAuth = () => {
       const token = localStorage.getItem('token');

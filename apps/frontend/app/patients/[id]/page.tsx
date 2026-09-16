@@ -41,28 +41,24 @@ export default function PatientHistoryPage() {
 
   const fetchPatientHistory = async () => {
     const token = localStorage.getItem('token');
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const headers = { Authorization: `Bearer ${token}` };
 
     try {
-      const patientsRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/patients/${user.clinicId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const patientsData = await patientsRes.json();
-      const foundPatient = patientsData.patients.find((p: any) => p.id === patientId);
+      const [patientRes, consultRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/record/${patientId}`, { headers }),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/consultations/patient/${patientId}`, { headers }),
+      ]);
+      const patientData = await patientRes.json();
+      const foundPatient = patientData.success ? patientData.patient : null;
       setPatient(foundPatient);
 
-      const consultRes = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/consultations/patient/${patientId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
       const consultData = await consultRes.json();
       if (consultData.success) setConsultations(consultData.consultations);
 
       if (foundPatient?.sex === 'FEMALE') {
         const rhRes = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/patients/${patientId}/reproductive-health`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers }
         );
         const rhData = await rhRes.json();
         if (rhData.success) setReproductiveHealthRecords(rhData.records);

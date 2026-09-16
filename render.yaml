@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: bulamu-backend
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm ci && npx prisma generate --schema=apps/backend/prisma/schema.prisma && npm run build --workspace=apps/backend
+    startCommand: npm start --workspace=apps/backend
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      # Point this at a non-expiring free Postgres (Neon or Supabase) rather
+      # than a Render-managed free Postgres, which auto-expires after ~30 days.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: INTEGRATION_ENCRYPTION_KEY
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: BACKEND_URL
+        sync: false
+      - key: PESAPAL_CONSUMER_KEY
+        sync: false
+      - key: PESAPAL_CONSUMER_SECRET
+        sync: false
+      - key: PESAPAL_ENV
+        value: sandbox
+      - key: PESAPAL_IPN_ID
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_PRIVATE_KEY
+        sync: false
+      - key: GOOGLE_SHEET_ID
+        sync: false

@@ -75,6 +75,25 @@ export async function patientRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Get a single patient record directly (protected) - avoids fetching the
+  // whole clinic patient list just to find one, which doesn't scale as a
+  // facility's patient count grows.
+  fastify.get('/patients/record/:id', { preHandler: [authenticate] }, async (request, reply) => {
+    const { id } = request.params as any;
+
+    try {
+      const patient = await prisma.patient.findUnique({ where: { id } });
+      if (!patient || patient.deletedAt) {
+        return reply.status(404).send({ error: 'Patient not found' });
+      }
+      if (!assertClinicMatch(request, reply, patient.clinicId)) return;
+
+      return { success: true, patient };
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
+  });
+
   // Soft-delete a patient record (ADMIN only - a real EMR record is never hard-deleted)
   fastify.delete('/patients/:id', { preHandler: [requireRole('ADMIN')] }, async (request, reply) => {
     const { id } = request.params as any;

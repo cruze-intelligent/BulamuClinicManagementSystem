@@ -8,6 +8,51 @@ const MIN_PASSWORD_LENGTH = 10;
 
 export async function authRoutes(fastify: FastifyInstance) {
 
+  // Self-service facility registration. Always creates the account as a
+  // pending ADMIN awaiting super-admin approval - never issues a token here,
+  // and never trusts a caller-supplied role (a public endpoint that could
+  // mint any role, including SUPER_ADMIN, would be a privilege-escalation hole).
+  fastify.post('/auth/register', async (request, reply) => {
+    const {
+      facilityName, facilityType, phone, address, district, subCounty, parish,
+      adminName, adminEmail, adminPassword,
+    } = request.body as any;
+
+    if (!facilityName || !phone || !address || !adminName || !adminEmail || !adminPassword) {
+      return reply.status(400).send({ error: 'Missing required registration fields' });
+    }
+    if (adminPassword.length < MIN_PASSWORD_LENGTH) {
+      return reply.status(400).send({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    }
+
+    try {
+      const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+      if (existing) {
+        return reply.status(409).send({ error: 'An account with this email already exists' });
+      }
+
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      const clinic = await prisma.clinic.create({
+        data: {
+          name: facilityName,
+          facilityType: facilityType || 'CLINIC',
+          phone, address,
+          district: district || null,
+          subCounty: subCounty || null,
+          parish: parish || null,
+          isActive: false,
+          registrationStatus: 'PENDING',
+          users: { create: { email: adminEmail, password: hashedPassword, name: adminName, role: 'ADMIN', isActive: false } },
+        },
+      });
+
+      fastify.log.info(`New facility registration pending approval: ${clinic.name} (${clinic.id})`);
+      return { success: true, message: 'Registration submitted. A Bulamu administrator will review and approve your facility shortly.' };
+    } catch (error: any) {
+      return reply.status(400).send({ error: error.message });
+    }
+  });
+
   // Login
   fastify.post('/auth/login', async (request, reply) => {
     const { email, password } = request.body as any;
@@ -19,15 +64,30 @@ export async function authRoutes(fastify: FastifyInstance) {
         include: { clinic: true }
       });
 
-      if (!user || !user.isActive) {
+      if (!user) {
         return reply.status(401).send({ error: 'Invalid credentials' });
       }
 
-      // Verify password
+      // Verify password first - only reveal account/clinic status to someone
+      // who already proved they know the password, so this endpoint can't be
+      // used to probe whether an email is registered/pending/suspended.
       const validPassword = await bcrypt.compare(password, user.password);
-      
+
       if (!validPassword) {
         return reply.status(401).send({ error: 'Invalid credentials' });
+      }
+
+      if (user.clinic.registrationStatus === 'PENDING') {
+        return reply.status(403).send({ error: 'Your facility registration is pending approval', reason: 'PENDING_APPROVAL' });
+      }
+      if (user.clinic.registrationStatus === 'REJECTED') {
+        return reply.status(403).send({ error: 'Your facility registration was not approved', reason: 'REJECTED', rejectionReason: user.clinic.rejectionReason || undefined });
+      }
+      if (!user.clinic.isActive) {
+        return reply.status(403).send({ error: 'Your facility account is suspended', reason: 'SUSPENDED' });
+      }
+      if (!user.isActive) {
+        return reply.status(403).send({ error: 'Your account has been deactivated', reason: 'ACCOUNT_DEACTIVATED' });
       }
 
       // Generate JWT token (12h expiry - covers a full offline field shift)

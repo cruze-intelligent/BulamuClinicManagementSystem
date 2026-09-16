@@ -66,6 +66,9 @@ CI (`.github/workflows/ci.yml`) runs type-checking, both test suites, and both p
 - HMIS 105 outpatient reporting across 7 sections (attendance by age/gender cohort, epidemic surveillance, essential medicines, family planning, maternal health, other services, referrals)
 - FHIR R4 export (Patient, Encounter, Observation resources) and a configurable DHIS2 `dataValueSets` push for interoperability work
 - Password reset flow and an audit log for patient/reproductive-health/user/invoice writes
+- Self-service facility registration (`/auth/register`) with a private super-admin approval queue - the Super Admin role is never selectable in any form and has no public entry point
+- 2-week free trial per approved facility, then a monthly subscription billed through Pesapal (`/billing`); a lapsed subscription blocks new writes but never blocks reading existing records
+- Branded legal pages: [Terms of Service](/legal/terms), [Privacy Policy](/legal/privacy), [Refund Policy](/legal/refund-policy)
 
 ## Research PDF Alignment
 

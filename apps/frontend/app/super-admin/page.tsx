@@ -12,6 +12,9 @@ import {
   PauseCircle,
   PlayCircle,
   Plus,
+  ShieldAlert,
+  ThumbsDown,
+  ThumbsUp,
   Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -43,6 +46,19 @@ type Facility = {
   users: number;
   patients: number;
   admin: { name: string; email: string; isActive: boolean } | null;
+};
+
+type PendingFacility = {
+  id: string;
+  name: string;
+  facilityType: string;
+  phone: string;
+  address: string;
+  district: string | null;
+  subCounty: string | null;
+  parish: string | null;
+  createdAt: string;
+  admin: { name: string; email: string } | null;
 };
 
 type Overview = {
@@ -77,6 +93,7 @@ export default function SuperAdminPage() {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [pending, setPending] = useState<PendingFacility[]>([]);
   const [formData, setFormData] = useState(emptyForm);
 
   const fetchOverview = async () => {
@@ -93,13 +110,53 @@ export default function SuperAdminPage() {
     }
   };
 
+  const fetchPending = async () => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/super-admin/pending-clinics`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json();
+    if (data.success) setPending(data.clinics);
+  };
+
   useEffect(() => {
     if (!hasRole('SUPER_ADMIN')) {
       router.push('/dashboard');
       return;
     }
     fetchOverview();
+    fetchPending();
   }, [hasRole, router]);
+
+  const approveFacility = async (id: string) => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/${id}/approve`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json();
+    if (data.success) {
+      await Promise.all([fetchPending(), fetchOverview()]);
+    } else {
+      alert(data.error || 'Could not approve facility');
+    }
+  };
+
+  const rejectFacility = async (id: string) => {
+    const reason = window.prompt('Reason for rejecting this facility (optional):') || undefined;
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/${id}/reject`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ reason }),
+    });
+    const data = await response.json();
+    if (data.success) {
+      await fetchPending();
+    } else {
+      alert(data.error || 'Could not reject facility');
+    }
+  };
 
   const createFacility = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,6 +239,39 @@ export default function SuperAdminPage() {
           </Card>
         ))}
       </section>
+
+      {pending.length > 0 && (
+        <Card className="rounded-lg border-amber-200 bg-amber-50 p-5">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="size-5 text-amber-700" aria-hidden="true" />
+            <h2 className="text-lg font-semibold text-slate-950">Pending approvals ({pending.length})</h2>
+          </div>
+          <p className="mt-1 text-sm text-slate-600">Self-registered facilities awaiting your review.</p>
+          <div className="mt-4 space-y-3">
+            {pending.map((facility) => (
+              <div key={facility.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-white p-4">
+                <div>
+                  <p className="font-medium text-slate-950">{facility.name}</p>
+                  <p className="text-xs text-slate-500">{facilityLabel(facility.facilityType)} - {facility.address}</p>
+                  <p className="text-xs text-slate-500">
+                    Admin: {facility.admin?.name || 'Unknown'} ({facility.admin?.email || 'n/a'})
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => approveFacility(facility.id)}>
+                    <ThumbsUp className="size-4" aria-hidden="true" />
+                    Approve
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => rejectFacility(facility.id)}>
+                    <ThumbsDown className="size-4" aria-hidden="true" />
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
         <Card className="rounded-lg p-5">

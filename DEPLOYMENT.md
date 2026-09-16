@@ -1,83 +1,118 @@
-# Deployment Guide - Bulamu Medical Facility OS (PWA + Cloud API)
+# Deployment Guide - Bulamu Medical Facility OS
 
-This guide provides deployment instructions for hosting **Bulamu Medical Facility OS** across both cloud platforms and edge micro-servers (e.g. Raspberry Pi in deep-rural Health Centre II/III facilities). Bulamu supports clinics, health centres, hospitals, laboratories, pharmacies, mobile units, and community outreach teams.
-
----
-
-## 1. Hosting Architecture Overview
-
-- **Frontend (Installable PWA)**: Hosted on Vercel, Netlify, Cloudflare Pages, or custom domain web server. Endpoints download and cache app shell via Service Worker (`sw.js`) and store patient data in browser IndexedDB.
-- **Backend (API & Sync Engine)**: Fastify + Prisma Node.js backend hosted on **Laravel Cloud**, **Railway**, **Render**, **Fly.io**, or **Supabase** (PostgreSQL).
-- **Edge Micro-Server (Tier 2 Facility)**: Single-board computer (Raspberry Pi 4/5) running Docker Compose locally inside a solar-powered facility intranet.
+This guide covers the recommended free-tier deployment for live testing (Render for the backend + API, Vercel for
+the frontend PWA, Neon for a non-expiring free Postgres database), plus the edge micro-server option for deep-rural
+facilities without reliable internet.
 
 ---
 
-## 2. Cloud Deployment Instructions
+## 1. Hosting Architecture
 
-### A. Deploying Backend to Laravel Cloud / Railway / Render
+- **Database**: [Neon](https://neon.tech) or [Supabase](https://supabase.com) free Postgres. Render's own free
+  Postgres tier auto-expires after ~30 days, so a standalone free Postgres provider is used instead for anything
+  meant to stay live.
+- **Backend (API + sync engine)**: Render free Web Service, built from this repo directly (`render.yaml` blueprint
+  included at the repo root).
+- **Frontend (installable PWA)**: Vercel free tier, Next.js project rooted at `apps/frontend`.
+- **Edge micro-server (Tier 2 facility)**: Raspberry Pi running Docker Compose locally, for deep-rural facilities
+  without reliable connectivity (section 4).
 
-1. **Database Setup (PostgreSQL)**:
-   - Provision a PostgreSQL instance (e.g., Supabase Free Tier, Railway Postgres, Render Postgres).
-   - Obtain database connection string: `DATABASE_URL="postgresql://user:password@host:5432/dbname?sslmode=require"`
-
-2. **Backend Configuration**:
-   - Set Environment Variables:
-     ```env
-     PORT=4000
-     DATABASE_URL=postgresql://...
-     JWT_SECRET=your_secure_secret_key
-     INTEGRATION_ENCRYPTION_KEY=another_long_random_secret
-     FRONTEND_URL=https://your-custom-facility-pwa-domain.com
-     ```
-   - `INTEGRATION_ENCRYPTION_KEY` encrypts third-party integration credentials at rest (currently DHIS2). Generate it the same way as `JWT_SECRET` and never reuse one for the other.
-   - Build & Migration Commands:
-     ```bash
-     cd apps/backend
-     npx prisma migrate deploy
-     npm run build
-     npm start
-     ```
-
-3. **Endpoints**:
-   - `/health` - Service health status
-   - `/sync/push` - Offline mutation receiver (timestamp-based last-write-wins, tombstone deletes, conflict logging)
-   - `/sync/pull` - Catch-up delta query
-   - `/reports/hmis-105/:clinicId` - Ministry of Health Uganda Outpatient Monthly Report
-   - `/reports/hmis-105/:clinicId/push-dhis2` - Pushes the report to a configured DHIS2 instance
-   - `/reports/fhir/patients/:clinicId` - HL7 FHIR R4 JSON Bundle Export
-   - `/referrals` - Inter-facility patient referrals
-   - `/patients/:patientId/reproductive-health` - Reproductive-health observation timeline
-   - `/audit-log/:clinicId`, `/sync-conflicts/:clinicId` - Sync Activity panel data
+Both the Render free Web Service and Vercel's free serverless functions spin down after a period of inactivity - the
+first request after idling takes 30-50 seconds to "wake up." This is expected free-tier behavior, not a bug.
 
 ---
 
-### B. Deploying Frontend PWA to Custom Site (Vercel / Netlify / Cloudflare)
+## 2. Step-by-step: going live on free tiers
 
-1. Set Environment Variable:
+### A. Database - Neon (or Supabase) Postgres
+
+1. Create a free project at [neon.tech](https://neon.tech) (or [supabase.com](https://supabase.com)).
+2. Copy the connection string it gives you - this is your `DATABASE_URL`. Make sure it includes `?sslmode=require`.
+
+### B. Backend - Render
+
+1. In the Render dashboard, choose **New > Blueprint** and point it at this GitHub repo - it will pick up
+   `render.yaml` at the repo root automatically. Alternatively create a **New Web Service** manually with:
+   - Root directory: repo root (not `apps/backend`)
+   - Build command: `npm ci && npx prisma generate --schema=apps/backend/prisma/schema.prisma && npm run build --workspace=apps/backend`
+   - Start command: `npm start --workspace=apps/backend`
+   - Health check path: `/health`
+2. Set these environment variables on the service:
    ```env
-   NEXT_PUBLIC_API_URL=https://your-backend-api-domain.com
+   NODE_ENV=production
+   DATABASE_URL=<your Neon/Supabase connection string>
+   JWT_SECRET=<long random secret>
+   INTEGRATION_ENCRYPTION_KEY=<a different long random secret>
+   FRONTEND_URL=<your Vercel frontend URL, set after step C>
+   BACKEND_URL=<this Render service's own URL, e.g. https://bulamu-backend.onrender.com>
+   PESAPAL_CONSUMER_KEY=<from Pesapal - sandbox key to start>
+   PESAPAL_CONSUMER_SECRET=<from Pesapal - sandbox secret to start>
+   PESAPAL_ENV=sandbox
    ```
-2. Build Command:
+   (`JWT_SECRET` and `INTEGRATION_ENCRYPTION_KEY` are auto-generated by the Render blueprint if you use it.)
+3. Once deployed, open the service's **Shell** tab and run once:
    ```bash
-   npm --prefix apps/frontend run build
+   cd apps/backend
+   npx prisma migrate deploy
+   npm run seed
    ```
-3. Custom Domain & HTTPS:
-   - Configure HTTPS SSL certificate (required for PWA Service Worker & Web App Manifest installation).
-- Mobile users on Android/iOS will receive the "Install App" prompt for offline usage where supported by the browser.
+   `npm run seed` creates the demo/evaluation accounts listed in `README.md` - **change those passwords immediately**
+   after confirming the deploy works, since they're public in this repo.
+4. Register Bulamu's Pesapal IPN endpoint once (needed before any real subscription payment can complete):
+   ```bash
+   curl -X POST https://<your-backend-url>/billing/pesapal/register-ipn \
+     -H "Authorization: Bearer <a SUPER_ADMIN JWT from /auth/login>"
+   ```
+   Copy the returned `ipnId` into the `PESAPAL_IPN_ID` environment variable on the Render service and redeploy.
+
+### C. Frontend - Vercel
+
+1. In Vercel, **Add New Project**, import this GitHub repo.
+2. Set **Root Directory** to `apps/frontend` in the project settings.
+3. Set the environment variable:
+   ```env
+   NEXT_PUBLIC_API_URL=<your Render backend URL, from step B>
+   ```
+   `NEXT_PUBLIC_*` variables are baked in at build time, so set this before the first deploy (or redeploy after
+   changing it).
+4. Deploy. Once you have the Vercel URL, go back to the Render backend and set `FRONTEND_URL` to it, then redeploy
+   the backend so CORS allows requests from it.
+
+### D. Going from sandbox to live payments
+
+Pesapal's sandbox (`PESAPAL_ENV=sandbox`) is safe to leave running for testing - no real money moves. When you're
+ready to accept real subscription payments: get your live consumer key/secret from Pesapal, set
+`PESAPAL_ENV=live` and the live `PESAPAL_CONSUMER_KEY`/`PESAPAL_CONSUMER_SECRET` on the Render service, redeploy, and
+repeat the IPN registration step (step B.4) once against the live environment.
 
 ---
 
-## 3. Edge Micro-Server Deployment (Raspberry Pi / Health Centre II & III)
+## 3. Endpoints of note
+
+- `/health` - service health status
+- `/auth/register` - public self-service facility registration (creates a pending facility + admin)
+- `/super-admin/pending-clinics`, `/clinics/:id/approve`, `/clinics/:id/reject` - the private approvals queue
+- `/billing/status`, `/billing/subscribe`, `/billing/pesapal/ipn` - subscription billing via Pesapal
+- `/sync/push`, `/sync/pull` - offline mutation queue (last-write-wins, tombstone deletes, conflict logging)
+- `/reports/hmis-105/:clinicId`, `/reports/hmis-105/:clinicId/push-dhis2` - Uganda MoH reporting + DHIS2 push
+- `/reports/fhir/patients/:clinicId` - HL7 FHIR R4 export
+- `/referrals` - inter-facility patient referrals
+- `/patients/:patientId/reproductive-health` - reproductive-health observation timeline
+- `/audit-log/:clinicId`, `/sync-conflicts/:clinicId` - Sync Activity panel data
+
+---
+
+## 4. Edge Micro-Server Deployment (Raspberry Pi / Health Centre II & III)
 
 In deep-rural facilities lacking reliable cellular internet, deploy a local micro-server:
 
 ```bash
-git clone https://github.com/your-repo/ras.git
-cd ras
+git clone <this repo's URL>
+cd BulamuClinicManagementSystem
 docker-compose up -d --build
 ```
 
 - Facility staff connect Android tablets via Wi-Fi to the local micro-server IP.
-- Data writes directly to local IndexedDB and syncs to local micro-server.
-- When 3G/4G cellular signal is available, micro-server automatically pushes delta updates to the central national cloud DB.
-
+- Data writes directly to local IndexedDB and syncs to the local micro-server.
+- When 3G/4G cellular signal is available, the micro-server pushes delta updates to the central cloud deployment
+  described in section 2.

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ContactIcons } from '@/components/contact-icons';
 
 const facilityTypes = [
   'Clinic',
@@ -218,8 +219,16 @@ export default function Home() {
           </div>
         </div>
       </section>
-      <footer className="border-t border-slate-200 px-6 py-6 text-center text-sm text-slate-500">
-        Bulamu is a product of Cruze Intelligent Systems (U) Ltd.
+      <footer className="border-t border-slate-200 px-6 py-6">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center text-sm text-slate-500 md:flex-row md:text-left">
+          <p>Bulamu is a product of Cruze Intelligent Systems (U) Ltd.</p>
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <Link href="/legal/terms" className="hover:text-emerald-700 hover:underline">Terms of Service</Link>
+            <Link href="/legal/privacy" className="hover:text-emerald-700 hover:underline">Privacy Policy</Link>
+            <Link href="/legal/refund-policy" className="hover:text-emerald-700 hover:underline">Refund Policy</Link>
+            <ContactIcons />
+          </div>
+        </div>
       </footer>
     </main>
   );

@@ -1,4 +1,5 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { enforceSubscriptionGate } from './auth.middleware';
 
 export function requireRole(...allowedRoles: string[]) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
@@ -12,5 +13,6 @@ export function requireRole(...allowedRoles: string[]) {
     } catch (err) {
       return reply.status(401).send({ error: 'Unauthorized' });
     }
+    await enforceSubscriptionGate(request, reply);
   };
 }

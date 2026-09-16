@@ -7,6 +7,7 @@ import {
   BarChart3,
   CalendarDays,
   ClipboardList,
+  CreditCard,
   Crown,
   FlaskConical,
   HelpCircle,
@@ -38,6 +39,7 @@ const navItems = [
   { name: 'Reports', path: '/reports', icon: BarChart3, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { name: 'Sync Activity', path: '/sync-activity', icon: History, roles: ['ADMIN', 'SUPER_ADMIN'] },
   { name: 'Staff', path: '/users', icon: ClipboardList, roles: ['ADMIN'] },
+  { name: 'Billing', path: '/billing', icon: CreditCard, roles: ['ADMIN'] },
   { name: 'Help & FAQ', path: '/help', icon: HelpCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
 ];
 

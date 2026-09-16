@@ -13,27 +13,43 @@ async function ensureClinic(input: {
   address: string;
 }) {
   const existing = await prisma.clinic.findFirst({ where: { name: input.name } });
-  if (existing) {
-    return prisma.clinic.update({
-      where: { id: existing.id },
-      data: {
-        facilityType: input.facilityType,
-        phone: input.phone,
-        address: input.address,
-        isActive: true,
-      },
-    });
-  }
+  const clinic = existing
+    ? await prisma.clinic.update({
+        where: { id: existing.id },
+        data: {
+          facilityType: input.facilityType,
+          phone: input.phone,
+          address: input.address,
+          isActive: true,
+          registrationStatus: 'APPROVED',
+        },
+      })
+    : await prisma.clinic.create({
+        data: {
+          name: input.name,
+          facilityType: input.facilityType,
+          phone: input.phone,
+          address: input.address,
+          isActive: true,
+          registrationStatus: 'APPROVED',
+          approvedAt: new Date(),
+        },
+      });
 
-  return prisma.clinic.create({
-    data: {
-      name: input.name,
-      facilityType: input.facilityType,
-      phone: input.phone,
-      address: input.address,
-      isActive: true,
+  // Seeded demo/evaluation facilities are never subscription-gated - they're
+  // pre-approved for exploring the product, not paying customers on a trial clock.
+  await prisma.subscription.upsert({
+    where: { clinicId: clinic.id },
+    update: { status: 'ACTIVE' },
+    create: {
+      clinicId: clinic.id,
+      status: 'ACTIVE',
+      trialEndsAt: new Date(),
+      currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
     },
   });
+
+  return clinic;
 }
 
 async function ensureUser(input: {

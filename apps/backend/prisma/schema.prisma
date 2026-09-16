@@ -54,9 +54,65 @@ model Clinic {
   referralsFrom Referral[] @relation("ReferralFrom")
   referralsTo   Referral[] @relation("ReferralTo")
   dhis2Integration Dhis2Integration?
+  subscription     Subscription?
+  payments         Payment[]
   isActive  Boolean  @default(true)
+  registrationStatus RegistrationStatus @default(PENDING)
+  approvedAt    DateTime?
+  approvedBy    String?
+  rejectionReason String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Subscription {
+  id               String   @id @default(uuid())
+  clinicId         String   @unique
+  clinic           Clinic   @relation(fields: [clinicId], references: [id])
+  status           SubscriptionStatus @default(TRIALING)
+  trialEndsAt      DateTime
+  currentPeriodEnd DateTime?
+  amount           Int      @default(100000)
+  currency         String   @default("UGX")
+  lastPaymentAt    DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+model Payment {
+  id                       String   @id @default(uuid())
+  clinicId                 String
+  clinic                   Clinic   @relation(fields: [clinicId], references: [id])
+  subscriptionId           String
+  amount                   Int
+  currency                 String
+  status                   PaymentStatus @default(PENDING)
+  pesapalOrderTrackingId   String?  @unique
+  pesapalMerchantReference String?  @unique
+  rawCallback              Json?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@index([clinicId])
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
 }
 
 model Dhis2Integration {

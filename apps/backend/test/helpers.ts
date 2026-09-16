@@ -9,15 +9,28 @@ export async function buildTestApp(): Promise<FastifyInstance> {
   return app;
 }
 
-export async function seedClinic(overrides: Partial<{ name: string; facilityType: string; phone: string; address: string }> = {}) {
-  return prisma.clinic.create({
+export async function seedClinic(overrides: Partial<{ name: string; facilityType: string; phone: string; address: string; registrationStatus: 'PENDING' | 'APPROVED' | 'REJECTED'; isActive: boolean }> = {}) {
+  const clinic = await prisma.clinic.create({
     data: {
       name: overrides.name ?? `Test Clinic ${Math.random().toString(16).slice(2)}`,
       facilityType: (overrides.facilityType as any) ?? 'CLINIC',
       phone: overrides.phone ?? '0700000000',
       address: overrides.address ?? 'Test Address',
+      registrationStatus: overrides.registrationStatus ?? 'APPROVED',
+      isActive: overrides.isActive ?? true,
     },
   });
+
+  // Approved test clinics get an active subscription by default so existing
+  // write-path tests aren't blocked by the subscription gate - tests that
+  // specifically exercise trial/past-due behavior create their own Subscription row.
+  if (clinic.registrationStatus === 'APPROVED') {
+    await prisma.subscription.create({
+      data: { clinicId: clinic.id, status: 'ACTIVE', trialEndsAt: new Date() },
+    });
+  }
+
+  return clinic;
 }
 
 export async function seedUser(input: {

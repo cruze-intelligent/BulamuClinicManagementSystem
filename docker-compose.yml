@@ -27,6 +27,11 @@ services:
       JWT_SECRET: ${JWT_SECRET:-bulamu_local_development_secret}
       INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:-bulamu_local_development_secret}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:4000}
+      PESAPAL_CONSUMER_KEY: ${PESAPAL_CONSUMER_KEY:-}
+      PESAPAL_CONSUMER_SECRET: ${PESAPAL_CONSUMER_SECRET:-}
+      PESAPAL_ENV: ${PESAPAL_ENV:-sandbox}
+      PESAPAL_IPN_ID: ${PESAPAL_IPN_ID:-}
     depends_on:
       - postgres
 

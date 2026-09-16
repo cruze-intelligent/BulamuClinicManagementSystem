@@ -8,6 +8,23 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+function loginErrorMessage(reason: string | undefined, rejectionReason: string | undefined): string | null {
+  switch (reason) {
+    case 'PENDING_APPROVAL':
+      return "Your facility registration is still pending approval. We'll notify you once it's reviewed.";
+    case 'REJECTED':
+      return rejectionReason
+        ? `Your facility registration was not approved: ${rejectionReason}`
+        : 'Your facility registration was not approved. Contact us for details.';
+    case 'SUSPENDED':
+      return 'Your facility account is currently suspended. Contact your administrator or Bulamu support.';
+    case 'ACCOUNT_DEACTIVATED':
+      return 'Your account has been deactivated. Contact your facility administrator.';
+    default:
+      return null;
+  }
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -32,7 +49,7 @@ export default function LoginPage() {
         localStorage.setItem('user', JSON.stringify(data.user));
         router.push(data.user.role === 'SUPER_ADMIN' ? '/super-admin' : '/dashboard');
       } else {
-        alert('Invalid email or password');
+        alert(loginErrorMessage(data.reason, data.rejectionReason) || 'Invalid email or password');
       }
     } catch {
       alert('Unable to reach the Bulamu API. Confirm the backend is running and NEXT_PUBLIC_API_URL is configured.');
@@ -95,9 +112,13 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-4 text-center">
+          <div className="mt-4 flex items-center justify-center gap-4 text-center">
             <a href="/auth/forgot-password" className="text-sm text-emerald-700 hover:underline">
               Forgot your password?
+            </a>
+            <span className="text-slate-300">|</span>
+            <a href="/auth/register" className="text-sm text-emerald-700 hover:underline">
+              Register your facility
             </a>
           </div>
 

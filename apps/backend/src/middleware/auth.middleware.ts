@@ -1,11 +1,13 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { getSubscriptionGate } from '../lib/subscription';
 
 export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   try {
     await request.jwtVerify();
   } catch (err) {
-    reply.status(401).send({ error: 'Unauthorized' });
+    return reply.status(401).send({ error: 'Unauthorized' });
   }
+  await enforceSubscriptionGate(request, reply);
 }
 
 export type AuthUser = {
@@ -16,6 +18,26 @@ export type AuthUser = {
 
 export function getAuthUser(request: FastifyRequest): AuthUser {
   return request.user as AuthUser;
+}
+
+/**
+ * Blocks writes from a clinic whose trial has lapsed or whose subscription is
+ * past due - reads always pass so a lapsed subscription never locks a
+ * clinician out of viewing existing patient records, only new writes.
+ * SUPER_ADMIN and the billing routes themselves (an ADMIN must be able to pay
+ * their way out of this state) are always exempt.
+ */
+export async function enforceSubscriptionGate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  const authUser = getAuthUser(request);
+  if (!authUser) return;
+  if (authUser.role === 'SUPER_ADMIN') return;
+  if (request.method === 'GET') return;
+  if (request.url.startsWith('/billing')) return;
+
+  const { blocked } = await getSubscriptionGate(authUser.clinicId);
+  if (blocked) {
+    reply.status(402).send({ error: 'Your facility subscription is past due', reason: 'SUBSCRIPTION_REQUIRED' });
+  }
 }
 
 /**
