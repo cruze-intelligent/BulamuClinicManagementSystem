@@ -26,7 +26,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   // Pages without sidebar
   const noSidebarPages = ['/', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
-  const noSidebarPrefixes = ['/legal/'];
+  const noSidebarPrefixes = ['/legal/', '/patient-portal/'];
   const showSidebar = !noSidebarPages.includes(normalizedPathname) && !noSidebarPrefixes.some((prefix) => normalizedPathname.startsWith(prefix));
 
   useEffect(() => {

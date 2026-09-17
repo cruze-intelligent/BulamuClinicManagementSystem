@@ -59,12 +59,56 @@ function PatientHistoryContent() {
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [portalAccount, setPortalAccount] = useState<{ portableId: string; status: string } | null>(null);
+  const [showPortalForm, setShowPortalForm] = useState(false);
+  const [portalPhone, setPortalPhone] = useState('');
+  const [portalEmail, setPortalEmail] = useState('');
+  const [creatingPortalAccount, setCreatingPortalAccount] = useState(false);
+
   useEffect(() => {
     if (patientId) {
       fetchPatientHistory();
       fetchDocuments();
+      fetchPortalAccount();
     }
   }, [patientId]);
+
+  const fetchPortalAccount = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${patientId}/portal-account`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) setPortalAccount(data.account);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleCreatePortalAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatingPortalAccount(true);
+    const token = localStorage.getItem('token');
+
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${patientId}/portal-account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ phone: portalPhone, email: portalEmail }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed to create portal account');
+
+      setPortalAccount({ portableId: data.portableId, status: 'ACTIVE' });
+      setShowPortalForm(false);
+      alert(`Portal account created. Patient ID: ${data.portableId}. An email with a set-password link was sent to ${portalEmail}.`);
+    } catch (error: any) {
+      alert(`Error creating portal account: ${error.message}`);
+    } finally {
+      setCreatingPortalAccount(false);
+    }
+  };
 
   const fetchDocuments = async () => {
     const token = localStorage.getItem('token');
@@ -281,6 +325,36 @@ function PatientHistoryContent() {
           <p className="text-sm mt-2 text-slate-500 dark:text-slate-400">
             Patient since {new Date(patient.createdAt).toLocaleDateString()}
           </p>
+
+          <div className="mt-4 border-t pt-4">
+            {portalAccount ? (
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Patient portal: <span className="font-mono font-medium text-emerald-700 dark:text-emerald-500">{portalAccount.portableId}</span>
+                {portalAccount.status !== 'ACTIVE' && <span className="ml-2 text-amber-600">({portalAccount.status})</span>}
+              </p>
+            ) : canEditClinicalData ? (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setShowPortalForm((v) => !v)}>
+                  {showPortalForm ? 'Cancel' : 'Create portal account'}
+                </Button>
+                {showPortalForm && (
+                  <form onSubmit={handleCreatePortalAccount} className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="portalPhone">Phone</Label>
+                      <Input id="portalPhone" required value={portalPhone} onChange={(e) => setPortalPhone(e.target.value)} placeholder="0700000000" />
+                    </div>
+                    <div>
+                      <Label htmlFor="portalEmail">Email</Label>
+                      <Input id="portalEmail" type="email" required value={portalEmail} onChange={(e) => setPortalEmail(e.target.value)} />
+                    </div>
+                    <Button type="submit" size="sm" className="sm:col-span-2 w-fit" disabled={creatingPortalAccount}>
+                      {creatingPortalAccount ? 'Creating...' : 'Create account'}
+                    </Button>
+                  </form>
+                )}
+              </>
+            ) : null}
+          </div>
         </Card>
 
         {patient.sex === 'FEMALE' && (
