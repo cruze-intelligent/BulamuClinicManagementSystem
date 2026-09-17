@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { prisma } from '../lib/prisma';
+import { prisma, isUniqueConstraintError } from '../lib/prisma';
 import { requireRole } from '../middleware/rbac.middleware';
 import { authenticate, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
@@ -204,6 +204,11 @@ export async function clinicRoutes(fastify: FastifyInstance) {
         return reply.status(409).send({ error: duplicateFacilityMessage(duplicate) });
       }
 
+      const existingUser = await prisma.user.findUnique({ where: { email: adminEmail } });
+      if (existingUser) {
+        return reply.status(409).send({ error: 'An account with this email already exists' });
+      }
+
       // Hash password
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
       const facilityCode = await generateFacilityCode();
@@ -243,6 +248,9 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
       return { success: true, clinic };
     } catch (error: any) {
+      if (isUniqueConstraintError(error)) {
+        return reply.status(409).send({ error: 'An account with this email already exists' });
+      }
       return reply.status(400).send({ error: error.message });
     }
   });

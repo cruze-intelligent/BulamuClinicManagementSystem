@@ -300,7 +300,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
               create: {
                 id: payload.id,
                 patientId: payload.patientId,
-                recordedById: payload.recordedById || authUser.userId,
+                recordedById: authUser.userId,
                 lastMenstrualPeriodDate: payload.lastMenstrualPeriodDate ? new Date(payload.lastMenstrualPeriodDate) : null,
                 cycleLengthDays: payload.cycleLengthDays != null ? Number(payload.cycleLengthDays) : null,
                 flowDurationDays: payload.flowDurationDays != null ? Number(payload.flowDurationDays) : null,

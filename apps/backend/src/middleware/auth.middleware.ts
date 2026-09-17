@@ -1,5 +1,6 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { getSubscriptionGate } from '../lib/subscription';
+import { prisma } from '../lib/prisma';
 
 export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   try {
@@ -7,6 +8,24 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
   } catch (err) {
     return reply.status(401).send({ error: 'Unauthorized' });
   }
+
+  // A JWT stays cryptographically valid until it naturally expires, so a
+  // deactivated user or a suspended/deleted facility would otherwise keep
+  // working for the rest of that token's lifetime. Re-check current status
+  // on every request so suspend/deactivate/delete take effect immediately
+  // rather than "eventually, once the old token expires".
+  const authUser = request.user as AuthUser;
+  const user = await prisma.user.findUnique({
+    where: { id: authUser.userId },
+    select: { isActive: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true } } },
+  });
+  if (!user || !user.isActive || !user.clinic || user.clinic.deletedAt) {
+    return reply.status(401).send({ error: 'Account no longer active' });
+  }
+  if (authUser.role !== 'SUPER_ADMIN' && (!user.clinic.isActive || user.clinic.registrationStatus !== 'APPROVED')) {
+    return reply.status(401).send({ error: 'Facility account is not active' });
+  }
+
   await enforceSubscriptionGate(request, reply);
 }
 

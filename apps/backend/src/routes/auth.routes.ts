@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import { generateToken, hashToken } from '../lib/crypto';
 import { sendMail, passwordResetEmail, facilityPendingApprovalEmail, ADMIN_NOTIFY_EMAIL } from '../lib/mailer';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
+import { isUniqueConstraintError } from '../lib/prisma';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MIN_PASSWORD_LENGTH = 10;
@@ -72,6 +73,9 @@ export async function authRoutes(fastify: FastifyInstance) {
         facilityCode: clinic.facilityCode,
       };
     } catch (error: any) {
+      if (isUniqueConstraintError(error)) {
+        return reply.status(409).send({ error: 'An account with this email already exists' });
+      }
       return reply.status(400).send({ error: error.message });
     }
   });

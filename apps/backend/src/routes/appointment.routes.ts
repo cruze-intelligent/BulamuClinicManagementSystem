@@ -11,6 +11,17 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
     if (!clinicId) return;
 
     try {
+      const patient = await prisma.patient.findUnique({ where: { id: patientId }, select: { clinicId: true } });
+      if (!patient || patient.clinicId !== clinicId) {
+        return reply.status(404).send({ error: 'Patient not found' });
+      }
+      if (doctorId) {
+        const doctor = await prisma.user.findUnique({ where: { id: doctorId }, select: { clinicId: true } });
+        if (!doctor || doctor.clinicId !== clinicId) {
+          return reply.status(404).send({ error: 'Doctor not found' });
+        }
+      }
+
       const appointment = await prisma.appointment.create({
         data: { patientId, doctorId, clinicId, date: new Date(date), time, notes },
         include: { patient: true, doctor: { select: { id: true, name: true } } }

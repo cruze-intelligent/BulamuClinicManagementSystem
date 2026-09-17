@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { prisma } from '../lib/prisma';
+import { prisma, isUniqueConstraintError } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import bcrypt from 'bcrypt';
 import { requireRole } from '../middleware/rbac.middleware';
@@ -76,6 +76,9 @@ export async function userRoutes(fastify: FastifyInstance) {
 
       return { success: true, user };
     } catch (error: any) {
+      if (isUniqueConstraintError(error)) {
+        return reply.status(409).send({ error: 'An account with this email already exists' });
+      }
       return reply.status(400).send({ error: error.message });
     }
   });

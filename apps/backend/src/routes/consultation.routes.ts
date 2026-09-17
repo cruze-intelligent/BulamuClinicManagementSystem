@@ -19,6 +19,9 @@ export async function consultationRoutes(fastify: FastifyInstance) {
         return reply.status(404).send({ error: 'Appointment not found' });
       }
       if (!assertClinicMatch(request, reply, appointment.clinicId)) return;
+      if (patientId !== appointment.patientId) {
+        return reply.status(400).send({ error: 'patientId does not match the appointment' });
+      }
 
       const consultation = await prisma.consultation.create({
         data: {

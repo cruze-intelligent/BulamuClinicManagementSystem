@@ -12,3 +12,11 @@ export const prisma = globalForPrisma.prisma || new PrismaClient({
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = prisma;
 }
+
+// Prisma's unique-constraint violation (P2002) surfaces as a raw error whose
+// .message includes the underlying SQL constraint text - fine for logs, not
+// something to hand back to a client. Routes that create a User should catch
+// this and return a clean 409 instead of leaking that message verbatim.
+export function isUniqueConstraintError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
+}
