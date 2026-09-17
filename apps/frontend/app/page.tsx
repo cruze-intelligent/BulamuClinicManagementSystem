@@ -189,9 +189,14 @@ export default function Home() {
                 <span className="block text-xs text-slate-300">By <CompanyName /></span>
               </div>
             </div>
-            <Link href="/auth/login">
-              <Button variant="secondary">Sign in</Button>
-            </Link>
+            <div className="flex items-center gap-4">
+              <Link href="/auth/register" className="text-sm font-medium text-slate-300 hover:text-white">
+                Register your facility
+              </Link>
+              <Link href="/auth/login">
+                <Button variant="secondary">Sign in</Button>
+              </Link>
+            </div>
           </nav>
 
           <div className="max-w-3xl py-24">
