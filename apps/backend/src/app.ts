@@ -24,6 +24,7 @@ import { billingRoutes } from './routes/billing.routes';
 import { commentRoutes } from './routes/comment.routes';
 import { patientAccountRoutes } from './routes/patient-account.routes';
 import { patientAuthRoutes } from './routes/patient-auth.routes';
+import { patientPortalRoutes } from './routes/patient-portal.routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -90,6 +91,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(commentRoutes);
   await server.register(patientAccountRoutes);
   await server.register(patientAuthRoutes);
+  await server.register(patientPortalRoutes);
 
   return server;
 }

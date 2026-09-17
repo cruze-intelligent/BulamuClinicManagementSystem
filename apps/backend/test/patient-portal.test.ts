@@ -14,6 +14,25 @@ async function registerPatient(app: FastifyInstance, token: string, overrides: P
   return response.json().patient.id as string;
 }
 
+async function createActivePortalAccount(app: FastifyInstance, staffToken: string, patientId: string, overrides: Partial<{ phone: string; email: string; password: string }> = {}) {
+  const phone = overrides.phone ?? '0756111222';
+  const email = overrides.email ?? 'jane@example.com';
+  const password = overrides.password ?? 'MyNewPassword123!';
+
+  const createResponse = await app.inject({
+    method: 'POST',
+    url: `/patients/${patientId}/portal-account`,
+    headers: authHeader(staffToken),
+    payload: { phone, email },
+  });
+  const { portableId, devSetPasswordUrl } = createResponse.json();
+  const setPasswordToken = new URL(devSetPasswordUrl).searchParams.get('token')!;
+  await app.inject({ method: 'POST', url: '/patient-auth/set-password', payload: { token: setPasswordToken, password } });
+
+  const loginResponse = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: portableId, password } });
+  return { portableId, patientToken: loginResponse.json().token as string };
+}
+
 describe('patient portal', () => {
   let app: FastifyInstance;
 
@@ -189,6 +208,78 @@ describe('patient portal', () => {
       headers: authHeader(token),
       payload: { phone: '0756111222', email: 'jane@example.com' },
     });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('lets a patient view their own aggregated record, including appointments, consultations, and lab tests', async () => {
+    const clinic = await seedClinic();
+    const { user: doctor, password: doctorPassword } = await seedUser({ clinicId: clinic.id, role: 'DOCTOR' });
+    const { token: staffToken } = await loginAs(app, doctor.email, doctorPassword);
+    const patientId = await registerPatient(app, staffToken);
+    const { patientToken } = await createActivePortalAccount(app, staffToken, patientId);
+
+    const appointmentResponse = await app.inject({
+      method: 'POST',
+      url: '/appointments',
+      headers: authHeader(staffToken),
+      payload: { patientId, doctorId: doctor.id, date: new Date().toISOString(), time: '09:00', notes: 'Check-up' },
+    });
+    expect(appointmentResponse.statusCode).toBe(200);
+    const appointmentId = appointmentResponse.json().appointment.id;
+
+    const consultationResponse = await app.inject({
+      method: 'POST',
+      url: '/consultations',
+      headers: authHeader(staffToken),
+      payload: { appointmentId, patientId, diagnosis: 'Malaria', symptoms: 'Fever', prescriptions: [] },
+    });
+    expect(consultationResponse.statusCode).toBe(200);
+
+    const meResponse = await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(patientToken) });
+    expect(meResponse.statusCode).toBe(200);
+    const body = meResponse.json();
+    expect(body.account.portableId).toMatch(/^BLM-P-/);
+    expect(body.records).toHaveLength(1);
+    expect(body.records[0].clinic.name).toBe(clinic.name);
+    expect(body.records[0].appointments).toHaveLength(1);
+    expect(body.records[0].consultations).toHaveLength(1);
+    expect(body.records[0].consultations[0].diagnosis).toBe('Malaria');
+  });
+
+  it('aggregates linked records across more than one facility in the patient\'s own view', async () => {
+    const clinicA = await seedClinic({ name: 'Clinic A' });
+    const clinicB = await seedClinic({ name: 'Clinic B' });
+    const { user: userA, password: passwordA } = await seedUser({ clinicId: clinicA.id, role: 'NURSE' });
+    const { token: tokenA } = await loginAs(app, userA.email, passwordA);
+    const patientAId = await registerPatient(app, tokenA);
+    const { patientToken, portableId } = await createActivePortalAccount(app, tokenA, patientAId);
+
+    // Phase 1 has no cross-facility linking flow yet (that's a later, more
+    // sensitive phase) - simulate what it will eventually produce by linking
+    // a second facility's own Patient row to the same account directly.
+    const { user: userB, password: passwordB } = await seedUser({ clinicId: clinicB.id, role: 'NURSE' });
+    const { token: tokenB } = await loginAs(app, userB.email, passwordB);
+    const patientBId = await registerPatient(app, tokenB, { name: 'Jane at Clinic B', phone: '0756999777' });
+    const account = await prisma.patientAccount.findUnique({ where: { portableId } });
+    await prisma.patient.update({ where: { id: patientBId }, data: { patientAccountId: account!.id } });
+
+    const meResponse = await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(patientToken) });
+    expect(meResponse.statusCode).toBe(200);
+    const clinicNames = meResponse.json().records.map((r: any) => r.clinic.name).sort();
+    expect(clinicNames).toEqual(['Clinic A', 'Clinic B']);
+  });
+
+  it('rejects a staff token on the patient-only /patient-portal/me route', async () => {
+    const clinic = await seedClinic();
+    const { user, password } = await seedUser({ clinicId: clinic.id, role: 'NURSE' });
+    const { token } = await loginAs(app, user.email, password);
+
+    const response = await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(token) });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('rejects an unauthenticated request to /patient-portal/me', async () => {
+    const response = await app.inject({ method: 'GET', url: '/patient-portal/me' });
     expect(response.statusCode).toBe(401);
   });
 });
