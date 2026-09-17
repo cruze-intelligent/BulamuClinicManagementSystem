@@ -19,12 +19,12 @@ const TOUR_KEY = 'bulamu_onboarding_completed';
 const steps = [
   {
     title: 'Welcome to Bulamu',
-    body: 'Bulamu is now positioned as an operating system for clinics, health centres, hospitals, laboratories, pharmacies, mobile units, and community outreach teams.',
+    body: 'Bulamu is a management system for clinics, health centres, hospitals, laboratories, pharmacies, mobile units, and community outreach teams.',
     icon: ShieldCheck,
   },
   {
     title: 'Register the facility',
-    body: 'Super admins authorize each medical facility, choose the facility type, create the first admin account, and can suspend or reactivate facilities from God Mode.',
+    body: 'Administrators authorize each medical facility, choose the facility type, create the first admin account, and can suspend or reactivate facilities from Facility Management.',
     icon: ClipboardList,
   },
   {

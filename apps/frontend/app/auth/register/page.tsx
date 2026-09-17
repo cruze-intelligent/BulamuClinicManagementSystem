@@ -113,7 +113,7 @@ export default function RegisterFacilityPage() {
               <Input id="facilityName" value={facilityName} onChange={(e) => setFacilityName(e.target.value)} required />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="facilityType">Facility Type</Label>
                 <select
@@ -140,7 +140,7 @@ export default function RegisterFacilityPage() {
 
             <div className="border-t pt-4">
               <p className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-400">Location (optional)</p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
                   <Label htmlFor="district">District</Label>
                   <Input id="district" value={district} onChange={(e) => setDistrict(e.target.value)} />

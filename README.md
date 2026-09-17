@@ -2,20 +2,21 @@
 
 Bulamu is an offline-first management system for Ugandan medical facilities. It supports clinics, Health Centre II/III/IV facilities, hospitals, laboratories, pharmacies, mobile units, and community outreach teams.
 
-## Seeded Access Accounts
+## Seeded Access Accounts (local development only)
 
 Seed the backend, then sign in with:
 
 | Role | Email | Password | Landing area |
 | --- | --- | --- | --- |
-| Super Admin | `superadmin@bulamu.ug` | `BulamuSuperAdmin2025!` | God Mode facility authorization |
 | Facility Admin | `admin@kawempe.bulamu.ug` | `BulamuAccess2026!` | Facility dashboard, staff, invoices, reports |
 | Doctor | `doctor@kawempe.bulamu.ug` | `BulamuAccess2026!` | Consultations and appointments |
 | Nurse | `nurse@kawempe.bulamu.ug` | `BulamuAccess2026!` | Patients, appointments, and lab workflow |
 | Pharmacist | `pharmacist@kawempe.bulamu.ug` | `BulamuAccess2026!` | Inventory and prescriptions |
 | Front Desk Staff | `staff@kawempe.bulamu.ug` | `BulamuAccess2026!` | Patient registration and appointments |
 
-Bulamu is a product of Cruze Intelligent Systems (U) Ltd. Change seeded passwords before any real deployment.
+These are seeded by `npm run seed` for local/dev databases only. Production admin accounts are provisioned
+separately and are not documented here. Bulamu is a product of Cruze Intelligent Systems (U) Ltd. Change seeded
+passwords before any real deployment, and never reuse them in a production environment.
 
 ## Local Development
 

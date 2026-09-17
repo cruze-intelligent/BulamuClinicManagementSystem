@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { roleLabel } from '@/lib/role-labels';
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -162,8 +163,8 @@ export default function UsersPage() {
                   <div>
                     <h3 className="font-semibold">{user.name}</h3>
                     <p className="text-sm text-muted-foreground">{user.email}</p>
-                    <span className="text-xs px-2 py-1 rounded bg-blue-100 inline-block mt-1">
-                      {user.role}
+                    <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 inline-block mt-1">
+                      {roleLabel((user as any).role)}
                     </span>
                   </div>
                   <div className="flex gap-2 items-center">

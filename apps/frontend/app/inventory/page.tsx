@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { AlertTriangle } from 'lucide-react';
 import {
   listLocalInventory,
   addMedicineOffline,
@@ -87,7 +88,7 @@ export default function InventoryPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Pharmacy & Inventory 💊</h1>
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Pharmacy & Inventory</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Local-First Stock Management</p>
           </div>
           <Button onClick={() => setShowForm(!showForm)}>
@@ -97,7 +98,7 @@ export default function InventoryPage() {
 
         {showForm && (
           <Card className="p-6 mb-6">
-            <form onSubmit={addMedicine} className="grid grid-cols-2 gap-4">
+            <form onSubmit={addMedicine} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="name">Medicine Name</Label>
                 <Input
@@ -182,7 +183,7 @@ export default function InventoryPage() {
             No medicine stock items found. Click above to add medicine to inventory (works offline).
           </Card>
         ) : (
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {medicines.map((med) => (
               <Card key={med.id} className="p-4">
                 <div className="flex justify-between items-start mb-2">
@@ -216,8 +217,9 @@ export default function InventoryPage() {
                 </div>
 
                 {med.quantity <= med.reorderLevel && (
-                  <div className="mt-3 p-2 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded font-medium">
-                    ⚠️ Low Stock Alert - Stock replenishment required
+                  <div className="mt-3 flex items-center gap-1.5 p-2 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-400 text-xs rounded font-medium">
+                    <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+                    Low stock - replenishment required
                   </div>
                 )}
               </Card>

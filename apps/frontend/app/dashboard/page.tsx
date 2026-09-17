@@ -44,7 +44,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold mb-6">Dashboard 🏥</h1>
+        <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
         
         {/* Search */}
         <div className="mb-6">
@@ -52,7 +52,7 @@ export default function Dashboard() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 gap-4 mb-8 sm:grid-cols-4">
           <Card className="p-6">
             <h3 className="text-sm text-muted-foreground">Total Patients</h3>
             <p className="text-3xl font-bold">{stats.totalPatients}</p>
@@ -76,7 +76,7 @@ export default function Dashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 gap-4 mb-8 sm:grid-cols-3">
           {hasRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF') && (
             <Link href="/patients/register">
               <Button className="w-full">+ Register Patient</Button>

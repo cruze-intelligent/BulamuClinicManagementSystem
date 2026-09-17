@@ -295,7 +295,7 @@ function PatientHistoryContent() {
 
             {showRhForm && (
               <form onSubmit={handleAddReproductiveHealth} className="space-y-3 mb-6 border-b pb-6">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <Label htmlFor="lmp">Last Menstrual Period</Label>
                     <Input
@@ -351,7 +351,7 @@ function PatientHistoryContent() {
                       ))}
                     </select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <Label htmlFor="gravida">Gravida</Label>
                       <Input

@@ -112,7 +112,7 @@ export default function ChwVisitPage() {
 
             <div>
               <p className="text-sm font-medium mb-2">Symptoms Observed</p>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {SYMPTOM_OPTIONS.map((symptom) => (
                   <label key={symptom} className="flex items-center gap-2 text-sm">
                     <input

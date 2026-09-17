@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { getCurrentClinicId } from '@/lib/local-first';
 import { useAuth } from '@/lib/useAuth';
+import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
 
 export default function ReportsPage() {
   const { hasRole } = useAuth();
@@ -104,13 +105,14 @@ export default function ReportsPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Reports & Surveillance 📊</h1>
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Reports & Surveillance</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               National Health Data Aggregation & Interoperability (HMIS 105 / FHIR)
             </p>
           </div>
           <Button variant="outline" onClick={downloadFhirExport}>
-            📥 Export FHIR R4 Bundle
+            <Download className="size-4" aria-hidden="true" />
+            Export FHIR R4 Bundle
           </Button>
         </div>
 
@@ -171,7 +173,7 @@ export default function ReportsPage() {
         {/* Overview Tab Content */}
         {activeTab === 'overview' && report && (
           <>
-            <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2">
               <Card className="p-6">
                 <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">New Patients Registered</h3>
                 <p className="text-3xl font-bold text-slate-800 dark:text-slate-200 mt-2">{report.totalPatients}</p>
@@ -221,7 +223,8 @@ export default function ReportsPage() {
               </div>
               {hasRole('ADMIN', 'SUPER_ADMIN') && (
                 <Button variant="outline" onClick={pushToDhis2} disabled={pushingDhis2}>
-                  {pushingDhis2 ? 'Pushing...' : '🔄 Push to DHIS2'}
+                  <RefreshCw className="size-4" aria-hidden="true" />
+                  {pushingDhis2 ? 'Pushing...' : 'Push to DHIS2'}
                 </Button>
               )}
             </div>
@@ -229,7 +232,7 @@ export default function ReportsPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 1: Outpatient Attendance Summary</h3>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-center">
                     <p className="text-xs text-slate-500 dark:text-slate-400">Total Outpatient Visits</p>
                     <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{hmisReport.section1_attendance.totalOutpatients}</p>
@@ -269,8 +272,9 @@ export default function ReportsPage() {
                   {hmisReport.section3_essentialMedicines.lowStockList?.length > 0 && (
                     <div className="mt-3 space-y-1">
                       {hmisReport.section3_essentialMedicines.lowStockList.map((m: any, i: number) => (
-                        <div key={i} className="text-xs text-rose-800">
-                          ⚠️ {m.name}: {m.currentQuantity} remaining (Reorder level: {m.reorderLevel})
+                        <div key={i} className="flex items-center gap-1.5 text-xs text-rose-800 dark:text-rose-400">
+                          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+                          {m.name}: {m.currentQuantity} remaining (reorder level: {m.reorderLevel})
                         </div>
                       ))}
                     </div>

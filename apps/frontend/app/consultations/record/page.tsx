@@ -114,7 +114,7 @@ function RecordConsultationForm() {
               </div>
 
               {prescriptions.map((rx, index) => (
-                <div key={index} className="grid grid-cols-4 gap-2 mb-2">
+                <div key={index} className="grid grid-cols-1 gap-2 mb-2 sm:grid-cols-2 md:grid-cols-4">
                   <Input
                     placeholder="Medication (e.g. Coartem)"
                     value={rx.medication}

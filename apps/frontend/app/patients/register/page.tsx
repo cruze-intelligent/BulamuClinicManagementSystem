@@ -86,7 +86,7 @@ export default function RegisterPatient() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="sex">Sex</Label>
                 <select
@@ -115,7 +115,7 @@ export default function RegisterPatient() {
 
             <div className="border-t pt-4">
               <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">Home Address (optional)</p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="village">Village</Label>
                   <Input id="village" value={village} onChange={(e) => setVillage(e.target.value)} />
