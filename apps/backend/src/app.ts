@@ -20,6 +20,7 @@ import { reproductiveHealthRoutes } from './routes/reproductive-health.routes';
 import { referralRoutes } from './routes/referral.routes';
 import { auditRoutes } from './routes/audit.routes';
 import { billingRoutes } from './routes/billing.routes';
+import { commentRoutes } from './routes/comment.routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -72,6 +73,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(auditRoutes);
   await server.register(billingRoutes);
   await server.register(documentRoutes);
+  await server.register(commentRoutes);
 
   return server;
 }

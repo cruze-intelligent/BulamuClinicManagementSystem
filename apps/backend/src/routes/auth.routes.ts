@@ -2,7 +2,8 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcrypt';
 import { generateToken, hashToken } from '../lib/crypto';
-import { sendMail, passwordResetEmail } from '../lib/mailer';
+import { sendMail, passwordResetEmail, facilityPendingApprovalEmail, ADMIN_NOTIFY_EMAIL } from '../lib/mailer';
+import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MIN_PASSWORD_LENGTH = 10;
@@ -32,12 +33,21 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.status(409).send({ error: 'An account with this email already exists' });
       }
 
+      // One free trial per facility: reject a duplicate registration for a
+      // phone number that already has a pending or approved facility on file.
+      const duplicate = await findDuplicateFacility(phone);
+      if (duplicate) {
+        return reply.status(409).send({ error: duplicateFacilityMessage(duplicate) });
+      }
+
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      const facilityCode = await generateFacilityCode();
       const clinic = await prisma.clinic.create({
         data: {
+          facilityCode,
           name: facilityName,
           facilityType: facilityType || 'CLINIC',
-          phone, address,
+          phone, phoneKey: normalizePhoneKey(phone), address,
           district: district || null,
           subCounty: subCounty || null,
           parish: parish || null,
@@ -47,8 +57,20 @@ export async function authRoutes(fastify: FastifyInstance) {
         },
       });
 
-      fastify.log.info(`New facility registration pending approval: ${clinic.name} (${clinic.id})`);
-      return { success: true, message: 'Registration submitted. A Bulamu administrator will review and approve your facility shortly.' };
+      fastify.log.info(`New facility registration pending approval: ${clinic.name} (${clinic.facilityCode})`);
+
+      const consoleUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/super-admin`;
+      await sendMail({
+        to: ADMIN_NOTIFY_EMAIL,
+        subject: `New facility awaiting approval - ${clinic.name}`,
+        html: facilityPendingApprovalEmail(clinic.name, clinic.facilityCode, consoleUrl),
+      });
+
+      return {
+        success: true,
+        message: 'Registration submitted. A Bulamu administrator will review and approve your facility shortly.',
+        facilityCode: clinic.facilityCode,
+      };
     } catch (error: any) {
       return reply.status(400).send({ error: error.message });
     }

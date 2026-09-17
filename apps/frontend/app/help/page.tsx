@@ -16,6 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { openOnboardingTour } from '@/components/onboarding-tour';
+import { CommentsSection } from '@/components/comments-section';
 
 type Faq = { question: string; answer: string };
 type FaqCategory = { title: string; icon: typeof Users; items: Faq[] };
@@ -224,6 +225,12 @@ export default function HelpPage() {
           </Card>
         ))}
       </section>
+
+      <CommentsSection
+        entityType="FEEDBACK"
+        title="Send feedback or report an issue"
+        placeholder="Tell us what's working, what's confusing, or what's broken..."
+      />
     </main>
   );
 }

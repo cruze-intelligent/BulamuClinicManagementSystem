@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { authenticate, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
 import { sendMail, facilityApprovedEmail } from '../lib/mailer';
+import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import bcrypt from 'bcrypt';
 
 const TRIAL_LENGTH_MS = 14 * 24 * 60 * 60 * 1000; // 2-week free trial
@@ -15,7 +16,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
   fastify.get('/super-admin/pending-clinics', { preHandler: [requireRole('SUPER_ADMIN')] }, async (_request, reply) => {
     try {
       const clinics = await prisma.clinic.findMany({
-        where: { registrationStatus: 'PENDING' },
+        where: { registrationStatus: 'PENDING', deletedAt: null },
         orderBy: { createdAt: 'asc' },
         include: {
           users: { where: { role: 'ADMIN' }, select: { id: true, name: true, email: true }, take: 1 },
@@ -24,7 +25,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       return {
         success: true,
         clinics: clinics.map((clinic) => ({
-          id: clinic.id, name: clinic.name, facilityType: clinic.facilityType,
+          id: clinic.id, facilityCode: clinic.facilityCode, name: clinic.name, facilityType: clinic.facilityType,
           phone: clinic.phone, address: clinic.address,
           district: clinic.district, subCounty: clinic.subCounty, parish: clinic.parish,
           createdAt: clinic.createdAt, admin: clinic.users[0] || null,
@@ -112,7 +113,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
   fastify.get('/clinics', { preHandler: [authenticate] }, async (_request, reply) => {
     try {
       const clinics = await prisma.clinic.findMany({
-        where: { isActive: true },
+        where: { isActive: true, deletedAt: null },
         select: { id: true, name: true, facilityType: true, district: true, subCounty: true, parish: true },
         orderBy: { name: 'asc' },
       });
@@ -127,14 +128,15 @@ export async function clinicRoutes(fastify: FastifyInstance) {
     try {
       const [clinicCount, activeClinicCount, userCount, patientCount, appointmentCount, consultationCount, revenue, clinics] =
         await Promise.all([
-          prisma.clinic.count(),
-          prisma.clinic.count({ where: { isActive: true } }),
+          prisma.clinic.count({ where: { deletedAt: null } }),
+          prisma.clinic.count({ where: { isActive: true, deletedAt: null } }),
           prisma.user.count({ where: { isActive: true } }),
           prisma.patient.count(),
           prisma.appointment.count(),
           prisma.consultation.count(),
           prisma.invoice.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }),
           prisma.clinic.findMany({
+            where: { deletedAt: null },
             orderBy: { createdAt: 'desc' },
             include: {
               _count: {
@@ -152,6 +154,9 @@ export async function clinicRoutes(fastify: FastifyInstance) {
                   isActive: true
                 },
                 take: 1
+              },
+              subscription: {
+                select: { status: true, plan: true, amount: true, trialEndsAt: true, currentPeriodEnd: true }
               }
             }
           })
@@ -170,6 +175,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
           evaluationEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
           clinics: clinics.map((clinic) => ({
             id: clinic.id,
+            facilityCode: clinic.facilityCode,
             name: clinic.name,
             facilityType: clinic.facilityType,
             phone: clinic.phone,
@@ -178,7 +184,8 @@ export async function clinicRoutes(fastify: FastifyInstance) {
             createdAt: clinic.createdAt,
             users: clinic._count.users,
             patients: clinic._count.patients,
-            admin: clinic.users[0] || null
+            admin: clinic.users[0] || null,
+            subscription: clinic.subscription
           }))
         }
       };
@@ -192,14 +199,22 @@ export async function clinicRoutes(fastify: FastifyInstance) {
     const { name, facilityType = 'CLINIC', phone, address, adminEmail, adminPassword, adminName } = request.body as any;
 
     try {
+      const duplicate = await findDuplicateFacility(phone);
+      if (duplicate) {
+        return reply.status(409).send({ error: duplicateFacilityMessage(duplicate) });
+      }
+
       // Hash password
       const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      const facilityCode = await generateFacilityCode();
 
       const clinic = await prisma.clinic.create({
         data: {
+          facilityCode,
           name,
           facilityType,
           phone,
+          phoneKey: normalizePhoneKey(phone),
           address,
           registrationStatus: 'APPROVED',
           approvedAt: new Date(),
@@ -253,6 +268,45 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       });
 
       return { success: true, clinic };
+    } catch (error: any) {
+      return reply.status(400).send({ error: error.message });
+    }
+  });
+
+  // Permanently remove a facility from the active system (SUPER_ADMIN only).
+  // This is a soft delete: clinical records are retained for audit/legal
+  // retention, but the facility disappears from every listing and its staff
+  // lose access immediately. Requires typing the exact facility name back as
+  // confirmation, same pattern as GitHub's "delete this repository".
+  fastify.delete('/clinics/:id', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const { id } = request.params as any;
+    const { confirmName } = request.body as any;
+
+    try {
+      const clinic = await prisma.clinic.findUnique({
+        where: { id },
+        include: { users: { where: { role: 'SUPER_ADMIN' }, select: { id: true } } },
+      });
+      if (!clinic || clinic.deletedAt) return reply.status(404).send({ error: 'Facility not found' });
+      if (clinic.users.length > 0) {
+        return reply.status(400).send({ error: 'This facility hosts administrator accounts and cannot be deleted' });
+      }
+      if (confirmName !== clinic.name) {
+        return reply.status(400).send({ error: 'Facility name confirmation did not match' });
+      }
+
+      const authUser = getAuthUser(request);
+      await prisma.$transaction([
+        prisma.clinic.update({
+          where: { id },
+          data: { deletedAt: new Date(), deletedBy: authUser.userId, isActive: false },
+        }),
+        prisma.user.updateMany({ where: { clinicId: id }, data: { isActive: false } }),
+      ]);
+
+      await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'DELETE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { name: clinic.name, facilityCode: clinic.facilityCode } });
+
+      return { success: true };
     } catch (error: any) {
       return reply.status(400).send({ error: error.message });
     }

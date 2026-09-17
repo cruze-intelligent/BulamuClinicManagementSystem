@@ -21,6 +21,11 @@ export default function Dashboard() {
     const token = localStorage.getItem('token');
     const user = JSON.parse(localStorage.getItem('user') || '{}');
 
+    if (!token || !user.clinicId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/dashboard/${user.clinicId}`,
@@ -40,6 +45,7 @@ export default function Dashboard() {
   };
 
   if (loading) return <div className="p-8">Loading...</div>;
+  if (!stats) return <div className="p-8 text-slate-500 dark:text-slate-400">Unable to load dashboard data. Try refreshing.</div>;
 
   return (
     <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">

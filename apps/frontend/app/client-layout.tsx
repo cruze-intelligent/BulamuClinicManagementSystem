@@ -1,6 +1,8 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import { Menu, ShieldCheck } from 'lucide-react';
 import { Sidebar } from '@/components/sidebar';
 import { PwaRuntime } from '@/components/pwa-runtime';
@@ -10,12 +12,31 @@ import { useSidebar } from '@/lib/sidebar-provider';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { collapsed, openMobile } = useSidebar();
+  const [authChecked, setAuthChecked] = useState(false);
 
   // Pages without sidebar
   const noSidebarPages = ['/', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
   const noSidebarPrefixes = ['/legal/'];
   const showSidebar = !noSidebarPages.includes(pathname) && !noSidebarPrefixes.some((prefix) => pathname.startsWith(prefix));
+
+  useEffect(() => {
+    setAuthChecked(false);
+    if (!showSidebar) return;
+    const token = localStorage.getItem('token');
+    const user = localStorage.getItem('user');
+    if (!token || !user) {
+      router.replace('/auth/login');
+      return;
+    }
+    setAuthChecked(true);
+  }, [pathname, showSidebar, router]);
+
+  // Every protected route requires a valid session before it renders or
+  // fetches anything - prevents unauthenticated visits from hitting API
+  // endpoints with an empty user object (e.g. /dashboard/undefined).
+  if (showSidebar && !authChecked) return null;
 
   return (
     <>
@@ -31,12 +52,12 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           >
             <Menu className="size-5" aria-hidden="true" />
           </button>
-          <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
               <ShieldCheck className="size-4" aria-hidden="true" />
             </div>
             <span className="font-semibold text-slate-950 dark:text-slate-50">Bulamu</span>
-          </div>
+          </Link>
         </header>
       )}
       <div

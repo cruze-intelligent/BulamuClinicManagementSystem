@@ -9,12 +9,15 @@ import {
   ClipboardCheck,
   Crown,
   DatabaseZap,
+  MessageSquare,
   PauseCircle,
   PlayCircle,
   Plus,
+  Settings2,
   ShieldAlert,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -37,6 +40,7 @@ const facilityTypes = [
 
 type Facility = {
   id: string;
+  facilityCode: string;
   name: string;
   facilityType: string;
   phone: string;
@@ -46,10 +50,12 @@ type Facility = {
   users: number;
   patients: number;
   admin: { name: string; email: string; isActive: boolean } | null;
+  subscription: { status: string; plan: 'STANDARD' | 'CUSTOM'; amount: number; trialEndsAt: string; currentPeriodEnd: string | null } | null;
 };
 
 type PendingFacility = {
   id: string;
+  facilityCode: string;
   name: string;
   facilityType: string;
   phone: string;
@@ -95,6 +101,7 @@ export default function SuperAdminPage() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [pending, setPending] = useState<PendingFacility[]>([]);
   const [formData, setFormData] = useState(emptyForm);
+  const [feedback, setFeedback] = useState<{ id: string; body: string; authorName: string; authorRole: string; clinicName: string; createdAt: string }[]>([]);
 
   const fetchOverview = async () => {
     const token = localStorage.getItem('token');
@@ -119,6 +126,15 @@ export default function SuperAdminPage() {
     if (data.success) setPending(data.clinics);
   };
 
+  const fetchFeedback = async () => {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/super-admin/feedback`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json();
+    if (data.success) setFeedback(data.comments);
+  };
+
   useEffect(() => {
     if (!hasRole('SUPER_ADMIN')) {
       router.push('/dashboard');
@@ -126,6 +142,7 @@ export default function SuperAdminPage() {
     }
     fetchOverview();
     fetchPending();
+    fetchFeedback();
   }, [hasRole, router]);
 
   const approveFacility = async (id: string) => {
@@ -197,6 +214,62 @@ export default function SuperAdminPage() {
     else alert(data.error || 'Could not update facility status');
   };
 
+  const deleteFacility = async (facility: Facility) => {
+    const typed = window.prompt(
+      `This permanently removes ${facility.name} from Bulamu and deactivates its staff. This cannot be undone from this screen.\n\nType the facility name to confirm: ${facility.name}`
+    );
+    if (typed === null) return;
+    if (typed !== facility.name) {
+      alert('Facility name did not match. Deletion cancelled.');
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/${facility.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ confirmName: typed }),
+    });
+    const data = await response.json();
+    if (data.success) await fetchOverview();
+    else alert(data.error || 'Could not delete facility');
+  };
+
+  const managePlan = async (facility: Facility) => {
+    const isCustom = facility.subscription?.plan === 'CUSTOM';
+    const wantsCustom = window.confirm(
+      isCustom
+        ? `${facility.name} is on a custom plan. Click OK to update its custom amount/notes, or Cancel to move it back to the standard plan.`
+        : `${facility.name} is on the standard plan. Click OK to set it up with a custom plan, or Cancel to leave it standard.`
+    );
+
+    const token = localStorage.getItem('token');
+
+    if (!wantsCustom) {
+      if (!isCustom) return;
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL}/billing/plan/${facility.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ plan: 'STANDARD' }),
+      });
+      await fetchOverview();
+      return;
+    }
+
+    const amountInput = window.prompt('Monthly amount for this facility (UGX):', String(facility.subscription?.amount || 100000));
+    if (amountInput === null) return;
+    const notes = window.prompt('What does this custom plan cover (internal note)?') || '';
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/billing/plan/${facility.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ plan: 'CUSTOM', amount: Number(amountInput) || undefined, notes }),
+    });
+    const data = await response.json();
+    if (data.success) await fetchOverview();
+    else alert(data.error || 'Could not update plan');
+  };
+
   if (!hasRole('SUPER_ADMIN')) return null;
 
   const stats = [
@@ -251,7 +324,7 @@ export default function SuperAdminPage() {
             {pending.map((facility) => (
               <div key={facility.id} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-white dark:bg-slate-900 p-4">
                 <div>
-                  <p className="font-medium text-slate-950 dark:text-slate-50">{facility.name}</p>
+                  <p className="font-medium text-slate-950 dark:text-slate-50">{facility.name} <span className="font-mono text-xs font-normal text-slate-400">({facility.facilityCode})</span></p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{facilityLabel(facility.facilityType)} - {facility.address}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Admin: {facility.admin?.name || 'Unknown'} ({facility.admin?.email || 'n/a'})
@@ -287,6 +360,7 @@ export default function SuperAdminPage() {
               <thead className="bg-slate-50 dark:bg-slate-800 text-xs uppercase text-slate-500 dark:text-slate-400">
                 <tr>
                   <th className="px-4 py-3">Facility</th>
+                  <th className="px-4 py-3">Facility ID</th>
                   <th className="px-4 py-3">Type</th>
                   <th className="px-4 py-3">Admin</th>
                   <th className="px-4 py-3">Records</th>
@@ -301,7 +375,13 @@ export default function SuperAdminPage() {
                       <p className="font-medium text-slate-950 dark:text-slate-50">{facility.name}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{facility.address}</p>
                     </td>
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{facilityLabel(facility.facilityType)}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-300">{facility.facilityCode}</td>
+                    <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
+                      {facilityLabel(facility.facilityType)}
+                      {facility.subscription?.plan === 'CUSTOM' && (
+                        <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-400">Custom plan</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <p className="text-slate-800 dark:text-slate-200">{facility.admin?.name || 'Not assigned'}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{facility.admin?.email || 'Create admin to activate'}</p>
@@ -317,10 +397,25 @@ export default function SuperAdminPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <Button size="sm" variant="outline" onClick={() => updateFacilityStatus(facility)}>
-                        {facility.isActive ? <PauseCircle className="size-4" /> : <PlayCircle className="size-4" />}
-                        {facility.isActive ? 'Suspend' : 'Reactivate'}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => updateFacilityStatus(facility)}>
+                          {facility.isActive ? <PauseCircle className="size-4" /> : <PlayCircle className="size-4" />}
+                          {facility.isActive ? 'Suspend' : 'Reactivate'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => managePlan(facility)}>
+                          <Settings2 className="size-4" />
+                          Plan
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                          onClick={() => deleteFacility(facility)}
+                        >
+                          <Trash2 className="size-4" />
+                          Delete
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -338,7 +433,7 @@ export default function SuperAdminPage() {
               'Offline-first local queue and sync',
               'Tier 2 edge clinic deployment path',
               'Role-based access for facility teams',
-              'Super-admin governance and authorization',
+              'Centralized governance and authorization',
             ].map((item) => (
               <div key={item} className="flex items-center gap-2">
                 <CheckCircle2 className="size-4 text-emerald-700" aria-hidden="true" />
@@ -352,6 +447,31 @@ export default function SuperAdminPage() {
           </div>
         </Card>
       </section>
+
+      <Card className="rounded-lg p-5">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="size-4 text-emerald-700" aria-hidden="true" />
+          <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Feedback inbox</h2>
+        </div>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Also emailed to the Bulamu admin inbox as it comes in.</p>
+        {feedback.length === 0 ? (
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No feedback submitted yet.</p>
+        ) : (
+          <div className="mt-4 max-h-80 space-y-3 overflow-y-auto">
+            {feedback.map((item) => (
+              <div key={item.id} className="rounded-md border border-slate-200 dark:border-slate-800 p-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    {item.authorName} <span className="font-normal text-slate-400">- {item.clinicName}</span>
+                  </p>
+                  <p className="text-xs text-slate-400">{new Date(item.createdAt).toLocaleString()}</p>
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-400">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {showForm && (
         <Card className="rounded-lg p-5">

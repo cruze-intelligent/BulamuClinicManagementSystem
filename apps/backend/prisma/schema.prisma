@@ -20,6 +20,7 @@ model User {
   reproductiveHealthRecords ReproductiveHealthRecord[]
   passwordResetTokens PasswordResetToken[]
   documentsUploaded Document[]
+  comments  Comment[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -40,9 +41,11 @@ model PasswordResetToken {
 
 model Clinic {
   id        String   @id @default(uuid())
+  facilityCode String @unique
   name      String
   facilityType FacilityType @default(CLINIC)
   phone     String
+  phoneKey  String?
   address   String
   district      String?
   subCounty     String?
@@ -58,13 +61,18 @@ model Clinic {
   subscription     Subscription?
   payments         Payment[]
   documents        Document[]
+  comments         Comment[]
   isActive  Boolean  @default(true)
   registrationStatus RegistrationStatus @default(PENDING)
   approvedAt    DateTime?
   approvedBy    String?
   rejectionReason String?
+  deletedAt     DateTime?
+  deletedBy     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([phoneKey])
 }
 
 enum RegistrationStatus {
@@ -78,6 +86,8 @@ model Subscription {
   clinicId         String   @unique
   clinic           Clinic   @relation(fields: [clinicId], references: [id])
   status           SubscriptionStatus @default(TRIALING)
+  plan             SubscriptionPlan @default(STANDARD)
+  planNotes        String?
   trialEndsAt      DateTime
   currentPeriodEnd DateTime?
   amount           Int      @default(100000)
@@ -85,6 +95,11 @@ model Subscription {
   lastPaymentAt    DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+enum SubscriptionPlan {
+  STANDARD
+  CUSTOM
 }
 
 enum SubscriptionStatus {
@@ -434,4 +449,26 @@ enum AuditAction {
   UPDATE
   DEACTIVATE
   DELETE
+}
+
+// General product feedback (FEEDBACK, no linked record) and per-record notes
+// staff of different roles leave for each other (PATIENT today).
+model Comment {
+  id         String            @id @default(uuid())
+  clinicId   String
+  clinic     Clinic            @relation(fields: [clinicId], references: [id])
+  authorId   String
+  author     User              @relation(fields: [authorId], references: [id])
+  authorRole Role
+  entityType CommentEntityType
+  entityId   String?
+  body       String
+  createdAt  DateTime          @default(now())
+
+  @@index([clinicId, entityType, entityId])
+}
+
+enum CommentEntityType {
+  FEEDBACK
+  PATIENT
 }

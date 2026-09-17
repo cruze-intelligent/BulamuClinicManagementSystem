@@ -34,6 +34,7 @@ export default function RegisterFacilityPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [facilityCode, setFacilityCode] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +57,7 @@ export default function RegisterFacilityPage() {
       const data = await response.json();
 
       if (data.success) {
+        setFacilityCode(data.facilityCode || '');
         setSubmitted(true);
       } else {
         setError(data.error || 'Registration failed');
@@ -80,6 +82,11 @@ export default function RegisterFacilityPage() {
             details and approve your account shortly. Once approved, sign in and you&apos;ll have full access with a
             2-week free trial.
           </p>
+          {facilityCode && (
+            <p className="mt-4 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-3 font-mono text-sm text-slate-700 dark:text-slate-300">
+              Your Facility ID: {facilityCode}
+            </p>
+          )}
           <Button className="mt-6 w-full" onClick={() => (window.location.href = '/auth/login')}>
             Back to sign in
           </Button>

@@ -83,7 +83,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
         include: {
           consultation: {
             include: {
-              patient: { include: { clinic: { select: { name: true } } } },
+              patient: { include: { clinic: { select: { name: true, facilityCode: true } } } },
               appointment: { include: { doctor: { select: { name: true } } } },
             },
           },
@@ -95,6 +95,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       const pdf = await generateInvoicePdf({
         invoiceId: invoice.id,
         clinicName: invoice.consultation.patient.clinic.name,
+        facilityCode: invoice.consultation.patient.clinic.facilityCode,
         patientName: invoice.consultation.patient.name,
         patientPhone: invoice.consultation.patient.phone,
         diagnosis: invoice.consultation.diagnosis,

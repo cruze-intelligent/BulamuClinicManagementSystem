@@ -4,20 +4,27 @@ export const metadata = { title: 'Refund Policy | Bulamu' };
 
 export default function RefundPolicyPage() {
   return (
-    <LegalLayout title="Subscription & Refund Policy" effectiveDate="16 September 2026">
+    <LegalLayout title="Subscription & Refund Policy" effectiveDate="17 September 2026">
       <h2>1. Free trial</h2>
       <p>
         Every newly approved facility receives a 2-week (14-day) free trial with full access to Bulamu, starting from
         the date your facility is approved by a Bulamu administrator. No payment is required or collected during the
-        trial, and you may cancel at any time during the trial at no cost.
+        trial, and you may cancel at any time during the trial at no cost. Each facility is entitled to exactly one
+        free trial, tracked by its unique Facility ID (see Terms of Service, section 2) and the phone number used at
+        registration; a facility cannot obtain a second free trial by re-registering.
       </p>
 
       <h2>2. Subscription fee</h2>
       <p>
         After the trial ends, continued access requires an active monthly subscription of{' '}
-        <strong>100,000 UGX (approximately $30) per facility per month</strong>, billed and processed through
-        Pesapal. Pricing may change with notice to facility administrators; changes apply from the next billing
-        cycle onward, never retroactively.
+        <strong>100,000 UGX (approximately $30) per facility per month</strong> under the standard plan, billed and
+        processed through Pesapal. Pricing may change with notice to facility administrators; changes apply from the
+        next billing cycle onward, never retroactively.
+      </p>
+      <p>
+        Facilities with needs outside the standard plan - higher patient volume, multi-facility arrangements, custom
+        integrations, or other features - may agree a custom plan directly with Bulamu. Custom plans have their own
+        agreed price and scope, shown on your facility&apos;s Billing page, and are otherwise subject to this policy.
       </p>
 
       <h2>3. Billing cycle</h2>

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { CompanyName } from '@/components/company-credit';
 
 function loginErrorMessage(reason: string | undefined, rejectionReason: string | undefined): string | null {
   switch (reason) {
@@ -59,8 +60,8 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 px-6 py-10 text-white">
-      <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_440px]">
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 py-10 text-white">
+      <div className="mx-auto grid w-full max-w-6xl items-center gap-8 lg:grid-cols-[1fr_440px]">
         <section>
           <div className="flex items-center gap-3">
             <div className="flex size-11 items-center justify-center rounded-md bg-emerald-500 text-slate-950 dark:text-slate-50">
@@ -85,7 +86,7 @@ export default function LoginPage() {
               </div>
             ))}
           </div>
-          <p className="mt-10 text-sm text-slate-400 dark:text-slate-500">A product of Cruze Intelligent Systems (U) Ltd.</p>
+          <p className="mt-10 text-sm text-slate-400 dark:text-slate-500">A product of <CompanyName className="hover:underline" />.</p>
         </section>
 
         <Card className="rounded-lg border-slate-800 bg-white dark:bg-slate-900 p-6 text-slate-950 dark:text-slate-50 shadow-2xl">
@@ -94,7 +95,7 @@ export default function LoginPage() {
               <LockKeyhole className="size-5" aria-hidden="true" />
             </div>
             <h2 className="mt-4 text-2xl font-semibold tracking-tight">Sign in</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Use your assigned facility or super-admin account.</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Use your assigned facility or administrator account.</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -123,7 +124,7 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-6 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-4 text-sm text-slate-600 dark:text-slate-400">
-            Access is controlled by your facility administrator or Bulamu super administrator.
+            Access is controlled by your facility administrator or the Bulamu administration team.
           </div>
         </Card>
       </div>

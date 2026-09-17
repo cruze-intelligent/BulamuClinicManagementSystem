@@ -150,8 +150,16 @@ export async function syncRoutes(fastify: FastifyInstance) {
             fastify.log.warn(`Rejected consultation mutation ${mutationId}: appointment out of scope`);
             continue;
           }
+          if (payload.patientId !== appointment.patientId) {
+            fastify.log.warn(`Rejected consultation mutation ${mutationId}: patientId does not match appointment`);
+            continue;
+          }
 
           const existing = await prisma.consultation.findUnique({ where: { id: payload.id } });
+          if (existing && existing.patientId !== appointment.patientId) {
+            fastify.log.warn(`Rejected consultation mutation ${mutationId}: record belongs to another patient`);
+            continue;
+          }
 
           if (action === 'delete') {
             if (!existing || existing.deletedAt) continue;
@@ -209,6 +217,10 @@ export async function syncRoutes(fastify: FastifyInstance) {
           }
 
           const existing = await prisma.labTest.findUnique({ where: { id: payload.id } });
+          if (existing && existing.patientId !== payload.patientId) {
+            fastify.log.warn(`Rejected labTest mutation ${mutationId}: record belongs to another patient`);
+            continue;
+          }
 
           if (action === 'delete') {
             if (!existing || existing.deletedAt) continue;
@@ -254,6 +266,10 @@ export async function syncRoutes(fastify: FastifyInstance) {
           }
 
           const existing = await prisma.reproductiveHealthRecord.findUnique({ where: { id: payload.id } });
+          if (existing && existing.patientId !== payload.patientId) {
+            fastify.log.warn(`Rejected reproductiveHealth mutation ${mutationId}: record belongs to another patient`);
+            continue;
+          }
 
           if (action === 'delete') {
             if (!existing || existing.deletedAt) continue;

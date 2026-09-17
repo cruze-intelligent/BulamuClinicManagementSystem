@@ -5,14 +5,19 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileDown } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
+import { SubscriptionCalendar } from '@/components/subscription-calendar';
+import { ContactIcons } from '@/components/contact-icons';
 
 type Subscription = {
   status: 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED';
+  plan: 'STANDARD' | 'CUSTOM';
+  planNotes: string | null;
   trialEndsAt: string;
   currentPeriodEnd: string | null;
   amount: number;
   currency: string;
   lastPaymentAt: string | null;
+  createdAt: string;
 };
 
 type Payment = {
@@ -114,6 +119,15 @@ export default function BillingPage() {
     }
   };
 
+  const facilityCode = (() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}')?.clinic?.facilityCode || null;
+    } catch {
+      return null;
+    }
+  })();
+
   if (!hasRole('ADMIN')) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8">
@@ -128,7 +142,11 @@ export default function BillingPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8">
       <div className="mx-auto max-w-2xl">
         <h1 className="mb-2 text-3xl font-bold text-slate-800 dark:text-slate-200">Billing & Subscription</h1>
-        <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">Manage your facility&apos;s Bulamu subscription.</p>
+        <p className="mb-1 text-sm text-slate-500 dark:text-slate-400">Manage your facility&apos;s Bulamu subscription.</p>
+        {facilityCode && (
+          <p className="mb-6 font-mono text-xs text-slate-400 dark:text-slate-500">Facility ID: {facilityCode}</p>
+        )}
+        {!facilityCode && <div className="mb-6" />}
 
         <Card className="p-6">
           {loading ? (
@@ -138,7 +156,14 @@ export default function BillingPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-500 dark:text-slate-400">Status</p>
-                  <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">{STATUS_LABEL[subscription.status]}</p>
+                  <p className="text-xl font-semibold text-slate-800 dark:text-slate-200">
+                    {STATUS_LABEL[subscription.status]}
+                    {subscription.plan === 'CUSTOM' && (
+                      <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 align-middle text-xs font-medium text-violet-700 dark:bg-violet-950 dark:text-violet-400">
+                        Custom plan
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-slate-500 dark:text-slate-400">Monthly fee</p>
@@ -147,6 +172,13 @@ export default function BillingPage() {
                   </p>
                 </div>
               </div>
+
+              {subscription.plan === 'CUSTOM' && subscription.planNotes && (
+                <div className="mt-4 rounded-lg border border-violet-200 bg-violet-50 p-4 text-sm text-violet-900 dark:border-violet-900 dark:bg-violet-950/50 dark:text-violet-300">
+                  <p className="font-medium">Your custom plan covers:</p>
+                  <p className="mt-1">{subscription.planNotes}</p>
+                </div>
+              )}
 
               {subscription.status === 'TRIALING' && (
                 <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -177,6 +209,35 @@ export default function BillingPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400">No subscription found for your facility.</p>
           )}
         </Card>
+
+        {subscription && (
+          <Card className="mt-6 p-6">
+            <h2 className="mb-1 text-lg font-semibold text-slate-800 dark:text-slate-200">Subscription calendar</h2>
+            <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
+              Highlighted days are covered by your {subscription.status === 'TRIALING' ? 'free trial' : 'subscription'}.
+            </p>
+            <SubscriptionCalendar
+              coveredStart={new Date(subscription.createdAt)}
+              coveredEnd={new Date(
+                subscription.status === 'TRIALING'
+                  ? subscription.trialEndsAt
+                  : subscription.currentPeriodEnd || subscription.trialEndsAt
+              )}
+              label={subscription.status === 'TRIALING' ? 'your free trial' : 'your active subscription'}
+            />
+          </Card>
+        )}
+
+        {subscription && subscription.plan === 'STANDARD' && (
+          <Card className="mt-6 p-6">
+            <h2 className="mb-1 text-lg font-semibold text-slate-800 dark:text-slate-200">Need something different?</h2>
+            <p className="mb-4 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              If your facility needs higher patient volume, multi-facility bundling, a custom integration, or
+              features outside the standard plan, reach out and we&apos;ll set up a custom plan for you.
+            </p>
+            <ContactIcons />
+          </Card>
+        )}
 
         {payments.length > 0 && (
           <Card className="mt-6 p-6">

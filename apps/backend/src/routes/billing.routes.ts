@@ -131,6 +131,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
                 const receiptPdf = await generateReceiptPdf({
                   paymentId: payment.id,
                   clinicName: clinic.name,
+                  facilityCode: clinic.facilityCode,
                   amount: payment.amount,
                   currency: payment.currency,
                   paidAt: new Date(),
@@ -195,6 +196,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
       const pdf = await generateReceiptPdf({
         paymentId: payment.id,
         clinicName: clinic.name,
+        facilityCode: clinic.facilityCode,
         amount: payment.amount,
         currency: payment.currency,
         paidAt: payment.updatedAt,
@@ -206,6 +208,34 @@ export async function billingRoutes(fastify: FastifyInstance) {
       return reply.send(pdf);
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });
+    }
+  });
+
+  // Set a facility onto a custom-priced/custom-feature plan (SUPER_ADMIN
+  // only) - used after an off-platform conversation about needs the standard
+  // plan doesn't cover. Standard facilities can also be moved back with plan:
+  // 'STANDARD'.
+  fastify.patch('/billing/plan/:clinicId', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const { clinicId } = request.params as any;
+    const { plan, amount, notes } = request.body as any;
+
+    if (plan !== 'STANDARD' && plan !== 'CUSTOM') {
+      return reply.status(400).send({ error: 'plan must be STANDARD or CUSTOM' });
+    }
+
+    try {
+      const subscription = await prisma.subscription.update({
+        where: { clinicId },
+        data: {
+          plan,
+          amount: amount != null ? Number(amount) : undefined,
+          planNotes: notes ?? undefined,
+        },
+      });
+      invalidateSubscriptionCache(clinicId);
+      return { success: true, subscription };
+    } catch (error: any) {
+      return reply.status(400).send({ error: error.message });
     }
   });
 

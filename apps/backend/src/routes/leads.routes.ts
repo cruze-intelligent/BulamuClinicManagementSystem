@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { google } from 'googleapis';
+import { sendMail, newAccessRequestEmail, ADMIN_NOTIFY_EMAIL } from '../lib/mailer';
 
 export async function leadsRoutes(fastify: FastifyInstance) {
   
@@ -36,6 +37,12 @@ export async function leadsRoutes(fastify: FastifyInstance) {
             message || ''
           ]]
         }
+      });
+
+      await sendMail({
+        to: ADMIN_NOTIFY_EMAIL,
+        subject: `New Bulamu access request - ${facilityName || clinicName}`,
+        html: newAccessRequestEmail(facilityName || clinicName, contactPerson, phone, email),
       });
 
       return { success: true, message: 'Lead saved successfully' };

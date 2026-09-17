@@ -55,6 +55,7 @@ function drawFooter(doc: PDFKit.PDFDocument) {
 export type InvoicePdfInput = {
   invoiceId: string;
   clinicName: string;
+  facilityCode: string;
   patientName: string;
   patientPhone: string;
   diagnosis: string;
@@ -84,6 +85,7 @@ export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer
   const labelX = 50;
   const valueX = 160;
   const rows: [string, string][] = [
+    ['Facility ID', input.facilityCode],
     ['Patient', input.patientName],
     ['Phone', input.patientPhone || '-'],
     ['Diagnosis', input.diagnosis],
@@ -128,6 +130,7 @@ export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer
 export type ReceiptPdfInput = {
   paymentId: string;
   clinicName: string;
+  facilityCode: string;
   amount: number;
   currency: string;
   paidAt: Date;
@@ -154,6 +157,7 @@ export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer
   const valueX = 200;
   const rows: [string, string][] = [
     ['Facility', input.clinicName],
+    ['Facility ID', input.facilityCode],
     ['Paid on', input.paidAt.toLocaleDateString()],
     ['Subscription period ends', input.periodEnd.toLocaleDateString()],
     ['Payment method', 'Pesapal'],

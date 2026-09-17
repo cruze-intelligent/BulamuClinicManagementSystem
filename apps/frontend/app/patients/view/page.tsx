@@ -11,6 +11,7 @@ import { FileDown, Trash2, Upload } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { calculateAgeYears } from '@/lib/age';
 import { validateReproductiveHealthForm } from '@/lib/reproductive-health-validation';
+import { CommentsSection } from '@/components/comments-section';
 
 const DOCUMENT_CATEGORIES = [
   { value: 'LAB_RESULT', label: 'Lab Result' },
@@ -562,6 +563,17 @@ function PatientHistoryContent() {
                 )}
               </Card>
             ))}
+          </div>
+        )}
+
+        {patientId && (
+          <div className="mt-6">
+            <CommentsSection
+              entityType="PATIENT"
+              entityId={patientId}
+              title="Care team notes"
+              placeholder="Leave a note for the rest of the care team..."
+            />
           </div>
         )}
       </div>

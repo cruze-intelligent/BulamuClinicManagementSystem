@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ContactIcons } from '@/components/contact-icons';
+import { CompanyName } from '@/components/company-credit';
 
 const facilityTypes = [
   'Clinic',
@@ -28,7 +29,7 @@ const capabilities = [
   'Billing, invoices, medicine stock, and reorder alerts',
   'HMIS 105 reporting and FHIR R4 export',
   'Installable PWA with offline queue and sync status',
-  'Super-admin facility authorization and governance',
+  'Facility authorization and administrative governance',
 ];
 
 export default function Home() {
@@ -162,7 +163,7 @@ export default function Home() {
                 <CheckCircle2 className="mx-auto size-12 text-emerald-700" aria-hidden="true" />
                 <h2 className="mt-4 text-2xl font-semibold">Access request received</h2>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-600">
-                  The next step is super-admin authorization, facility setup, and a guided two-week evaluation.
+                  The next step is administrator authorization, facility setup, and a guided two-week evaluation.
                 </p>
                 <Button className="mt-6" onClick={() => setShowAccessModal(false)}>Done</Button>
               </div>
@@ -185,7 +186,7 @@ export default function Home() {
               </div>
               <div>
                 <span className="block text-lg font-semibold">Bulamu</span>
-                <span className="block text-xs text-slate-300">By Cruze Intelligent Systems (U) Ltd</span>
+                <span className="block text-xs text-slate-300">By <CompanyName /></span>
               </div>
             </div>
             <Link href="/auth/login">
@@ -200,7 +201,7 @@ export default function Home() {
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
               Bulamu supports clinics, health centres, hospitals, laboratories, pharmacies, outreach teams, and mobile
-              units with offline-first operations, national reporting, and super-admin governance.
+              units with offline-first operations, national reporting, and centralized administrative governance.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button size="lg" onClick={() => setShowAccessModal(true)}>
@@ -219,7 +220,7 @@ export default function Home() {
 
       <section className="mx-auto grid max-w-7xl gap-4 px-6 py-12 md:grid-cols-3">
         {[
-          { title: 'Facility authorization', body: 'Super admins authorize and supervise the full network.', icon: Building2 },
+          { title: 'Facility authorization', body: 'Administrators authorize and supervise the full network.', icon: Building2 },
           { title: 'Clinical workflow', body: 'Patient registration through consultation, lab, medicine, and billing.', icon: Stethoscope },
           { title: 'PWA resilience', body: 'Installable app shell, offline records, mutation queue, and sync status.', icon: MonitorSmartphone },
         ].map((item) => (
@@ -246,7 +247,7 @@ export default function Home() {
       </section>
       <footer className="border-t border-slate-200 px-6 py-6">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center text-sm text-slate-500 md:flex-row md:text-left">
-          <p>Bulamu is a product of Cruze Intelligent Systems (U) Ltd.</p>
+          <p>Bulamu is a product of <CompanyName className="hover:text-emerald-700 hover:underline" />.</p>
           <div className="flex flex-wrap items-center justify-center gap-4">
             <Link href="/legal/terms" className="hover:text-emerald-700 hover:underline">Terms of Service</Link>
             <Link href="/legal/privacy" className="hover:text-emerald-700 hover:underline">Privacy Policy</Link>

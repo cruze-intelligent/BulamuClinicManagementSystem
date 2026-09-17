@@ -43,7 +43,7 @@ const navItems = [
   { name: 'Inventory', path: '/inventory', icon: Package, roles: ['ADMIN', 'PHARMACIST'] },
   { name: 'Invoices', path: '/invoices', icon: Receipt, roles: ['ADMIN'] },
   { name: 'Reports', path: '/reports', icon: BarChart3, roles: ['ADMIN', 'SUPER_ADMIN'] },
-  { name: 'Sync Activity', path: '/sync-activity', icon: History, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { name: 'Activity', path: '/sync-activity', icon: History, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
   { name: 'Staff', path: '/users', icon: ClipboardList, roles: ['ADMIN'] },
   { name: 'Billing', path: '/billing', icon: CreditCard, roles: ['ADMIN'] },
   { name: 'Help & FAQ', path: '/help', icon: HelpCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
@@ -114,7 +114,7 @@ export function Sidebar() {
         }`}
       >
         <div className="border-b border-slate-200 p-5 dark:border-slate-800">
-          <div className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`}>
+          <Link href="/" className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`} title="Go to welcome page">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
               <ShieldCheck className="size-5" aria-hidden="true" />
             </div>
@@ -124,7 +124,7 @@ export function Sidebar() {
                 <p className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-500">Medical Facility OS</p>
               </div>
             )}
-          </div>
+          </Link>
           {!collapsed && (
             <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
               <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{user.name}</p>
@@ -184,7 +184,7 @@ export function Sidebar() {
         }`}
       >
         <div className="flex items-center justify-between border-b border-slate-200 p-5 dark:border-slate-800">
-          <div className="flex items-center gap-3">
+          <Link href="/" onClick={closeMobile} className="flex items-center gap-3" title="Go to welcome page">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
               <ShieldCheck className="size-5" aria-hidden="true" />
             </div>
@@ -192,7 +192,7 @@ export function Sidebar() {
               <h1 className="text-lg font-semibold tracking-tight text-slate-950 dark:text-slate-50">Bulamu</h1>
               <p className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-500">Medical Facility OS</p>
             </div>
-          </div>
+          </Link>
           <button
             onClick={closeMobile}
             aria-label="Close menu"

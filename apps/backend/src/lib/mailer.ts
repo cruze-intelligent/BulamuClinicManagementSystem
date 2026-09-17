@@ -2,6 +2,15 @@ import nodemailer, { Transporter } from 'nodemailer';
 
 const BRAND_TEAL = '#0f766e';
 
+// Where Bulamu-operations notifications (new registrations, new access
+// requests) are sent. Overridable via env; defaults to the standing admin
+// inbox so this keeps working even if the env var is never set.
+export const ADMIN_NOTIFY_EMAIL = process.env.SUPER_ADMIN_NOTIFY_EMAIL || 'starplay.stargames@gmail.com';
+
+// Inbox for user-submitted feedback specifically - the standing Bulamu
+// operations mailbox rather than a personal one.
+export const FEEDBACK_EMAIL = process.env.FEEDBACK_NOTIFY_EMAIL || 'admin@bulamu.site';
+
 let transporter: Transporter | null | undefined;
 
 /**
@@ -108,6 +117,50 @@ export function facilityApprovedEmail(clinicName: string, loginUrl: string): str
     </p>
     <a href="${loginUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
       Sign In
+    </a>
+  `);
+}
+
+export function facilityPendingApprovalEmail(clinicName: string, facilityCode: string, consoleUrl: string): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">New facility awaiting approval</h2>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
+      <strong>${clinicName}</strong> (Facility ID: ${facilityCode}) just submitted a registration and is
+      waiting for review in Facility Management.
+    </p>
+    <a href="${consoleUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
+      Review facility
+    </a>
+  `);
+}
+
+export function newAccessRequestEmail(facilityName: string, contactPerson: string, phone: string, email: string): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">New evaluation access request</h2>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
+      <strong>${facilityName}</strong> requested evaluation access.<br/>
+      Contact: ${contactPerson} - ${phone} - ${email}
+    </p>
+  `);
+}
+
+export function feedbackSubmittedEmail(authorName: string, authorRole: string, clinicName: string, body: string): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">New feedback submitted</h2>
+    <p style="margin:0 0 8px;font-size:13px;color:#64748b;">
+      ${authorName} (${authorRole}) - ${clinicName}
+    </p>
+    <p style="margin:0;font-size:14px;line-height:1.5;white-space:pre-wrap;">${body}</p>
+  `);
+}
+
+export function newCommentEmail(authorName: string, authorRole: string, entityType: string, body: string, consoleUrl: string): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">New note on a ${entityType.toLowerCase()} record</h2>
+    <p style="margin:0 0 8px;font-size:13px;color:#64748b;">${authorName} (${authorRole})</p>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;white-space:pre-wrap;">${body}</p>
+    <a href="${consoleUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
+      Open Bulamu
     </a>
   `);
 }

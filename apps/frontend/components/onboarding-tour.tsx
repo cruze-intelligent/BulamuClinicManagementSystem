@@ -5,44 +5,120 @@ import {
   ArrowLeft,
   ArrowRight,
   BarChart3,
+  CalendarClock,
   CheckCircle2,
   ClipboardList,
+  CreditCard,
   DatabaseZap,
+  FlaskConical,
+  HelpCircle,
+  Package,
   ShieldCheck,
   Stethoscope,
+  Users,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/lib/useAuth';
 
-const TOUR_KEY = 'bulamu_onboarding_completed';
+const TOUR_KEY_PREFIX = 'bulamu_onboarding_completed';
 
-const steps = [
-  {
-    title: 'Welcome to Bulamu',
-    body: 'Bulamu is a management system for clinics, health centres, hospitals, laboratories, pharmacies, mobile units, and community outreach teams.',
-    icon: ShieldCheck,
-  },
-  {
-    title: 'Register the facility',
-    body: 'Administrators authorize each medical facility, choose the facility type, create the first admin account, and can suspend or reactivate facilities from Facility Management.',
-    icon: ClipboardList,
-  },
-  {
-    title: 'Run the care workflow',
-    body: 'Staff register patients, book appointments, capture consultations, prescribe medicines, request lab tests, invoice visits, and keep a searchable clinical history.',
-    icon: Stethoscope,
-  },
-  {
-    title: 'Work offline first',
-    body: 'The PWA installs to device home screens, caches the app shell, stores records in IndexedDB, queues mutations while offline, and syncs when connectivity returns.',
-    icon: DatabaseZap,
-  },
-  {
-    title: 'Report into the ecosystem',
-    body: 'Reports cover facility metrics, HMIS 105 outpatient surveillance, essential medicine alerts, and FHIR patient bundle export for interoperability work.',
-    icon: BarChart3,
-  },
-];
+type Step = { title: string; body: string; icon: LucideIcon };
+
+const welcomeStep: Step = {
+  title: 'Welcome to Bulamu',
+  body: 'Bulamu is a management system for clinics, health centres, hospitals, laboratories, pharmacies, mobile units, and community outreach teams.',
+  icon: ShieldCheck,
+};
+
+const offlineStep: Step = {
+  title: 'Work offline first',
+  body: 'The PWA installs to device home screens, caches the app shell, stores records in IndexedDB, queues mutations while offline, and syncs when connectivity returns.',
+  icon: DatabaseZap,
+};
+
+const helpStep: Step = {
+  title: 'Get help anytime',
+  body: 'Answers to common questions are in Help & FAQ from the sidebar. If something looks wrong, reach out to your facility administrator.',
+  icon: HelpCircle,
+};
+
+const roleSteps: Record<string, Step[]> = {
+  SUPER_ADMIN: [
+    {
+      title: 'Authorize facilities',
+      body: 'Review self-registered facilities in Facility Management, approve or reject them, and each approved facility is issued its own Facility ID and 2-week free trial.',
+      icon: ClipboardList,
+    },
+    {
+      title: 'Manage the network',
+      body: 'Suspend, reactivate, or permanently delete a facility from Facility Management, and monitor national activity, revenue, and subscriptions from the overview dashboard.',
+      icon: BarChart3,
+    },
+  ],
+  ADMIN: [
+    {
+      title: 'Set up your team',
+      body: 'Create staff accounts and assign roles - Doctor, Nurse, Pharmacist, or Front Desk Staff - from Staff.',
+      icon: Users,
+    },
+    {
+      title: 'Track billing',
+      body: 'Watch your free trial countdown, subscribe through Pesapal when it ends, and download subscription receipts from Billing.',
+      icon: CreditCard,
+    },
+    {
+      title: 'Review reports',
+      body: 'HMIS 105 outpatient reporting, essential medicine alerts, and FHIR patient bundle export are available from Reports.',
+      icon: BarChart3,
+    },
+  ],
+  DOCTOR: [
+    {
+      title: 'Run consultations',
+      body: 'Open a patient from Patients or an appointment from Appointments to record diagnoses, prescriptions, and lab requests tied to their history.',
+      icon: Stethoscope,
+    },
+    {
+      title: 'Order lab tests',
+      body: 'Request and review lab results from Lab Tests, linked directly to the patient record.',
+      icon: FlaskConical,
+    },
+  ],
+  NURSE: [
+    {
+      title: 'Coordinate patient care',
+      body: 'Register patients, manage the day\'s schedule from Appointments, and support consultations and lab workflow.',
+      icon: CalendarClock,
+    },
+    {
+      title: 'Capture household visits',
+      body: 'For community outreach and mobile unit work, log household visits from Household Visit - it works fully offline.',
+      icon: ClipboardList,
+    },
+  ],
+  PHARMACIST: [
+    {
+      title: 'Manage the pharmacy',
+      body: 'Track medicine stock, set reorder levels, and fulfil prescriptions written during consultations from Inventory.',
+      icon: Package,
+    },
+  ],
+  STAFF: [
+    {
+      title: 'Register and book patients',
+      body: 'Register new patients and schedule appointments from the front desk using Patients and Appointments.',
+      icon: Users,
+    },
+  ],
+};
+
+function stepsForRole(role: string | undefined): Step[] {
+  const middle = (role && roleSteps[role]) || roleSteps.STAFF;
+  const closing = role === 'ADMIN' || role === 'SUPER_ADMIN' ? offlineStep : helpStep;
+  return [welcomeStep, ...middle, closing];
+}
 
 export function openOnboardingTour() {
   if (typeof window === 'undefined') return;
@@ -50,11 +126,16 @@ export function openOnboardingTour() {
 }
 
 export function OnboardingTour() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
 
+  const role = user?.role as string | undefined;
+  const tourKey = `${TOUR_KEY_PREFIX}_${role || 'guest'}`;
+  const steps = stepsForRole(role);
+
   useEffect(() => {
-    const completed = localStorage.getItem(TOUR_KEY);
+    const completed = localStorage.getItem(tourKey);
     if (!completed) setOpen(true);
 
     const reopen = () => {
@@ -63,16 +144,16 @@ export function OnboardingTour() {
     };
     window.addEventListener('bulamu-open-onboarding', reopen);
     return () => window.removeEventListener('bulamu-open-onboarding', reopen);
-  }, []);
+  }, [tourKey]);
 
-  if (!open) return null;
+  if (!open || !role) return null;
 
   const current = steps[step];
   const Icon = current.icon;
   const isLast = step === steps.length - 1;
 
   const close = () => {
-    localStorage.setItem(TOUR_KEY, 'true');
+    localStorage.setItem(tourKey, 'true');
     setOpen(false);
   };
 
@@ -103,7 +184,7 @@ export function OnboardingTour() {
 
         <div className="p-6">
           <p className="text-base leading-7 text-slate-600 dark:text-slate-400">{current.body}</p>
-          <div className="mt-6 grid grid-cols-5 gap-2">
+          <div className="mt-6 grid gap-2" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
             {steps.map((item, index) => (
               <div
                 key={item.title}
