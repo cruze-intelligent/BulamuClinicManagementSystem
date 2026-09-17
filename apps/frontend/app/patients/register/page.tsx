@@ -7,8 +7,38 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { createPatientOffline, getCurrentClinicId } from '@/lib/local-first';
+import { LinkExistingPatient } from '@/components/link-existing-patient';
 
 export default function RegisterPatient() {
+  const [mode, setMode] = useState<'new' | 'link'>('new');
+
+  return (
+    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-6 flex gap-2 rounded-lg border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900">
+          <button
+            type="button"
+            onClick={() => setMode('new')}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${mode === 'new' ? 'bg-emerald-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
+          >
+            New patient
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('link')}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium ${mode === 'link' ? 'bg-emerald-600 text-white' : 'text-slate-600 dark:text-slate-400'}`}
+          >
+            Link existing patient
+          </button>
+        </div>
+
+        {mode === 'new' ? <NewPatientForm /> : <LinkExistingPatient />}
+      </div>
+    </div>
+  );
+}
+
+function NewPatientForm() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -57,13 +87,12 @@ export default function RegisterPatient() {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
-      <div className="max-w-2xl mx-auto">
-        <h1 className="text-3xl font-bold mb-2 text-slate-800 dark:text-slate-200">Register New Patient</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Works offline with background sync</p>
+    <>
+      <h1 className="text-3xl font-bold mb-2 text-slate-800 dark:text-slate-200">Register New Patient</h1>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Works offline with background sync</p>
 
-        <Card className="p-6">
-          <form onSubmit={handleSubmit} className="space-y-4">
+      <Card className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label htmlFor="name">Patient Full Name</Label>
               <Input
@@ -140,12 +169,11 @@ export default function RegisterPatient() {
               Patient has given consent for their data to be recorded and shared for care coordination
             </label>
 
-            <Button type="submit" disabled={loading} className="w-full">
-              {loading ? 'Saving...' : 'Register Patient (Offline Ready)'}
-            </Button>
-          </form>
-        </Card>
-      </div>
-    </div>
+          <Button type="submit" disabled={loading} className="w-full">
+            {loading ? 'Saving...' : 'Register Patient (Offline Ready)'}
+          </Button>
+        </form>
+      </Card>
+    </>
   );
 }

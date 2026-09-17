@@ -66,6 +66,7 @@ model Clinic {
   createdPatientAccounts PatientAccount[]
   patientAccessGrants    PatientAccessGrant[]
   appointmentRequests    AppointmentRequest[]
+  patientAccessOtps      PatientAccessOtp[]
   isActive  Boolean  @default(true)
   registrationStatus RegistrationStatus @default(PENDING)
   approvedAt    DateTime?
@@ -516,6 +517,7 @@ model PatientAccount {
   resetTokens       PatientPasswordResetToken[]
   uploadedDocuments Document[]
   appointmentRequests AppointmentRequest[]
+  accessOtps        PatientAccessOtp[]
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime                    @updatedAt
 
@@ -600,4 +602,22 @@ enum AppointmentRequestStatus {
   ACCEPTED
   DECLINED
   CANCELLED
+}
+
+// A short-lived, single-use OTP proving a patient physically present at a
+// new facility is really who they claim (the "OTP" PatientAccessGrantMethod).
+// Scoped to one (patientAccountId, clinicId) pair so an OTP requested for one
+// facility can't be replayed to link the account at a different one.
+model PatientAccessOtp {
+  id               String         @id @default(uuid())
+  patientAccountId String
+  patientAccount   PatientAccount @relation(fields: [patientAccountId], references: [id])
+  clinicId         String
+  clinic           Clinic         @relation(fields: [clinicId], references: [id])
+  codeHash         String
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdAt        DateTime       @default(now())
+
+  @@index([patientAccountId, clinicId])
 }

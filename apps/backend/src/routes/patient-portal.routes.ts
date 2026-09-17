@@ -6,14 +6,28 @@ import { recordAudit } from '../lib/audit';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
+// The clinic that created the account is inherently trusted; any other
+// clinic needs an active, unrevoked PatientAccessGrant - same rule GET
+// /patient-portal/me filters by, kept in sync so revoking a grant also cuts
+// off uploads/appointment requests against that clinic's record, not just
+// its visibility.
+async function isClinicAuthorized(patientAccountId: string, clinicId: string): Promise<boolean> {
+  const account = await prisma.patientAccount.findUnique({ where: { id: patientAccountId }, select: { createdByClinicId: true } });
+  if (account?.createdByClinicId === clinicId) return true;
+  const grant = await prisma.patientAccessGrant.findFirst({ where: { patientAccountId, clinicId, revokedAt: null } });
+  return !!grant;
+}
+
 // A patient's own linked Patient row - verifies recordId actually belongs to
-// this account before any read/write against it, the same way staff routes
-// verify patient.clinicId === authUser.clinicId before touching a record.
+// this account and that the owning clinic is currently authorized, before
+// any read/write against it.
 async function findOwnRecord(patientAccountId: string, recordId: string) {
-  return prisma.patient.findFirst({
+  const record = await prisma.patient.findFirst({
     where: { id: recordId, patientAccountId, deletedAt: null },
     select: { id: true, clinicId: true },
   });
+  if (!record) return null;
+  return (await isClinicAuthorized(patientAccountId, record.clinicId)) ? record : null;
 }
 
 export async function patientPortalRoutes(fastify: FastifyInstance) {
@@ -28,11 +42,22 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     try {
       const account = await prisma.patientAccount.findUnique({
         where: { id: authUser.patientAccountId },
-        select: { portableId: true, email: true, phone: true, createdAt: true },
+        select: { portableId: true, email: true, phone: true, createdAt: true, createdByClinicId: true },
       });
       if (!account) return reply.status(404).send({ error: 'Account not found' });
 
-      const records = await prisma.patient.findMany({
+      // The facility that created the account is inherently trusted (that's
+      // the foundational relationship the account exists because of) - any
+      // other facility's records only surface here while it holds an active
+      // PatientAccessGrant, so a revoked grant removes that facility from the
+      // patient's own view too, not just from staff-to-staff visibility.
+      const activeGrants = await prisma.patientAccessGrant.findMany({
+        where: { patientAccountId: authUser.patientAccountId, revokedAt: null },
+        select: { clinicId: true },
+      });
+      const authorizedClinicIds = new Set([account.createdByClinicId, ...activeGrants.map((g) => g.clinicId)]);
+
+      const allRecords = await prisma.patient.findMany({
         where: { patientAccountId: authUser.patientAccountId, deletedAt: null },
         select: {
           id: true,
@@ -68,6 +93,8 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
           },
         },
       });
+
+      const records = allRecords.filter((r) => authorizedClinicIds.has(r.clinic.id));
 
       return { success: true, account, records };
     } catch (error: any) {
@@ -194,5 +221,58 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     } catch (error: any) {
       return reply.status(400).send({ error: error.message });
     }
+  });
+
+  // "Who has access to my records" - every facility that currently has (or
+  // once had) a grant, including the originating one implicitly, so the
+  // patient can see the full picture of who has been able to see their data.
+  fastify.get('/patient-portal/access', { preHandler: [authenticatePatient] }, async (request, reply) => {
+    const authUser = getPatientAuthUser(request);
+
+    const account = await prisma.patientAccount.findUnique({
+      where: { id: authUser.patientAccountId },
+      select: { createdByClinicId: true, createdByClinic: { select: { id: true, name: true } }, createdAt: true },
+    });
+    if (!account) return reply.status(404).send({ error: 'Account not found' });
+
+    const grants = await prisma.patientAccessGrant.findMany({
+      where: { patientAccountId: authUser.patientAccountId },
+      include: { clinic: { select: { id: true, name: true } } },
+      orderBy: { grantedAt: 'desc' },
+    });
+
+    return {
+      success: true,
+      origin: { clinic: account.createdByClinic, grantedAt: account.createdAt },
+      grants,
+    };
+  });
+
+  // Revoking removes that facility from every future GET /patient-portal/me
+  // response too (see isClinicAuthorized) - the origin facility that created
+  // the account can't be revoked here since it has no grant row to revoke;
+  // that relationship is the account's foundation, not a delegated one.
+  fastify.delete('/patient-portal/access/:grantId', { preHandler: [authenticatePatient] }, async (request, reply) => {
+    const authUser = getPatientAuthUser(request);
+    const { grantId } = request.params as any;
+
+    const grant = await prisma.patientAccessGrant.findFirst({
+      where: { id: grantId, patientAccountId: authUser.patientAccountId },
+    });
+    if (!grant) return reply.status(404).send({ error: 'Access grant not found' });
+    if (grant.revokedAt) return reply.status(409).send({ error: 'This access was already revoked' });
+
+    const updated = await prisma.patientAccessGrant.update({
+      where: { id: grantId },
+      data: { revokedAt: new Date(), revokedByUserId: authUser.patientAccountId },
+    });
+
+    await recordAudit({
+      entity: 'PatientAccessGrant', recordId: grant.id, clinicId: grant.clinicId,
+      action: 'UPDATE', actorUserId: authUser.patientAccountId, actorRole: 'PATIENT',
+      metadata: { status: 'REVOKED' },
+    });
+
+    return { success: true, grant: updated };
   });
 }

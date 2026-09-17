@@ -30,7 +30,7 @@ async function createActivePortalAccount(app: FastifyInstance, staffToken: strin
   await app.inject({ method: 'POST', url: '/patient-auth/set-password', payload: { token: setPasswordToken, password } });
 
   const loginResponse = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: portableId, password } });
-  return { portableId, patientToken: loginResponse.json().token as string };
+  return { portableId, patientToken: loginResponse.json().token as string, password };
 }
 
 function buildMultipart(fields: Record<string, string>, file: { filename: string; content: Buffer; contentType: string }) {
@@ -261,22 +261,27 @@ describe('patient portal', () => {
     expect(body.records[0].consultations[0].diagnosis).toBe('Malaria');
   });
 
-  it('aggregates linked records across more than one facility in the patient\'s own view', async () => {
+  it('aggregates linked records across more than one facility in the patient\'s own view, once that facility holds an active access grant', async () => {
     const clinicA = await seedClinic({ name: 'Clinic A' });
     const clinicB = await seedClinic({ name: 'Clinic B' });
     const { user: userA, password: passwordA } = await seedUser({ clinicId: clinicA.id, role: 'NURSE' });
     const { token: tokenA } = await loginAs(app, userA.email, passwordA);
     const patientAId = await registerPatient(app, tokenA);
-    const { patientToken, portableId } = await createActivePortalAccount(app, tokenA, patientAId);
+    const { patientToken, portableId, password } = await createActivePortalAccount(app, tokenA, patientAId);
 
-    // Phase 1 has no cross-facility linking flow yet (that's a later, more
-    // sensitive phase) - simulate what it will eventually produce by linking
-    // a second facility's own Patient row to the same account directly.
+    // The real cross-facility linking flow (Phase 4): Clinic B looks the
+    // patient up and verifies identity with their own password, which is
+    // what actually creates the PatientAccessGrant that /patient-portal/me
+    // requires before including a clinic's records.
     const { user: userB, password: passwordB } = await seedUser({ clinicId: clinicB.id, role: 'NURSE' });
     const { token: tokenB } = await loginAs(app, userB.email, passwordB);
-    const patientBId = await registerPatient(app, tokenB, { name: 'Jane at Clinic B', phone: '0756999777' });
-    const account = await prisma.patientAccount.findUnique({ where: { portableId } });
-    await prisma.patient.update({ where: { id: patientBId }, data: { patientAccountId: account!.id } });
+    const linkResponse = await app.inject({
+      method: 'POST',
+      url: '/patients/link-account',
+      headers: authHeader(tokenB),
+      payload: { portableId, method: 'PIN', password },
+    });
+    expect(linkResponse.statusCode).toBe(200);
 
     const meResponse = await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(patientToken) });
     expect(meResponse.statusCode).toBe(200);

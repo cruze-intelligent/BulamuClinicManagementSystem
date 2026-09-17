@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, ShieldCheck } from 'lucide-react';
+import { LogOut, ShieldCheck, Users } from 'lucide-react';
 import { usePatientAuth, clearPatientSession } from '@/lib/usePatientAuth';
 
 const PUBLIC_PAGES = ['/patient-portal/login', '/patient-portal/set-password'];
@@ -48,13 +48,22 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
             </div>
           </Link>
           {!isPublicPage && (
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-            >
-              <LogOut className="size-4" aria-hidden="true" />
-              Sign out
-            </button>
+            <div className="flex items-center gap-1">
+              <Link
+                href="/patient-portal/access"
+                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                <Users className="size-4" aria-hidden="true" />
+                Access
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                <LogOut className="size-4" aria-hidden="true" />
+                Sign out
+              </button>
+            </div>
           )}
         </div>
       </header>

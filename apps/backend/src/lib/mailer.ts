@@ -148,6 +148,20 @@ export function patientPortalAccountCreatedEmail(patientName: string, portableId
   `);
 }
 
+export function patientAccessOtpEmail(clinicName: string, code: string): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">Confirm your identity at ${clinicName}</h2>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      ${clinicName} is asking to link your Bulamu patient account to a visit there. If this is you, share this
+      code with the staff member helping you. This code expires in 10 minutes.
+    </p>
+    <p style="margin:0 0 20px;font-size:28px;font-weight:bold;letter-spacing:4px;color:${BRAND_TEAL};">${code}</p>
+    <p style="margin:0;font-size:13px;color:#64748b;">
+      If you did not request this, you can safely ignore this email - no changes were made to your account.
+    </p>
+  `);
+}
+
 export function facilityRejectedEmail(clinicName: string, reason: string | undefined): string {
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} was not approved</h2>

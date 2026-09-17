@@ -1,7 +1,16 @@
+import crypto from 'crypto';
 import { prisma } from './prisma';
 import { normalizePhoneKey } from './facility';
 
 export { normalizePhoneKey };
+
+// 6-digit numeric OTP proving whoever is physically present at a new
+// facility's front desk is really the account holder - readable off a phone
+// screen or SMS/email without transcription errors an alphanumeric code
+// risks.
+export function generateOtp(): string {
+  return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+}
 
 // Excludes ambiguous characters (0/O, 1/I/L) so codes are easy to read aloud
 // or copy onto a printed document - same alphabet as facility codes.
