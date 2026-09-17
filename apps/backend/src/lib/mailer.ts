@@ -121,6 +121,23 @@ export function facilityApprovedEmail(clinicName: string, loginUrl: string): str
   `);
 }
 
+export function patientPortalAccountCreatedEmail(patientName: string, portableId: string, clinicName: string, setPasswordUrl: string): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">Your Bulamu patient account</h2>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      ${clinicName} created a Bulamu portal account for ${patientName}. Your Patient ID is:
+    </p>
+    <p style="margin:0 0 20px;font-size:20px;font-weight:bold;letter-spacing:1px;color:${BRAND_TEAL};">${portableId}</p>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
+      Keep this ID - any Bulamu facility you visit can use it to link your visit there once you approve it.
+      Set your password to finish activating your account. This link expires in 1 hour.
+    </p>
+    <a href="${setPasswordUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
+      Set Password
+    </a>
+  `);
+}
+
 export function facilityRejectedEmail(clinicName: string, reason: string | undefined): string {
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} was not approved</h2>

@@ -2,11 +2,29 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { getSubscriptionGate } from '../lib/subscription';
 import { prisma } from '../lib/prisma';
 
-export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
+/**
+ * Verifies the JWT and re-checks the account/facility is still active.
+ * Shared by authenticate() and requireRole() so this check applies no
+ * matter which one gates a given route - it used to live only in
+ * authenticate(), which meant any route gated by requireRole() alone (most
+ * SUPER_ADMIN-only routes, staff-creation routes, etc.) never got the
+ * suspend/deactivate-takes-effect-immediately protection. Sends the error
+ * response itself and returns false on failure so callers can just return.
+ */
+export async function verifyStaffSession(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
   try {
     await request.jwtVerify();
   } catch (err) {
-    return reply.status(401).send({ error: 'Unauthorized' });
+    reply.status(401).send({ error: 'Unauthorized' });
+    return false;
+  }
+
+  // A patient-portal token is signed with the same JWT_SECRET but carries no
+  // userId/role a staff route can act on - reject it explicitly rather than
+  // letting it fall through into a DB lookup with an undefined id.
+  if ((request.user as { kind?: string }).kind === 'patient') {
+    reply.status(401).send({ error: 'Unauthorized' });
+    return false;
   }
 
   // A JWT stays cryptographically valid until it naturally expires, so a
@@ -20,12 +38,20 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     select: { isActive: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true } } },
   });
   if (!user || !user.isActive || !user.clinic || user.clinic.deletedAt) {
-    return reply.status(401).send({ error: 'Account no longer active' });
+    reply.status(401).send({ error: 'Account no longer active' });
+    return false;
   }
   if (authUser.role !== 'SUPER_ADMIN' && (!user.clinic.isActive || user.clinic.registrationStatus !== 'APPROVED')) {
-    return reply.status(401).send({ error: 'Facility account is not active' });
+    reply.status(401).send({ error: 'Facility account is not active' });
+    return false;
   }
 
+  return true;
+}
+
+export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
+  const ok = await verifyStaffSession(request, reply);
+  if (!ok) return;
   await enforceSubscriptionGate(request, reply);
 }
 

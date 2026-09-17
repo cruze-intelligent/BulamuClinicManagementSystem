@@ -62,6 +62,8 @@ model Clinic {
   payments         Payment[]
   documents        Document[]
   comments         Comment[]
+  createdPatientAccounts PatientAccount[]
+  patientAccessGrants    PatientAccessGrant[]
   isActive  Boolean  @default(true)
   registrationStatus RegistrationStatus @default(PENDING)
   approvedAt    DateTime?
@@ -174,6 +176,11 @@ model Patient {
   consentGivenBy  String?
   clinicId     String
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  // Links this facility's own clinical record to the patient's portable,
+  // cross-facility identity (nullable - most Patient rows have none until a
+  // portal account is created and/or a facility validates access to it).
+  patientAccountId String?
+  patientAccount    PatientAccount? @relation(fields: [patientAccountId], references: [id])
   appointments Appointment[]
   consultations Consultation[]
   labTests LabTest[]
@@ -185,6 +192,7 @@ model Patient {
   updatedAt    DateTime      @updatedAt
 
   @@index([clinicId])
+  @@index([patientAccountId])
 }
 
 model Referral {
@@ -471,4 +479,74 @@ model Comment {
 enum CommentEntityType {
   FEEDBACK
   PATIENT
+}
+
+// A patient's portable, cross-facility identity. Created only by an
+// authenticated staff member at the facility registering the patient -
+// never a public self-service endpoint, which would let anyone claim to be
+// any patient. Each facility keeps its own separate Patient row for its own
+// clinical data; this only links rows belonging to the same real person, so
+// the patient's own portal session can show an aggregated view of their
+// care across every facility they've validated their credentials with.
+model PatientAccount {
+  id                String                      @id @default(uuid())
+  portableId        String                      @unique
+  phone             String
+  phoneKey          String
+  email             String                      @unique
+  password          String
+  status            PatientAccountStatus        @default(ACTIVE)
+  mustResetPassword Boolean                     @default(true)
+  createdByClinicId String
+  createdByClinic   Clinic                      @relation(fields: [createdByClinicId], references: [id])
+  createdByUserId   String
+  patients          Patient[]
+  accessGrants      PatientAccessGrant[]
+  resetTokens       PatientPasswordResetToken[]
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  @@index([phoneKey])
+}
+
+enum PatientAccountStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+// The explicit, auditable, revocable trust boundary for cross-facility
+// access. A facility only ever appears in a patient's aggregated portal
+// view - and was only ever authorized to link its own Patient row to this
+// account - if an active grant (revokedAt null) exists here.
+model PatientAccessGrant {
+  id               String                    @id @default(uuid())
+  patientAccountId String
+  patientAccount   PatientAccount            @relation(fields: [patientAccountId], references: [id])
+  clinicId         String
+  clinic           Clinic                    @relation(fields: [clinicId], references: [id])
+  method           PatientAccessGrantMethod
+  grantedByUserId  String
+  grantedAt        DateTime                  @default(now())
+  revokedAt        DateTime?
+  revokedByUserId  String?
+
+  @@index([patientAccountId])
+  @@index([clinicId])
+}
+
+enum PatientAccessGrantMethod {
+  PIN
+  OTP
+}
+
+model PatientPasswordResetToken {
+  id               String         @id @default(uuid())
+  patientAccountId String
+  patientAccount   PatientAccount @relation(fields: [patientAccountId], references: [id])
+  tokenHash        String         @unique
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdAt        DateTime       @default(now())
+
+  @@index([patientAccountId])
 }

@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
+import rateLimit from '@fastify/rate-limit';
 import { appointmentRoutes } from './routes/appointment.routes';
 import { authRoutes } from './routes/auth.routes';
 import { clinicRoutes } from './routes/clinic.routes';
@@ -21,6 +22,8 @@ import { referralRoutes } from './routes/referral.routes';
 import { auditRoutes } from './routes/audit.routes';
 import { billingRoutes } from './routes/billing.routes';
 import { commentRoutes } from './routes/comment.routes';
+import { patientAccountRoutes } from './routes/patient-account.routes';
+import { patientAuthRoutes } from './routes/patient-auth.routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -51,6 +54,17 @@ export async function buildApp(): Promise<FastifyInstance> {
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   });
 
+  // global: false - no existing route is rate-limited by default (avoids any
+  // risk to the existing test suite / behavior). Individual routes opt in
+  // via `config: { rateLimit: {...} }`, starting with the patient-auth
+  // surfaces (login, password reset, portal lookup) which are the genuinely
+  // abuse-prone new endpoints this plugin exists to protect.
+  await server.register(rateLimit, {
+    global: false,
+    max: process.env.NODE_ENV === 'test' ? 100000 : 20,
+    timeWindow: '1 minute',
+  });
+
   server.get('/health', async () => {
     return { status: 'ok', service: 'Bulamu API' };
   });
@@ -74,6 +88,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(billingRoutes);
   await server.register(documentRoutes);
   await server.register(commentRoutes);
+  await server.register(patientAccountRoutes);
+  await server.register(patientAuthRoutes);
 
   return server;
 }
