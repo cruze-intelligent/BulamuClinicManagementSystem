@@ -24,20 +24,6 @@ jobs:
           NEXT_PUBLIC_COMPANY_URL: https://cruzeintelligentsystems.com
         run: npm run build --workspace=apps/frontend
 
-      - name: Diagnose Hostinger directory layout
-        env:
-          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
-          HOST: ${{ secrets.HOSTINGER_HOST }}
-          PORT: ${{ secrets.HOSTINGER_PORT }}
-          SSH_USER: ${{ secrets.HOSTINGER_USERNAME }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/hostinger_key
-          chmod 600 ~/.ssh/hostinger_key
-          ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/hostinger_key -p "$PORT" -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST" \
-            "echo HOME=\$(pwd); echo; echo '--- home listing ---'; ls -la; echo; echo '--- public_html (if any) ---'; ls -la public_html 2>&1 | head -20; echo; echo '--- domains dir (if any) ---'; ls -la domains 2>&1; find . -maxdepth 3 -iname 'index.html' 2>/dev/null"
-
       - name: Deploy to Hostinger
         env:
           SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
@@ -46,6 +32,10 @@ jobs:
           SSH_USER: ${{ secrets.HOSTINGER_USERNAME }}
           REMOTE_DIR: ${{ secrets.HOSTINGER_REMOTE_DIR }}
         run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/hostinger_key
+          chmod 600 ~/.ssh/hostinger_key
+          ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
           tar -czf /tmp/site.tar.gz -C apps/frontend/out .
           scp -i ~/.ssh/hostinger_key -P "$PORT" -o StrictHostKeyChecking=accept-new /tmp/site.tar.gz "$SSH_USER@$HOST:~/site.tar.gz"
           ssh -i ~/.ssh/hostinger_key -p "$PORT" -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST" \
