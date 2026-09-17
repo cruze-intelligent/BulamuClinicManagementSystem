@@ -41,6 +41,15 @@ jobs:
           ssh -i ~/.ssh/hostinger_key -p "$PORT" -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST" \
             "cd ${REMOTE_DIR:-public_html} && find . -mindepth 1 -delete && tar -xzf ~/site.tar.gz -C . && rm ~/site.tar.gz"
 
+      - name: One-off - clean up the stray top-level public_html copy
+        env:
+          HOST: ${{ secrets.HOSTINGER_HOST }}
+          PORT: ${{ secrets.HOSTINGER_PORT }}
+          SSH_USER: ${{ secrets.HOSTINGER_USERNAME }}
+        run: |
+          ssh -i ~/.ssh/hostinger_key -p "$PORT" -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST" \
+            "find ~/public_html -mindepth 1 -delete && echo cleaned"
+
   migrate-database:
     runs-on: ubuntu-latest
     steps:
