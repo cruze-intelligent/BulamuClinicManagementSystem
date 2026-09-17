@@ -1,9 +1,11 @@
 import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 
 const BRAND_TEAL = '#0f766e';
 const BRAND_TEAL_DARK = '#0c5f58';
 const INK = '#1e293b';
 const MUTED = '#64748b';
+const SITE_URL = 'https://bulamu.site';
 
 /**
  * Draws the shared Bulamu letterhead: a placeholder text/color mark (no
@@ -37,19 +39,37 @@ function drawLetterhead(doc: PDFKit.PDFDocument, clinicName: string) {
   doc.y = 95;
 }
 
-function drawFooter(doc: PDFKit.PDFDocument) {
-  const bottom = doc.page.height - 50;
+// Every generated PDF ends with the same footer: a QR code linking back to
+// the site (lets anyone holding a printed copy verify it came from Bulamu)
+// alongside the standard attribution/timestamp text. QR generation failing
+// should never block the document itself from being produced.
+async function drawFooter(doc: PDFKit.PDFDocument) {
+  // PDFKit auto-inserts a page break for any .text() call whose (y + estimated
+  // line height) would land past doc.page.maxY() - even with an explicit y
+  // argument. Anchor the whole footer block comfortably above that line
+  // (maxY() = page.height - bottom margin) rather than flush against it.
+  const topY = doc.page.maxY() - 47;
+  const qrSize = 42;
+  const textX = 50 + qrSize + 12;
+  const textWidth = doc.page.width - 50 - textX;
+
+  try {
+    const qrBuffer = await QRCode.toBuffer(SITE_URL, {
+      margin: 0,
+      width: qrSize,
+      color: { dark: BRAND_TEAL, light: '#ffffff' },
+    });
+    doc.image(qrBuffer, 50, topY, { width: qrSize, height: qrSize });
+  } catch {
+    // no-op - footer text still renders without the QR code
+  }
+
   doc
     .fontSize(8)
     .fillColor(MUTED)
-    .text('Bulamu is a product of Cruze Intelligent Systems (U) Ltd.', 50, bottom, {
-      align: 'center',
-      width: doc.page.width - 100,
-    })
-    .text(`Generated ${new Date().toLocaleString()}`, 50, bottom + 12, {
-      align: 'center',
-      width: doc.page.width - 100,
-    });
+    .text('Bulamu is a product of Cruze Intelligent Systems (U) Ltd.', textX, topY, { width: textWidth })
+    .text('Verify at bulamu.site', textX, topY + 11, { width: textWidth })
+    .text(`Generated ${new Date().toLocaleString()}`, textX, topY + 22, { width: textWidth });
 }
 
 export type InvoicePdfInput = {
@@ -122,7 +142,7 @@ export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer
     .fillColor(statusColor)
     .text(input.status, 0, amountY + 16, { align: 'right', width: doc.page.width - 50 });
 
-  drawFooter(doc);
+  await drawFooter(doc);
   doc.end();
   return done;
 }
@@ -189,7 +209,7 @@ export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer
     .fillColor('#15803d')
     .text('PAID', 0, amountY + 16, { align: 'right', width: doc.page.width - 50 });
 
-  drawFooter(doc);
+  await drawFooter(doc);
   doc.end();
   return done;
 }
