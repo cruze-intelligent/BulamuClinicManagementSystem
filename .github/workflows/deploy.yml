@@ -1,0 +1,65 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ras]
+
+jobs:
+  migrate-and-deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci --include=dev
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: npx prisma migrate deploy --schema=apps/backend/prisma/schema.prisma
+
+      - name: Trigger Render deploy
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          SERVICE_ID=$(curl -s -H "Authorization: Bearer $RENDER_API_KEY" \
+            "https://api.render.com/v1/services?name=bulamu-backend&limit=1" \
+            | node -e "process.stdin.resume();let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d)[0].service.id))")
+          curl -sf -X POST -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" \
+            "https://api.render.com/v1/services/$SERVICE_ID/deploys" \
+            -d '{"clearCache":"do_not_clear"}'
+
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    needs: migrate-and-deploy-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci --include=dev
+
+      - name: Build frontend static export
+        env:
+          NEXT_PUBLIC_API_URL: https://bulamu-backend.onrender.com
+          NEXT_PUBLIC_SITE_URL: https://bulamu.site
+          NEXT_PUBLIC_GA_MEASUREMENT_ID: G-3BR26WNYPE
+        run: npm run build --workspace=apps/frontend
+
+      - name: Deploy to Hostinger
+        env:
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          HOST: ${{ secrets.HOSTINGER_HOST }}
+          PORT: ${{ secrets.HOSTINGER_PORT }}
+          SSH_USER: ${{ secrets.HOSTINGER_USERNAME }}
+          REMOTE_DIR: ${{ secrets.HOSTINGER_REMOTE_DIR }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/hostinger_key
+          chmod 600 ~/.ssh/hostinger_key
+          ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          tar -czf /tmp/site.tar.gz -C apps/frontend/out .
+          scp -i ~/.ssh/hostinger_key -P "$PORT" -o StrictHostKeyChecking=accept-new /tmp/site.tar.gz "$SSH_USER@$HOST:~/site.tar.gz"
+          ssh -i ~/.ssh/hostinger_key -p "$PORT" -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST" \
+            "cd ${REMOTE_DIR:-public_html} && find . -mindepth 1 -delete && tar -xzf ~/site.tar.gz -C . && rm ~/site.tar.gz"
