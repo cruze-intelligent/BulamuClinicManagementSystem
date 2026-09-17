@@ -49,6 +49,13 @@ export type MailAttachment = {
   contentType: string;
 };
 
+/**
+ * Every caller in this codebase treats email as a best-effort side channel
+ * on top of a primary action (approve a facility, create a portal account,
+ * reset a password) - a provider hiccup (rate limit, network blip, auth
+ * failure) must never fail that primary action. Catches internally and
+ * reports failure through the return value instead of throwing.
+ */
 export async function sendMail(input: {
   to: string;
   subject: string;
@@ -60,15 +67,18 @@ export async function sendMail(input: {
     return { sent: false, reason: 'SMTP not configured' };
   }
 
-  await client.sendMail({
-    from: process.env.SMTP_FROM || 'Bulamu <no-reply@bulamu.ug>',
-    to: input.to,
-    subject: input.subject,
-    html: input.html,
-    attachments: input.attachments,
-  });
-
-  return { sent: true };
+  try {
+    await client.sendMail({
+      from: process.env.SMTP_FROM || 'Bulamu <no-reply@bulamu.ug>',
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      attachments: input.attachments,
+    });
+    return { sent: true };
+  } catch (error: any) {
+    return { sent: false, reason: error.message };
+  }
 }
 
 function emailShell(bodyHtml: string): string {
