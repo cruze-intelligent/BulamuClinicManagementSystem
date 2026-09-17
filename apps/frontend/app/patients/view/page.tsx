@@ -18,8 +18,14 @@ const DOCUMENT_CATEGORIES = [
   { value: 'CONSENT_FORM', label: 'Consent Form' },
   { value: 'ID_COPY', label: 'ID Copy' },
   { value: 'REFERRAL_LETTER', label: 'Referral Letter' },
+  { value: 'PATIENT_UPLOAD', label: 'Uploaded by patient' },
   { value: 'OTHER', label: 'Other' },
 ];
+
+// PATIENT_UPLOAD is set automatically by the patient-portal upload route,
+// never chosen by staff - excluded here so staff can't mislabel their own
+// upload's provenance.
+const STAFF_DOCUMENT_CATEGORIES = DOCUMENT_CATEGORIES.filter((c) => c.value !== 'PATIENT_UPLOAD');
 
 export default function PatientHistoryPage() {
   return (
@@ -514,7 +520,7 @@ function PatientHistoryContent() {
                 className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
                 disabled={uploading}
               >
-                {DOCUMENT_CATEGORIES.map((c) => (
+                {STAFF_DOCUMENT_CATEGORIES.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
               </select>
@@ -557,6 +563,7 @@ function PatientHistoryContent() {
                       {' · '}{formatFileSize(doc.fileSize)}
                       {' · '}{new Date(doc.createdAt).toLocaleDateString()}
                       {doc.uploadedBy?.name ? ` · ${doc.uploadedBy.name}` : ''}
+                      {doc.uploadedByPatientAccount ? ` · Uploaded by patient (${doc.uploadedByPatientAccount.portableId})` : ''}
                     </p>
                   </div>
                   <div className="flex gap-1 items-center shrink-0 ml-3">

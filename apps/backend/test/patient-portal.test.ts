@@ -33,6 +33,21 @@ async function createActivePortalAccount(app: FastifyInstance, staffToken: strin
   return { portableId, patientToken: loginResponse.json().token as string };
 }
 
+function buildMultipart(fields: Record<string, string>, file: { filename: string; content: Buffer; contentType: string }) {
+  const boundary = '----testboundary123456';
+  const parts: Buffer[] = [];
+  for (const [key, value] of Object.entries(fields)) {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`));
+  }
+  parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`));
+  parts.push(file.content);
+  parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+  return {
+    payload: Buffer.concat(parts),
+    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+  };
+}
+
 describe('patient portal', () => {
   let app: FastifyInstance;
 
@@ -281,5 +296,160 @@ describe('patient portal', () => {
   it('rejects an unauthenticated request to /patient-portal/me', async () => {
     const response = await app.inject({ method: 'GET', url: '/patient-portal/me' });
     expect(response.statusCode).toBe(401);
+  });
+
+  it('lets a patient upload a document to their own record and download it back byte-for-byte', async () => {
+    const clinic = await seedClinic();
+    const { user, password } = await seedUser({ clinicId: clinic.id, role: 'NURSE' });
+    const { token } = await loginAs(app, user.email, password);
+    const patientId = await registerPatient(app, token);
+    const { patientToken } = await createActivePortalAccount(app, token, patientId);
+
+    const { payload, headers } = buildMultipart(
+      { recordId: patientId },
+      { filename: 'note.txt', content: Buffer.from('hello from a patient'), contentType: 'text/plain' }
+    );
+    const uploadResponse = await app.inject({
+      method: 'POST',
+      url: '/patient-portal/documents',
+      headers: { ...authHeader(patientToken), ...headers },
+      payload,
+    });
+    expect(uploadResponse.statusCode).toBe(200);
+    const { document } = uploadResponse.json();
+    expect(document.category).toBe('PATIENT_UPLOAD');
+
+    const meResponse = await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(patientToken) });
+    expect(meResponse.json().records[0].documents).toHaveLength(1);
+
+    const downloadResponse = await app.inject({
+      method: 'GET',
+      url: `/patient-portal/documents/${document.id}/download`,
+      headers: authHeader(patientToken),
+    });
+    expect(downloadResponse.statusCode).toBe(200);
+    expect(downloadResponse.body).toBe('hello from a patient');
+  });
+
+  it('rejects a patient uploading a document against a recordId that is not their own', async () => {
+    const clinicA = await seedClinic({ name: 'Clinic A' });
+    const clinicB = await seedClinic({ name: 'Clinic B' });
+    const { user: userA, password: passwordA } = await seedUser({ clinicId: clinicA.id, role: 'NURSE' });
+    const { token: tokenA } = await loginAs(app, userA.email, passwordA);
+    const patientAId = await registerPatient(app, tokenA);
+    const { patientToken } = await createActivePortalAccount(app, tokenA, patientAId);
+
+    const { user: userB, password: passwordB } = await seedUser({ clinicId: clinicB.id, role: 'NURSE' });
+    const { token: tokenB } = await loginAs(app, userB.email, passwordB);
+    const otherPatientId = await registerPatient(app, tokenB, { name: 'Not Jane', phone: '0756999777' });
+
+    const { payload, headers } = buildMultipart(
+      { recordId: otherPatientId },
+      { filename: 'note.txt', content: Buffer.from('hello'), contentType: 'text/plain' }
+    );
+    const response = await app.inject({
+      method: 'POST',
+      url: '/patient-portal/documents',
+      headers: { ...authHeader(patientToken), ...headers },
+      payload,
+    });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('lets a patient request an appointment, and staff at that clinic accept it into a real appointment', async () => {
+    const clinic = await seedClinic();
+    const { user: nurse, password: nursePassword } = await seedUser({ clinicId: clinic.id, role: 'NURSE' });
+    const { user: doctor } = await seedUser({ clinicId: clinic.id, role: 'DOCTOR' });
+    const { token: staffToken } = await loginAs(app, nurse.email, nursePassword);
+    const patientId = await registerPatient(app, staffToken);
+    const { patientToken } = await createActivePortalAccount(app, staffToken, patientId);
+
+    const preferredDate = new Date(Date.now() + 86400000).toISOString();
+    const requestResponse = await app.inject({
+      method: 'POST',
+      url: '/patient-portal/appointments/request',
+      headers: authHeader(patientToken),
+      payload: { recordId: patientId, preferredDate, preferredTime: '10:00', reason: 'Follow-up' },
+    });
+    expect(requestResponse.statusCode).toBe(200);
+    const requestId = requestResponse.json().appointmentRequest.id;
+
+    const meResponse = await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(patientToken) });
+    expect(meResponse.json().records[0].appointmentRequests[0].status).toBe('PENDING');
+
+    const listResponse = await app.inject({ method: 'GET', url: `/appointment-requests/${clinic.id}`, headers: authHeader(staffToken) });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().requests).toHaveLength(1);
+
+    const acceptResponse = await app.inject({
+      method: 'POST',
+      url: `/appointment-requests/${requestId}/accept`,
+      headers: authHeader(staffToken),
+      payload: { doctorId: doctor.id, date: preferredDate, time: '10:00' },
+    });
+    expect(acceptResponse.statusCode).toBe(200);
+    expect(acceptResponse.json().appointmentRequest.status).toBe('ACCEPTED');
+
+    const meAfterAccept = await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(patientToken) });
+    const record = meAfterAccept.json().records[0];
+    expect(record.appointmentRequests[0].status).toBe('ACCEPTED');
+    expect(record.appointments).toHaveLength(1);
+  });
+
+  it('lets staff decline an appointment request with no appointment created', async () => {
+    const clinic = await seedClinic();
+    const { user: nurse, password: nursePassword } = await seedUser({ clinicId: clinic.id, role: 'NURSE' });
+    const { token: staffToken } = await loginAs(app, nurse.email, nursePassword);
+    const patientId = await registerPatient(app, staffToken);
+    const { patientToken } = await createActivePortalAccount(app, staffToken, patientId);
+
+    const requestResponse = await app.inject({
+      method: 'POST',
+      url: '/patient-portal/appointments/request',
+      headers: authHeader(patientToken),
+      payload: { recordId: patientId, preferredDate: new Date().toISOString() },
+    });
+    const requestId = requestResponse.json().appointmentRequest.id;
+
+    const declineResponse = await app.inject({
+      method: 'POST',
+      url: `/appointment-requests/${requestId}/decline`,
+      headers: authHeader(staffToken),
+      payload: { reason: 'Fully booked' },
+    });
+    expect(declineResponse.statusCode).toBe(200);
+    expect(declineResponse.json().appointmentRequest.status).toBe('DECLINED');
+
+    const meResponse = await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(patientToken) });
+    expect(meResponse.json().records[0].appointmentRequests[0].status).toBe('DECLINED');
+    expect(meResponse.json().records[0].appointments).toHaveLength(0);
+  });
+
+  it('rejects staff from a different clinic accepting or declining an appointment request (cross-facility isolation)', async () => {
+    const clinicA = await seedClinic({ name: 'Clinic A' });
+    const clinicB = await seedClinic({ name: 'Clinic B' });
+    const { user: nurseA, password: nursePasswordA } = await seedUser({ clinicId: clinicA.id, role: 'NURSE' });
+    const { token: tokenA } = await loginAs(app, nurseA.email, nursePasswordA);
+    const patientId = await registerPatient(app, tokenA);
+    const { patientToken } = await createActivePortalAccount(app, tokenA, patientId);
+
+    const { user: nurseB, password: nursePasswordB } = await seedUser({ clinicId: clinicB.id, role: 'NURSE' });
+    const { token: tokenB } = await loginAs(app, nurseB.email, nursePasswordB);
+
+    const requestResponse = await app.inject({
+      method: 'POST',
+      url: '/patient-portal/appointments/request',
+      headers: authHeader(patientToken),
+      payload: { recordId: patientId, preferredDate: new Date().toISOString() },
+    });
+    const requestId = requestResponse.json().appointmentRequest.id;
+
+    const acceptResponse = await app.inject({
+      method: 'POST',
+      url: `/appointment-requests/${requestId}/accept`,
+      headers: authHeader(tokenB),
+      payload: { doctorId: nurseB.id, date: new Date().toISOString(), time: '10:00' },
+    });
+    expect(acceptResponse.statusCode).toBe(403);
   });
 });

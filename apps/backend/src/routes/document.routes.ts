@@ -70,7 +70,10 @@ export async function documentRoutes(fastify: FastifyInstance) {
 
     const documents = await prisma.document.findMany({
       where: { patientId },
-      include: { uploadedBy: { select: { name: true } } },
+      include: {
+        uploadedBy: { select: { name: true } },
+        uploadedByPatientAccount: { select: { portableId: true } },
+      },
       orderBy: { createdAt: 'desc' },
     });
 
