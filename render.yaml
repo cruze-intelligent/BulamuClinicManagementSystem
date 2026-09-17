@@ -4,7 +4,12 @@ services:
     runtime: node
     plan: free
     rootDir: .
-    buildCommand: npm ci && npx prisma generate --schema=apps/backend/prisma/schema.prisma && npm run build --workspace=apps/backend
+    # --include=dev is required: Render skips devDependencies during `npm ci`
+    # once NODE_ENV=production is set (a common PaaS convention), but the
+    # build step needs typescript/@types/node/prisma/etc. which all live
+    # there - without this flag the build fails with "Cannot find name
+    # 'process'"-style errors even though it works fine locally.
+    buildCommand: npm ci --include=dev && npx prisma generate --schema=apps/backend/prisma/schema.prisma && npm run build --workspace=apps/backend
     startCommand: npm start --workspace=apps/backend
     healthCheckPath: /health
     envVars:
