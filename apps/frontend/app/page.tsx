@@ -3,11 +3,30 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Building2, CheckCircle2, MonitorSmartphone, ShieldCheck, Stethoscope } from 'lucide-react';
+import {
+  ArrowRight,
+  Building2,
+  CalendarClock,
+  CheckCircle2,
+  MonitorSmartphone,
+  Package,
+  ShieldCheck,
+  Stethoscope,
+  UserCog,
+  Users,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ContactIcons } from '@/components/contact-icons';
 import { CompanyName } from '@/components/company-credit';
+
+const roles = [
+  { title: 'Administrator', body: 'Approve staff, track billing and trial status, and run HMIS 105 / FHIR reports for the whole facility.', icon: UserCog },
+  { title: 'Doctor', body: "Record diagnoses, prescriptions, and lab requests directly against each patient's history.", icon: Stethoscope },
+  { title: 'Nurse', body: "Coordinate the day's schedule, register patients, and capture household outreach visits offline.", icon: CalendarClock },
+  { title: 'Pharmacist', body: 'Track medicine stock, reorder levels, and fulfil prescriptions from consultations.', icon: Package },
+  { title: 'Front desk / Staff', body: 'Register new patients and book appointments at the point of first contact.', icon: Users },
+];
 
 const capabilities = [
   'Patient registry and searchable history',
@@ -118,6 +137,22 @@ export default function Home() {
             <p className="mt-2 text-sm leading-6 text-slate-600">{item.body}</p>
           </Card>
         ))}
+      </section>
+
+      <section className="mx-auto max-w-7xl px-6 pb-12">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
+          <h2 className="text-2xl font-semibold tracking-tight">Built for every role in your facility</h2>
+          <p className="mt-1 text-sm text-slate-500">Each account only sees what its role needs - one system, the right view for everyone.</p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {roles.map((item) => (
+              <div key={item.title} className="rounded-lg border border-slate-200 bg-white p-4">
+                <item.icon className="size-5 text-emerald-700" aria-hidden="true" />
+                <h3 className="mt-3 text-sm font-semibold">{item.title}</h3>
+                <p className="mt-1.5 text-xs leading-5 text-slate-600">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       <section className="mx-auto max-w-7xl px-6 pb-16">

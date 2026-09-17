@@ -15,7 +15,7 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 };
 
-export function PwaRuntime() {
+export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
@@ -93,6 +93,13 @@ export function PwaRuntime() {
       : pending > 0
         ? `${pending} pending`
         : 'Synced';
+
+  // Service worker registration and the install prompt listener above always
+  // run so offline caching and installability work from a visitor's first
+  // visit - only the floating status widget itself is skipped on pages
+  // (marketing, legal, auth) where sync status isn't meaningful and would
+  // otherwise sit on top of page content like the footer contact icons.
+  if (!showWidget) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-wrap items-center justify-end gap-2">

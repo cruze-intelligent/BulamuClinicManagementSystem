@@ -26,7 +26,7 @@ import {
   History,
   X,
 } from 'lucide-react';
-import { useAuth } from '@/lib/useAuth';
+import { useAuth, getHomePath } from '@/lib/useAuth';
 import { useSidebar } from '@/lib/sidebar-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { roleLabel } from '@/lib/role-labels';
@@ -118,7 +118,7 @@ export function Sidebar() {
         }`}
       >
         <div className="border-b border-slate-200 p-5 dark:border-slate-800">
-          <Link href="/" className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`} title="Go to welcome page">
+          <Link href={getHomePath(user)} className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`} title="Go to dashboard">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
               <ShieldCheck className="size-5" aria-hidden="true" />
             </div>
@@ -188,7 +188,7 @@ export function Sidebar() {
         }`}
       >
         <div className="flex items-center justify-between border-b border-slate-200 p-5 dark:border-slate-800">
-          <Link href="/" onClick={closeMobile} className="flex items-center gap-3" title="Go to welcome page">
+          <Link href={getHomePath(user)} onClick={closeMobile} className="flex items-center gap-3" title="Go to dashboard">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
               <ShieldCheck className="size-5" aria-hidden="true" />
             </div>

@@ -9,11 +9,13 @@ import { PwaRuntime } from '@/components/pwa-runtime';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { TrialBanner } from '@/components/trial-banner';
 import { useSidebar } from '@/lib/sidebar-provider';
+import { useAuth, getHomePath } from '@/lib/useAuth';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { collapsed, openMobile } = useSidebar();
+  const { user } = useAuth();
   const [authChecked, setAuthChecked] = useState(false);
 
   // The static export runs with trailingSlash: true, so usePathname() returns
@@ -46,7 +48,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <>
-      <PwaRuntime />
+      <PwaRuntime showWidget={showSidebar} />
       {showSidebar && <OnboardingTour />}
       {showSidebar && <Sidebar />}
       {showSidebar && (
@@ -58,7 +60,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
           >
             <Menu className="size-5" aria-hidden="true" />
           </button>
-          <Link href="/" className="flex items-center gap-2">
+          <Link href={getHomePath(user)} className="flex items-center gap-2">
             <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
               <ShieldCheck className="size-4" aria-hidden="true" />
             </div>
@@ -69,7 +71,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
       <div
         className={
           showSidebar
-            ? `min-h-screen bg-slate-50 px-4 py-4 sm:px-6 sm:py-6 transition-[padding] duration-200 dark:bg-slate-950 ${collapsed ? 'lg:pl-[6.5rem]' : 'lg:pl-72'}`
+            ? `min-h-screen bg-slate-50 px-4 pb-20 pt-4 sm:px-6 sm:pb-24 sm:pt-6 transition-[padding] duration-200 dark:bg-slate-950 ${collapsed ? 'lg:pl-[6.5rem]' : 'lg:pl-72'}`
             : ''
         }
       >

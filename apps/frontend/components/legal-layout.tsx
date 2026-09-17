@@ -1,6 +1,9 @@
+'use client';
+
 import Link from 'next/link';
 import { ShieldCheck } from 'lucide-react';
 import { ContactIcons } from '@/components/contact-icons';
+import { useAuth, getHomePath } from '@/lib/useAuth';
 
 const LEGAL_LINKS = [
   { href: '/legal/terms', label: 'Terms of Service' },
@@ -9,11 +12,12 @@ const LEGAL_LINKS = [
 ];
 
 export function LegalLayout({ title, effectiveDate, children }: { title: string; effectiveDate: string; children: React.ReactNode }) {
+  const { user } = useAuth();
   return (
     <main className="min-h-screen bg-white text-slate-950">
       <header className="border-b border-slate-200 bg-slate-950 px-6 py-6 text-white">
         <div className="mx-auto flex max-w-4xl items-center justify-between">
-          <Link href="/" className="flex items-center gap-3">
+          <Link href={getHomePath(user)} className="flex items-center gap-3">
             <div className="flex size-9 items-center justify-center rounded-md bg-emerald-500 text-slate-950">
               <ShieldCheck className="size-5" aria-hidden="true" />
             </div>
