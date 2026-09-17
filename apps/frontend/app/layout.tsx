@@ -17,7 +17,7 @@ const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-3BR26W
 // Set NEXT_PUBLIC_SITE_URL to the live Hostinger domain once it's assigned -
 // needed for absolute OG/canonical URLs. Falls back to a placeholder so local
 // builds don't break before that domain exists.
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://bulamu.ug";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://bulamu.site";
 const SITE_TITLE = "Bulamu Medical Facility OS";
 const SITE_DESCRIPTION =
   "Offline-first clinic management system for Ugandan medical facilities - clinics, Health Centre II/III/IV, hospitals, laboratories, pharmacies, mobile units, and community outreach teams. Patient records, appointments, prescriptions, billing, and HMIS 105 / FHIR reporting that keeps working without internet.";
@@ -47,8 +47,12 @@ export const metadata: Metadata = {
     title: "Bulamu",
   },
   icons: {
-    icon: "/icons/icon.svg",
-    apple: "/icons/icon.svg",
+    icon: [
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+    ],
+    apple: "/icons/apple-touch-icon.png",
   },
   alternates: {
     canonical: "/",

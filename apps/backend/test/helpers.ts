@@ -10,11 +10,14 @@ export async function buildTestApp(): Promise<FastifyInstance> {
 }
 
 export async function seedClinic(overrides: Partial<{ name: string; facilityType: string; phone: string; address: string; registrationStatus: 'PENDING' | 'APPROVED' | 'REJECTED'; isActive: boolean }> = {}) {
+  const phone = overrides.phone ?? '0700000000';
   const clinic = await prisma.clinic.create({
     data: {
+      facilityCode: `BLM-TEST${Math.random().toString(16).slice(2, 8).toUpperCase()}`,
       name: overrides.name ?? `Test Clinic ${Math.random().toString(16).slice(2)}`,
       facilityType: (overrides.facilityType as any) ?? 'CLINIC',
-      phone: overrides.phone ?? '0700000000',
+      phone,
+      phoneKey: phone.replace(/\D/g, '').slice(-9),
       address: overrides.address ?? 'Test Address',
       registrationStatus: overrides.registrationStatus ?? 'APPROVED',
       isActive: overrides.isActive ?? true,
