@@ -16,10 +16,16 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const { collapsed, openMobile } = useSidebar();
   const [authChecked, setAuthChecked] = useState(false);
 
+  // The static export runs with trailingSlash: true, so usePathname() returns
+  // "/auth/register/" at runtime - strip the trailing slash before matching
+  // against these routes, otherwise the comparison below never matches and
+  // public pages incorrectly get treated as sidebar (auth-required) pages.
+  const normalizedPathname = pathname !== '/' && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+
   // Pages without sidebar
   const noSidebarPages = ['/', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
   const noSidebarPrefixes = ['/legal/'];
-  const showSidebar = !noSidebarPages.includes(pathname) && !noSidebarPrefixes.some((prefix) => pathname.startsWith(prefix));
+  const showSidebar = !noSidebarPages.includes(normalizedPathname) && !noSidebarPrefixes.some((prefix) => normalizedPathname.startsWith(prefix));
 
   useEffect(() => {
     setAuthChecked(false);

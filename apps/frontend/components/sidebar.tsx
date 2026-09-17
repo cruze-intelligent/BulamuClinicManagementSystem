@@ -86,7 +86,11 @@ function NavLinks({
 }
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const rawPathname = usePathname();
+  // The static export runs with trailingSlash: true, so usePathname() returns
+  // e.g. "/dashboard/" at runtime - strip it so active-link matching against
+  // item.path (defined without a trailing slash) actually works.
+  const pathname = rawPathname !== '/' && rawPathname.endsWith('/') ? rawPathname.slice(0, -1) : rawPathname;
   const router = useRouter();
   const { user, hasRole } = useAuth();
   const { collapsed, toggleCollapsed, mobileOpen, closeMobile } = useSidebar();
