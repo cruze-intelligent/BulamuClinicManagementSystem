@@ -26,7 +26,7 @@ const roles = [
   { title: 'Doctor', body: "Record diagnoses, prescriptions, and lab requests directly against each patient's history.", icon: Stethoscope },
   { title: 'Nurse', body: "Coordinate the day's schedule, register patients, and capture household outreach visits offline.", icon: CalendarClock },
   { title: 'Pharmacist', body: 'Track medicine stock, reorder levels, and fulfil prescriptions from consultations.', icon: Package },
-  { title: 'Front desk / Staff', body: 'Register patients, manage appointment scheduling, and coordinate day-to-day front-office operations.', icon: ClipboardList },
+  { title: 'Front desk', body: 'Register patients, manage appointment scheduling, and coordinate day-to-day front-office operations.', icon: ClipboardList },
   { title: 'Patient', body: 'View personal health records and visit history, and stay recognized across every participating facility with a secure patient account.', icon: UserRound },
 ];
 
