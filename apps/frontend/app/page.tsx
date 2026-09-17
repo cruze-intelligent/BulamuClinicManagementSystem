@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Stethoscope,
   UserCog,
-  Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -25,7 +24,6 @@ const roles = [
   { title: 'Doctor', body: "Record diagnoses, prescriptions, and lab requests directly against each patient's history.", icon: Stethoscope },
   { title: 'Nurse', body: "Coordinate the day's schedule, register patients, and capture household outreach visits offline.", icon: CalendarClock },
   { title: 'Pharmacist', body: 'Track medicine stock, reorder levels, and fulfil prescriptions from consultations.', icon: Package },
-  { title: 'Front desk / Staff', body: 'Register new patients and book appointments at the point of first contact.', icon: Users },
 ];
 
 const capabilities = [
@@ -143,7 +141,7 @@ export default function Home() {
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
           <h2 className="text-2xl font-semibold tracking-tight">Built for every role in your facility</h2>
           <p className="mt-1 text-sm text-slate-500">Each account only sees what its role needs - one system, the right view for everyone.</p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {roles.map((item) => (
               <div key={item.title} className="rounded-lg border border-slate-200 bg-white p-4">
                 <item.icon className="size-5 text-emerald-700" aria-hidden="true" />
