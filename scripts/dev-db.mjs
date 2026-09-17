@@ -24,7 +24,9 @@ const pg = new EmbeddedPostgres({
 
 const alreadyInitialised = fs.existsSync(path.join(dataDir, 'PG_VERSION'));
 
-await pg.initialise();
+if (!alreadyInitialised) {
+  await pg.initialise();
+}
 await pg.start();
 
 if (!alreadyInitialised) {

@@ -124,3 +124,68 @@ export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer
   doc.end();
   return done;
 }
+
+export type ReceiptPdfInput = {
+  paymentId: string;
+  clinicName: string;
+  amount: number;
+  currency: string;
+  paidAt: Date;
+  periodEnd: Date;
+};
+
+export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer> {
+  const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
+  const chunks: Buffer[] = [];
+  doc.on('data', (chunk) => chunks.push(chunk));
+
+  const done = new Promise<Buffer>((resolve) => {
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+
+  drawLetterhead(doc, input.clinicName);
+
+  doc.moveDown(2);
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('SUBSCRIPTION RECEIPT');
+  doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(`#${input.paymentId}`);
+  doc.moveDown(1.5);
+
+  const labelX = 50;
+  const valueX = 200;
+  const rows: [string, string][] = [
+    ['Facility', input.clinicName],
+    ['Paid on', input.paidAt.toLocaleDateString()],
+    ['Subscription period ends', input.periodEnd.toLocaleDateString()],
+    ['Payment method', 'Pesapal'],
+  ];
+
+  doc.fontSize(10);
+  for (const [label, value] of rows) {
+    const y = doc.y;
+    doc.fillColor(MUTED).font('Helvetica').text(label, labelX, y, { width: 140 });
+    doc.fillColor(INK).font('Helvetica-Bold').text(value, valueX, y, { width: 340 });
+    doc.moveDown(0.6);
+  }
+
+  doc.moveDown(1.5);
+  doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+  doc.moveDown(1);
+
+  const amountY = doc.y;
+  doc.font('Helvetica').fontSize(11).fillColor(MUTED).text('Amount Paid', labelX, amountY);
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(22)
+    .fillColor(BRAND_TEAL_DARK)
+    .text(`${input.currency} ${input.amount.toLocaleString()}`, labelX, amountY + 16);
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(10)
+    .fillColor('#15803d')
+    .text('PAID', 0, amountY + 16, { align: 'right', width: doc.page.width - 50 });
+
+  drawFooter(doc);
+  doc.end();
+  return done;
+}

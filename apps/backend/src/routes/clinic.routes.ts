@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { requireRole } from '../middleware/rbac.middleware';
 import { authenticate, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
+import { sendMail, facilityApprovedEmail } from '../lib/mailer';
 import bcrypt from 'bcrypt';
 
 const TRIAL_LENGTH_MS = 14 * 24 * 60 * 60 * 1000; // 2-week free trial
@@ -65,6 +66,17 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       ]);
 
       await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { registrationStatus: 'APPROVED' } });
+
+      const admin = await prisma.user.findFirst({ where: { clinicId: id, role: 'ADMIN' } });
+      if (admin) {
+        const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`;
+        await sendMail({
+          to: admin.email,
+          subject: `${clinic.name} is approved on Bulamu`,
+          html: facilityApprovedEmail(clinic.name, loginUrl),
+        });
+      }
+
       return { success: true, clinic };
     } catch (error: any) {
       return reply.status(400).send({ error: error.message });

@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcrypt';
 import { generateToken, hashToken } from '../lib/crypto';
+import { sendMail, passwordResetEmail } from '../lib/mailer';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MIN_PASSWORD_LENGTH = 10;
@@ -134,10 +135,17 @@ export async function authRoutes(fastify: FastifyInstance) {
         });
 
         const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/reset-password?token=${rawToken}`;
-        // No email/SMS provider is wired up yet (see DEPLOYMENT.md) - the
-        // reset link is logged so an admin can relay it out-of-band until
-        // one is configured. Never expose the raw token in the response body.
-        fastify.log.info(`Password reset requested for ${email}: ${resetUrl}`);
+        const mailResult = await sendMail({
+          to: email,
+          subject: 'Reset your Bulamu password',
+          html: passwordResetEmail(resetUrl),
+        });
+        // SMTP isn't configured everywhere (e.g. local dev) - log the link so
+        // it can be relayed out-of-band until it is. Never expose the raw
+        // token in the response body once email delivery is actually live.
+        if (!mailResult.sent) {
+          fastify.log.info(`Password reset requested for ${email}: ${resetUrl}`);
+        }
 
         if (process.env.NODE_ENV !== 'production') {
           return { success: true, devResetUrl: resetUrl };

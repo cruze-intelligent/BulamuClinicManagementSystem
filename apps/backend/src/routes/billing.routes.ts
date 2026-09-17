@@ -1,9 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma';
-import { authenticate, resolveClinicScope, getAuthUser } from '../middleware/auth.middleware';
+import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { invalidateSubscriptionCache } from '../lib/subscription';
+import { sendMail, subscriptionReceiptEmail } from '../lib/mailer';
+import { generateReceiptPdf } from '../lib/pdf';
 import {
   getAccessToken, registerIpnUrl, submitOrderRequest, getTransactionStatus, PESAPAL_STATUS_COMPLETED,
 } from '../services/pesapal.service';
@@ -114,11 +116,33 @@ export async function billingRoutes(fastify: FastifyInstance) {
               data: { status: completed ? 'COMPLETED' : 'FAILED', rawCallback: statusResult.status as any },
             });
             if (completed) {
+              const periodEnd = new Date(Date.now() + SUBSCRIPTION_PERIOD_MS);
               await prisma.subscription.update({
                 where: { id: payment.subscriptionId },
-                data: { status: 'ACTIVE', lastPaymentAt: new Date(), currentPeriodEnd: new Date(Date.now() + SUBSCRIPTION_PERIOD_MS) },
+                data: { status: 'ACTIVE', lastPaymentAt: new Date(), currentPeriodEnd: periodEnd },
               });
               invalidateSubscriptionCache(payment.clinicId);
+
+              const [clinic, admin] = await Promise.all([
+                prisma.clinic.findUnique({ where: { id: payment.clinicId } }),
+                prisma.user.findFirst({ where: { clinicId: payment.clinicId, role: 'ADMIN' } }),
+              ]);
+              if (clinic && admin) {
+                const receiptPdf = await generateReceiptPdf({
+                  paymentId: payment.id,
+                  clinicName: clinic.name,
+                  amount: payment.amount,
+                  currency: payment.currency,
+                  paidAt: new Date(),
+                  periodEnd,
+                });
+                await sendMail({
+                  to: admin.email,
+                  subject: `Bulamu payment receipt - ${clinic.name}`,
+                  html: subscriptionReceiptEmail(clinic.name, payment.amount, payment.currency, periodEnd),
+                  attachments: [{ filename: `receipt-${payment.id}.pdf`, content: receiptPdf, contentType: 'application/pdf' }],
+                });
+              }
             }
           }
         }
@@ -133,6 +157,56 @@ export async function billingRoutes(fastify: FastifyInstance) {
       orderMerchantReference: OrderMerchantReference,
       status: 200,
     });
+  });
+
+  // Payment history for the caller's facility, for the Billing page's
+  // "Receipts" list.
+  fastify.get('/billing/payments', { preHandler: [authenticate] }, async (request, reply) => {
+    const clinicId = resolveClinicScope(request, reply, (request.query as any)?.clinicId);
+    if (!clinicId) return;
+    try {
+      const payments = await prisma.payment.findMany({
+        where: { clinicId, status: 'COMPLETED' },
+        orderBy: { updatedAt: 'desc' },
+      });
+      return { success: true, payments };
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
+  });
+
+  // Re-download a past subscription payment's receipt (also emailed at the
+  // time of payment, but not everyone keeps that email).
+  fastify.get('/billing/receipts/:paymentId/pdf', { preHandler: [authenticate] }, async (request, reply) => {
+    const { paymentId } = request.params as any;
+    try {
+      const payment = await prisma.payment.findUnique({ where: { id: paymentId } });
+      if (!payment || payment.status !== 'COMPLETED') {
+        return reply.status(404).send({ error: 'Receipt not found' });
+      }
+      if (!assertClinicMatch(request, reply, payment.clinicId)) return;
+
+      const [clinic, subscription] = await Promise.all([
+        prisma.clinic.findUnique({ where: { id: payment.clinicId } }),
+        prisma.subscription.findUnique({ where: { id: payment.subscriptionId } }),
+      ]);
+      if (!clinic || !subscription) return reply.status(404).send({ error: 'Receipt not found' });
+
+      const pdf = await generateReceiptPdf({
+        paymentId: payment.id,
+        clinicName: clinic.name,
+        amount: payment.amount,
+        currency: payment.currency,
+        paidAt: payment.updatedAt,
+        periodEnd: subscription.currentPeriodEnd || payment.updatedAt,
+      });
+
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="receipt-${payment.id}.pdf"`);
+      return reply.send(pdf);
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
   });
 
   // One-time bootstrap: registers Bulamu's IPN URL with Pesapal. Run this

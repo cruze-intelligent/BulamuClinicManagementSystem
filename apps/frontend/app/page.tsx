@@ -70,8 +70,33 @@ export default function Home() {
     }
   };
 
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: 'Bulamu Medical Facility OS',
+    applicationCategory: 'MedicalApplication',
+    operatingSystem: 'Web, Android, iOS (PWA)',
+    description:
+      'Offline-first clinic management system for Ugandan medical facilities: patient records, appointments, prescriptions, billing, inventory, and HMIS 105 / FHIR reporting.',
+    offers: {
+      '@type': 'Offer',
+      price: '0',
+      priceCurrency: 'UGX',
+      description: '2-week free trial, then a monthly subscription',
+    },
+    provider: {
+      '@type': 'Organization',
+      name: 'Cruze Intelligent Systems (U) Ltd',
+      areaServed: 'UG',
+    },
+  };
+
   return (
     <main className="min-h-screen bg-white text-slate-950">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
       {showAccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4 backdrop-blur-sm">
           <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg p-6">
