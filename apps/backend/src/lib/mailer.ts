@@ -121,6 +121,18 @@ export function facilityApprovedEmail(clinicName: string, loginUrl: string): str
   `);
 }
 
+export function facilityRejectedEmail(clinicName: string, reason: string | undefined): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} was not approved</h2>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
+      After review, we were unable to approve this facility's registration on Bulamu${reason ? `: <strong>${reason}</strong>` : '.'}
+    </p>
+    <p style="margin:0;font-size:13px;color:#64748b;">
+      If you believe this is a mistake or have questions, please contact Bulamu support.
+    </p>
+  `);
+}
+
 export function facilityPendingApprovalEmail(clinicName: string, facilityCode: string, consoleUrl: string): string {
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">New facility awaiting approval</h2>

@@ -3,7 +3,7 @@ import { prisma, isUniqueConstraintError } from '../lib/prisma';
 import { requireRole } from '../middleware/rbac.middleware';
 import { authenticate, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
-import { sendMail, facilityApprovedEmail } from '../lib/mailer';
+import { sendMail, facilityApprovedEmail, facilityRejectedEmail } from '../lib/mailer';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import bcrypt from 'bcrypt';
 
@@ -102,6 +102,16 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       });
 
       await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { registrationStatus: 'REJECTED', reason } });
+
+      const admin = await prisma.user.findFirst({ where: { clinicId: id, role: 'ADMIN' } });
+      if (admin) {
+        await sendMail({
+          to: admin.email,
+          subject: `${clinic.name} registration update - Bulamu`,
+          html: facilityRejectedEmail(clinic.name, reason || undefined),
+        });
+      }
+
       return { success: true, clinic };
     } catch (error: any) {
       return reply.status(400).send({ error: error.message });
