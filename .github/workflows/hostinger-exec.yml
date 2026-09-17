@@ -1,0 +1,25 @@
+name: Hostinger one-off command
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Shell command to run on the Hostinger account over SSH'
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run command
+        env:
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          HOST: ${{ secrets.HOSTINGER_HOST }}
+          PORT: ${{ secrets.HOSTINGER_PORT }}
+          SSH_USER: ${{ secrets.HOSTINGER_USERNAME }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/hostinger_key
+          chmod 600 ~/.ssh/hostinger_key
+          ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/hostinger_key -p "$PORT" -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST" -- "${{ github.event.inputs.command }}"
