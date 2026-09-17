@@ -45,6 +45,7 @@ jobs:
           NEXT_PUBLIC_API_URL: https://bulamu-backend.onrender.com
           NEXT_PUBLIC_SITE_URL: https://bulamu.site
           NEXT_PUBLIC_GA_MEASUREMENT_ID: G-3BR26WNYPE
+          NEXT_PUBLIC_COMPANY_URL: https://cruzeintelligentsystems.com
         run: npm run build --workspace=apps/frontend
 
       - name: Deploy to Hostinger
