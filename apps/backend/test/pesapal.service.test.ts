@@ -1,7 +1,26 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  getAccessToken, registerIpnUrl, submitOrderRequest, getTransactionStatus, getPesapalBaseUrl,
+  getAccessToken, registerIpnUrl, submitOrderRequest, getTransactionStatus, getPesapalBaseUrl, describePesapalError,
 } from '../src/services/pesapal.service';
+
+describe('describePesapalError', () => {
+  it('extracts the message, code and type from Pesapal\'s nested error shape', () => {
+    const text = describePesapalError({ error: { error_type: 'invalid_request', code: 'invalid_notification_id', message: 'Notification id not found' }, status: '500' });
+    expect(text).toContain('Notification id not found');
+    expect(text).toContain('invalid_notification_id');
+    expect(text).toContain('invalid_request');
+  });
+
+  it('handles a plain string error and a top-level message', () => {
+    expect(describePesapalError({ error: 'Invalid currency' })).toBe('Invalid currency');
+    expect(describePesapalError({ message: 'Service unavailable' })).toBe('Service unavailable');
+  });
+
+  it('says so plainly when Pesapal returned nothing useful', () => {
+    expect(describePesapalError(undefined)).toBe('no details were returned');
+    expect(describePesapalError({})).toBe('no details were returned');
+  });
+});
 
 describe('getPesapalBaseUrl', () => {
   it('uses the sandbox host by default', () => {

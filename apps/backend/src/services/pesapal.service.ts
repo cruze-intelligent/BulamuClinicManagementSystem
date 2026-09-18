@@ -46,6 +46,28 @@ export async function registerIpnUrl(
   return { success: true, ipnId: body.ipn_id };
 }
 
+/**
+ * Pesapal reports failures in a few different shapes depending on the
+ * endpoint and error class (`{ error: { code, message } }`, `{ message }`,
+ * `{ error: "text" }`, or an empty body). Pull out the most useful human
+ * readable reason so it can be shown to the admin and logged, instead of
+ * the opaque "could not create order".
+ */
+export function describePesapalError(error: any): string {
+  if (!error) return 'no details were returned';
+  if (typeof error === 'string') return error;
+  const nested = error.error;
+  const parts = [
+    typeof nested === 'string' ? nested : nested?.message,
+    nested?.code ? `code: ${nested.code}` : undefined,
+    nested?.error_type ? `type: ${nested.error_type}` : undefined,
+    error.message,
+  ].filter(Boolean);
+  if (parts.length > 0) return parts.join(' - ');
+  const raw = JSON.stringify(error);
+  return raw === '{}' ? 'no details were returned' : raw.slice(0, 200);
+}
+
 export type PesapalOrderRequest = {
   id: string; // merchant reference, must be unique per order
   amount: number;

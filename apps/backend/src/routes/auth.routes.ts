@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcrypt';
 import { generateToken, hashToken } from '../lib/crypto';
-import { sendMail, passwordResetEmail, facilityPendingApprovalEmail, ADMIN_NOTIFY_EMAIL } from '../lib/mailer';
+import { sendMail, passwordResetEmail, facilityPendingApprovalEmail, registrationReceivedEmail, ADMIN_NOTIFY_EMAIL } from '../lib/mailer';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import { isUniqueConstraintError } from '../lib/prisma';
 
@@ -29,19 +29,23 @@ export async function authRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
+      // The email check, the one-trial-per-facility check, and the (CPU-heavy
+      // on small hosts) password hash are independent - run them together
+      // rather than paying for each round trip in sequence.
+      const [existing, duplicate, hashedPassword] = await Promise.all([
+        prisma.user.findUnique({ where: { email: adminEmail } }),
+        findDuplicateFacility(phone),
+        bcrypt.hash(adminPassword, 10),
+      ]);
       if (existing) {
         return reply.status(409).send({ error: 'An account with this email already exists' });
       }
-
       // One free trial per facility: reject a duplicate registration for a
       // phone number that already has a pending or approved facility on file.
-      const duplicate = await findDuplicateFacility(phone);
       if (duplicate) {
         return reply.status(409).send({ error: duplicateFacilityMessage(duplicate) });
       }
 
-      const hashedPassword = await bcrypt.hash(adminPassword, 10);
       const facilityCode = await generateFacilityCode();
       const clinic = await prisma.clinic.create({
         data: {
@@ -60,12 +64,25 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       fastify.log.info(`New facility registration pending approval: ${clinic.name} (${clinic.facilityCode})`);
 
+      // Email is a best-effort side channel: the registration is already
+      // saved, so never make the registrant wait on (or fail because of) an
+      // SMTP round trip. sendMail never throws; failures are only logged.
       const consoleUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/super-admin`;
-      await sendMail({
-        to: ADMIN_NOTIFY_EMAIL,
-        subject: `New facility awaiting approval - ${clinic.name}`,
-        html: facilityPendingApprovalEmail(clinic.name, clinic.facilityCode, consoleUrl),
-      });
+      void Promise.all([
+        sendMail({
+          to: ADMIN_NOTIFY_EMAIL,
+          subject: `New facility awaiting approval - ${clinic.name}`,
+          html: facilityPendingApprovalEmail(clinic.name, clinic.facilityCode, consoleUrl),
+        }),
+        sendMail({
+          to: adminEmail,
+          subject: `We received your Bulamu registration - ${clinic.name}`,
+          html: registrationReceivedEmail(adminName, clinic.name, clinic.facilityCode),
+        }),
+      ]).then(([adminNotice, registrantNotice]) => {
+        if (!adminNotice.sent) fastify.log.warn(`Registration admin notice not sent: ${adminNotice.reason}`);
+        if (!registrantNotice.sent) fastify.log.warn(`Registration confirmation to ${adminEmail} not sent: ${registrantNotice.reason}`);
+      }).catch((error) => fastify.log.error(error, 'Registration emails failed'));
 
       return {
         success: true,

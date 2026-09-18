@@ -166,22 +166,34 @@ export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer
     doc.on('end', () => resolve(Buffer.concat(chunks)));
   });
 
+  // A zero-amount receipt is the free-trial receipt issued when a facility is
+  // approved - same document, trial wording instead of payment wording.
+  const isTrial = input.amount === 0;
+
   drawLetterhead(doc, input.clinicName);
 
   doc.moveDown(2);
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('SUBSCRIPTION RECEIPT');
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text(isTrial ? 'FREE TRIAL RECEIPT' : 'SUBSCRIPTION RECEIPT');
   doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(`#${input.paymentId}`);
   doc.moveDown(1.5);
 
   const labelX = 50;
   const valueX = 200;
-  const rows: [string, string][] = [
-    ['Facility', input.clinicName],
-    ['Facility ID', input.facilityCode],
-    ['Paid on', input.paidAt.toLocaleDateString()],
-    ['Subscription period ends', input.periodEnd.toLocaleDateString()],
-    ['Payment method', 'Pesapal'],
-  ];
+  const rows: [string, string][] = isTrial
+    ? [
+        ['Facility', input.clinicName],
+        ['Facility ID', input.facilityCode],
+        ['Trial started', input.paidAt.toLocaleDateString()],
+        ['Trial ends', input.periodEnd.toLocaleDateString()],
+        ['Plan', 'Complimentary 2-week free trial'],
+      ]
+    : [
+        ['Facility', input.clinicName],
+        ['Facility ID', input.facilityCode],
+        ['Paid on', input.paidAt.toLocaleDateString()],
+        ['Subscription period ends', input.periodEnd.toLocaleDateString()],
+        ['Payment method', 'Pesapal'],
+      ];
 
   doc.fontSize(10);
   for (const [label, value] of rows) {
@@ -196,7 +208,7 @@ export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer
   doc.moveDown(1);
 
   const amountY = doc.y;
-  doc.font('Helvetica').fontSize(11).fillColor(MUTED).text('Amount Paid', labelX, amountY);
+  doc.font('Helvetica').fontSize(11).fillColor(MUTED).text(isTrial ? 'Amount Due' : 'Amount Paid', labelX, amountY);
   doc
     .font('Helvetica-Bold')
     .fontSize(22)
@@ -207,7 +219,7 @@ export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer
     .font('Helvetica-Bold')
     .fontSize(10)
     .fillColor('#15803d')
-    .text('PAID', 0, amountY + 16, { align: 'right', width: doc.page.width - 50 });
+    .text(isTrial ? 'FREE TRIAL' : 'PAID', 0, amountY + 16, { align: 'right', width: doc.page.width - 50 });
 
   await drawFooter(doc);
   doc.end();

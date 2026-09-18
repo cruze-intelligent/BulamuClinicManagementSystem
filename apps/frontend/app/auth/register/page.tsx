@@ -6,6 +6,9 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CheckCircle2, ShieldCheck } from 'lucide-react';
+import { SLOW_REQUEST_MESSAGE, useSlowNotice, useWarmUpBackend } from '@/lib/backend-warmup';
+
+const REQUEST_TIMEOUT_MS = 90_000;
 
 const FACILITY_TYPES = [
   { value: 'CLINIC', label: 'Clinic' },
@@ -36,6 +39,9 @@ export default function RegisterFacilityPage() {
   const [error, setError] = useState('');
   const [facilityCode, setFacilityCode] = useState('');
 
+  useWarmUpBackend();
+  const slow = useSlowNotice(loading);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agreed) {
@@ -45,10 +51,14 @@ export default function RegisterFacilityPage() {
     setError('');
     setLoading(true);
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           facilityName, facilityType, phone, address, district, subCounty, parish,
           adminName, adminEmail, adminPassword,
@@ -62,9 +72,14 @@ export default function RegisterFacilityPage() {
       } else {
         setError(data.error || 'Registration failed');
       }
-    } catch {
-      setError('Unable to reach the Bulamu API. Confirm the backend is running and NEXT_PUBLIC_API_URL is configured.');
+    } catch (err: any) {
+      setError(
+        err?.name === 'AbortError'
+          ? 'The server took too long to respond. Your registration may already have been received - check your email for a confirmation before submitting again.'
+          : 'Unable to reach the Bulamu API. Please check your internet connection and try again.'
+      );
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   };
@@ -79,8 +94,12 @@ export default function RegisterFacilityPage() {
           <h1 className="mt-5 text-2xl font-semibold tracking-tight">Registration submitted</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
             Thank you for registering {facilityName || 'your facility'}. A Bulamu administrator will review your
-            details and approve your account shortly. Once approved, sign in and you&apos;ll have full access with a
-            2-week free trial.
+            details before your account is activated. You will not be able to sign in until the review is complete.
+          </p>
+          <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
+            We are sending a confirmation to <strong>{adminEmail}</strong>, and we will email you again as soon as
+            your facility is approved - your 2-week free trial begins at that point. If you do not see the email,
+            please check your spam folder.
           </p>
           {facilityCode && (
             <p className="mt-4 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-3 font-mono text-sm text-slate-700 dark:text-slate-300">
@@ -194,7 +213,8 @@ export default function RegisterFacilityPage() {
               </span>
             </label>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+            {loading && slow && <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{SLOW_REQUEST_MESSAGE}</p>}
 
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Submitting...' : 'Submit for approval'}

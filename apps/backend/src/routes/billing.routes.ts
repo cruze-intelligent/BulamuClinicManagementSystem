@@ -7,7 +7,7 @@ import { invalidateSubscriptionCache } from '../lib/subscription';
 import { sendMail, subscriptionReceiptEmail } from '../lib/mailer';
 import { generateReceiptPdf } from '../lib/pdf';
 import {
-  getAccessToken, registerIpnUrl, submitOrderRequest, getTransactionStatus, PESAPAL_STATUS_COMPLETED,
+  getAccessToken, registerIpnUrl, submitOrderRequest, getTransactionStatus, describePesapalError, PESAPAL_STATUS_COMPLETED,
 } from '../services/pesapal.service';
 
 const SUBSCRIPTION_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
@@ -57,7 +57,11 @@ export async function billingRoutes(fastify: FastifyInstance) {
 
       const tokenResult = await getAccessToken(credentials);
       if (!tokenResult.success || !tokenResult.token) {
-        return reply.status(502).send({ error: 'Could not reach Pesapal', details: tokenResult.error });
+        fastify.log.error({ pesapal: tokenResult.error }, 'Pesapal authentication failed');
+        return reply.status(502).send({
+          error: `Could not authenticate with Pesapal: ${describePesapalError(tokenResult.error)}`,
+          details: tokenResult.error,
+        });
       }
 
       const merchantReference = `bulamu-${clinic.id}-${randomUUID()}`;
@@ -77,7 +81,8 @@ export async function billingRoutes(fastify: FastifyInstance) {
         id: merchantReference,
         amount: subscription.amount,
         currency: subscription.currency,
-        description: `Bulamu subscription - ${clinic.name}`,
+        // Pesapal rejects descriptions over 100 characters.
+        description: `Bulamu subscription - ${clinic.name}`.slice(0, 100),
         callbackUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/billing/callback`,
         notificationId,
         billing: { emailAddress: admin.email, phoneNumber: clinic.phone, firstName: firstName || admin.name, lastName: rest.join(' ') || admin.name },
@@ -85,7 +90,11 @@ export async function billingRoutes(fastify: FastifyInstance) {
 
       if (!order.success || !order.orderTrackingId || !order.redirectUrl) {
         await prisma.payment.update({ where: { id: payment.id }, data: { status: 'FAILED' } });
-        return reply.status(502).send({ error: 'Could not create Pesapal order', details: order.error });
+        fastify.log.error({ pesapal: order.error, merchantReference }, 'Pesapal rejected the order request');
+        return reply.status(502).send({
+          error: `Pesapal could not create the payment order: ${describePesapalError(order.error)}`,
+          details: order.error,
+        });
       }
 
       await prisma.payment.update({ where: { id: payment.id }, data: { pesapalOrderTrackingId: order.orderTrackingId } });
@@ -200,7 +209,9 @@ export async function billingRoutes(fastify: FastifyInstance) {
         amount: payment.amount,
         currency: payment.currency,
         paidAt: payment.updatedAt,
-        periodEnd: subscription.currentPeriodEnd || payment.updatedAt,
+        // A zero-amount receipt is the free-trial one, which always ends when
+        // the trial does - not whenever a later paid period happens to end.
+        periodEnd: payment.amount === 0 ? subscription.trialEndsAt : subscription.currentPeriodEnd || payment.updatedAt,
       });
 
       reply.header('Content-Type', 'application/pdf');

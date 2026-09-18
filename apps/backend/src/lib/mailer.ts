@@ -35,6 +35,11 @@ function getTransporter(): Transporter | null {
     port: Number(SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === 'true',
     auth: { user: SMTP_USER, pass: SMTP_PASSWORD },
+    // nodemailer's defaults (2 min connect, 10 min socket) let one unreachable
+    // SMTP server pin a request open for minutes - fail fast instead.
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
   });
   return transporter;
 }
@@ -118,12 +123,32 @@ export function passwordResetEmail(resetUrl: string): string {
   `);
 }
 
-export function facilityApprovedEmail(clinicName: string, loginUrl: string): string {
+export function registrationReceivedEmail(adminName: string, clinicName: string, facilityCode: string): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">We have received your registration</h2>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      Dear ${adminName}, thank you for registering <strong>${clinicName}</strong> on Bulamu.
+    </p>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      Your Facility ID is <strong>${facilityCode}</strong>. Please keep it for your records.
+    </p>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      A Bulamu administrator will now review your details. You will not be able to sign in until the review is
+      complete. As soon as your facility is approved, we will email you and your 2-week free trial will begin.
+    </p>
+    <p style="margin:0;font-size:12px;color:#64748b;">
+      If you did not register a facility on Bulamu, you can safely ignore this email.
+    </p>
+  `);
+}
+
+export function facilityApprovedEmail(clinicName: string, loginUrl: string, trialEndsAt?: Date): string {
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} is approved</h2>
     <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      Your facility has been reviewed and approved on Bulamu. Your 2-week free trial has started -
+      Your facility has been reviewed and approved on Bulamu. Your 2-week free trial has started${trialEndsAt ? ` and runs through <strong>${trialEndsAt.toLocaleDateString()}</strong>` : ''} -
       sign in to start registering patients, booking appointments, and recording consultations.
+      A receipt for your free trial is attached for your records.
     </p>
     <a href="${loginUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
       Sign In

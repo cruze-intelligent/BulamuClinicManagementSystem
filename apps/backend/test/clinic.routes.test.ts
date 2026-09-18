@@ -95,6 +95,38 @@ describe('facility approval workflow', () => {
     expect(login.statusCode).toBe(200);
   });
 
+  it('issues the free trial as the facility\'s first receipt - listed in payment history and downloadable as a PDF', async () => {
+    const hq = await seedClinic({ name: 'HQ' });
+    const { user, password } = await seedUser({ clinicId: hq.id, role: 'SUPER_ADMIN' });
+    const { token } = await loginAs(app, user.email, password);
+
+    const pending = await registerPendingFacility('Trial Receipt Clinic');
+    const approve = await app.inject({ method: 'PATCH', url: `/clinics/${pending.id}/approve`, headers: authHeader(token) });
+    expect(approve.statusCode).toBe(200);
+
+    const trialPayments = await prisma.payment.findMany({ where: { clinicId: pending.id } });
+    expect(trialPayments).toHaveLength(1);
+    expect(trialPayments[0].amount).toBe(0);
+    expect(trialPayments[0].status).toBe('COMPLETED');
+
+    const admin = await prisma.user.findFirstOrThrow({ where: { clinicId: pending.id, role: 'ADMIN' } });
+    const { token: adminToken } = await loginAs(app, admin.email, 'SuperSecret123!');
+
+    const history = await app.inject({ method: 'GET', url: '/billing/payments', headers: authHeader(adminToken) });
+    expect(history.statusCode).toBe(200);
+    expect(history.json().payments).toHaveLength(1);
+    expect(history.json().payments[0].amount).toBe(0);
+
+    const receipt = await app.inject({
+      method: 'GET',
+      url: `/billing/receipts/${trialPayments[0].id}/pdf`,
+      headers: authHeader(adminToken),
+    });
+    expect(receipt.statusCode).toBe(200);
+    expect(receipt.headers['content-type']).toBe('application/pdf');
+    expect(receipt.rawPayload.subarray(0, 4).toString()).toBe('%PDF');
+  });
+
   it('rejects a pending facility with a reason and blocks its admin from logging in', async () => {
     const hq = await seedClinic({ name: 'HQ' });
     const { user, password } = await seedUser({ clinicId: hq.id, role: 'SUPER_ADMIN' });

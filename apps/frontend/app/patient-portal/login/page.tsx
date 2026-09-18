@@ -8,11 +8,13 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { savePatientSession } from '@/lib/usePatientAuth';
+import { useWarmUpBackend } from '@/lib/backend-warmup';
 
 export default function PatientPortalLoginPage() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  useWarmUpBackend();
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {

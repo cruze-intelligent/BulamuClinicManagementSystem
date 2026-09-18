@@ -8,11 +8,14 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CompanyName } from '@/components/company-credit';
+import { SLOW_REQUEST_MESSAGE, useSlowNotice, useWarmUpBackend } from '@/lib/backend-warmup';
+
+const REQUEST_TIMEOUT_MS = 90_000;
 
 function loginErrorMessage(reason: string | undefined, rejectionReason: string | undefined): string | null {
   switch (reason) {
     case 'PENDING_APPROVAL':
-      return "Your facility registration is still pending approval. We'll notify you once it's reviewed.";
+      return "Your facility registration is still pending approval. We will email you as soon as it has been reviewed.";
     case 'REJECTED':
       return rejectionReason
         ? `Your facility registration was not approved: ${rejectionReason}`
@@ -30,16 +33,25 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const router = useRouter();
+
+  useWarmUpBackend();
+  const slow = useSlowNotice(loading);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({ email, password }),
       });
 
@@ -50,11 +62,16 @@ export default function LoginPage() {
         localStorage.setItem('user', JSON.stringify(data.user));
         router.push(data.user.role === 'SUPER_ADMIN' ? '/super-admin' : '/dashboard');
       } else {
-        alert(loginErrorMessage(data.reason, data.rejectionReason) || 'Invalid email or password');
+        setError(loginErrorMessage(data.reason, data.rejectionReason) || 'Invalid email or password');
       }
-    } catch {
-      alert('Unable to reach the Bulamu API. Confirm the backend is running and NEXT_PUBLIC_API_URL is configured.');
+    } catch (err: any) {
+      setError(
+        err?.name === 'AbortError'
+          ? 'The server took too long to respond. Please try again.'
+          : 'Unable to reach the Bulamu API. Please check your internet connection and try again.'
+      );
     } finally {
+      clearTimeout(timeout);
       setLoading(false);
     }
   };
@@ -107,6 +124,8 @@ export default function LoginPage() {
               <Label htmlFor="password">Password</Label>
               <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>
+            {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+            {loading && slow && <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{SLOW_REQUEST_MESSAGE}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign in'}
               <ArrowRight className="size-4" aria-hidden="true" />

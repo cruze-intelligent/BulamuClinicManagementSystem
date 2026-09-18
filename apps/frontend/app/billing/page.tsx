@@ -24,6 +24,7 @@ type Payment = {
   id: string;
   amount: number;
   currency: string;
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -250,10 +251,13 @@ export default function BillingPage() {
                 >
                   <div>
                     <p className="font-medium text-slate-800 dark:text-slate-200">
-                      {payment.amount.toLocaleString()} {payment.currency}
+                      {payment.amount === 0
+                        ? 'Free trial (2 weeks)'
+                        : `${payment.amount.toLocaleString()} ${payment.currency}`}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {new Date(payment.updatedAt).toLocaleDateString()}
+                      {payment.amount === 0 ? 'Started ' : ''}
+                      {new Date(payment.amount === 0 ? payment.createdAt : payment.updatedAt).toLocaleDateString()}
                     </p>
                   </div>
                   <Button

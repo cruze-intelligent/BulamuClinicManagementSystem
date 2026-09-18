@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { authenticate, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
 import { sendMail, facilityApprovedEmail, facilityRejectedEmail } from '../lib/mailer';
+import { generateReceiptPdf } from '../lib/pdf';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import bcrypt from 'bcrypt';
 
@@ -47,13 +48,13 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       }
 
       const authUser = getAuthUser(request);
-      const [clinic] = await prisma.$transaction([
-        prisma.clinic.update({
+      const { clinic, subscription, trialReceipt } = await prisma.$transaction(async (tx) => {
+        const clinic = await tx.clinic.update({
           where: { id },
           data: { registrationStatus: 'APPROVED', isActive: true, approvedAt: new Date(), approvedBy: authUser.userId },
-        }),
-        prisma.user.updateMany({ where: { clinicId: id, role: { not: 'SUPER_ADMIN' } }, data: { isActive: true } }),
-        prisma.subscription.upsert({
+        });
+        await tx.user.updateMany({ where: { clinicId: id, role: { not: 'SUPER_ADMIN' } }, data: { isActive: true } });
+        const subscription = await tx.subscription.upsert({
           where: { clinicId: id },
           update: {},
           create: {
@@ -63,20 +64,43 @@ export async function clinicRoutes(fastify: FastifyInstance) {
             amount: DEFAULT_SUBSCRIPTION_AMOUNT,
             currency: 'UGX',
           },
-        }),
-      ]);
+        });
+        // The free trial is the facility's first receipt: a zero-amount,
+        // already-completed Payment, so it lists in payment history and
+        // downloads like any other receipt. One per subscription.
+        const trialReceipt =
+          (await tx.payment.findFirst({ where: { subscriptionId: subscription.id, amount: 0 } })) ??
+          (await tx.payment.create({
+            data: { clinicId: id, subscriptionId: subscription.id, amount: 0, currency: subscription.currency, status: 'COMPLETED' },
+          }));
+        return { clinic, subscription, trialReceipt };
+      }, { timeout: 15000 });
 
       await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { registrationStatus: 'APPROVED' } });
 
-      const admin = await prisma.user.findFirst({ where: { clinicId: id, role: 'ADMIN' } });
-      if (admin) {
+      // Approval is already committed - the email (and the PDF it carries) is
+      // a best-effort side channel, so don't make the super admin wait on it.
+      void (async () => {
+        const admin = await prisma.user.findFirst({ where: { clinicId: id, role: 'ADMIN' } });
+        if (!admin) return;
+        const receiptPdf = await generateReceiptPdf({
+          paymentId: trialReceipt.id,
+          clinicName: clinic.name,
+          facilityCode: clinic.facilityCode,
+          amount: 0,
+          currency: subscription.currency,
+          paidAt: trialReceipt.createdAt,
+          periodEnd: subscription.trialEndsAt,
+        });
         const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`;
-        await sendMail({
+        const result = await sendMail({
           to: admin.email,
           subject: `${clinic.name} is approved on Bulamu`,
-          html: facilityApprovedEmail(clinic.name, loginUrl),
+          html: facilityApprovedEmail(clinic.name, loginUrl, subscription.trialEndsAt),
+          attachments: [{ filename: `free-trial-receipt-${trialReceipt.id}.pdf`, content: receiptPdf, contentType: 'application/pdf' }],
         });
-      }
+        if (!result.sent) fastify.log.warn(`Approval email to ${admin.email} not sent: ${result.reason}`);
+      })().catch((error) => fastify.log.error(error, 'Approval email failed'));
 
       return { success: true, clinic };
     } catch (error: any) {
@@ -103,14 +127,16 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
       await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { registrationStatus: 'REJECTED', reason } });
 
-      const admin = await prisma.user.findFirst({ where: { clinicId: id, role: 'ADMIN' } });
-      if (admin) {
-        await sendMail({
+      void (async () => {
+        const admin = await prisma.user.findFirst({ where: { clinicId: id, role: 'ADMIN' } });
+        if (!admin) return;
+        const result = await sendMail({
           to: admin.email,
           subject: `${clinic.name} registration update - Bulamu`,
           html: facilityRejectedEmail(clinic.name, reason || undefined),
         });
-      }
+        if (!result.sent) fastify.log.warn(`Rejection email to ${admin.email} not sent: ${result.reason}`);
+      })().catch((error) => fastify.log.error(error, 'Rejection email failed'));
 
       return { success: true, clinic };
     } catch (error: any) {
