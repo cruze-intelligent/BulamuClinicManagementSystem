@@ -142,9 +142,9 @@ export default function UsersPage() {
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 >
                   <option value="DOCTOR">Doctor</option>
-                  <option value="PHARMACIST">Pharmacist</option>
                   <option value="NURSE">Nurse</option>
-                  <option value="STAFF">Staff</option>
+                  <option value="PHARMACIST">Pharmacist</option>
+                  <option value="STAFF">Front Desk</option>
                 </select>
               </div>
 

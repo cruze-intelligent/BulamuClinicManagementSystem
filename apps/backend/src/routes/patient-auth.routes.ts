@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import { prisma } from '../lib/prisma';
 import { hashToken } from '../lib/crypto';
 import { normalizePhoneKey } from '../lib/patient-account';
+import { sendPasswordLink } from '../lib/portal-invite';
 
 const MIN_PASSWORD_LENGTH = 10;
 
@@ -11,12 +12,15 @@ const MIN_PASSWORD_LENGTH = 10;
 // rate-limit default registered in app.ts.
 const LOGIN_RATE_LIMIT = { max: 8, timeWindow: '15 minutes' };
 const SET_PASSWORD_RATE_LIMIT = { max: 8, timeWindow: '15 minutes' };
+const FORGOT_PASSWORD_RATE_LIMIT = { max: 5, timeWindow: '15 minutes' };
 
 export async function patientAuthRoutes(fastify: FastifyInstance) {
   // Login accepts a patient's portable ID, email, or phone number as the
-  // identifier - whichever they have on hand - plus their password.
+  // identifier - whichever they have on hand - plus their password. Email
+  // and Patient ID match regardless of letter case.
   fastify.post('/patient-auth/login', { config: { rateLimit: LOGIN_RATE_LIMIT } }, async (request, reply) => {
-    const { identifier, password } = request.body as any;
+    const { password } = request.body as any;
+    const identifier = typeof (request.body as any)?.identifier === 'string' ? (request.body as any).identifier.trim() : '';
     if (!identifier || !password) {
       return reply.status(400).send({ error: 'Identifier and password are required' });
     }
@@ -26,8 +30,8 @@ export async function patientAuthRoutes(fastify: FastifyInstance) {
       const account = await prisma.patientAccount.findFirst({
         where: {
           OR: [
-            { portableId: identifier },
-            { email: identifier },
+            { portableId: identifier.toUpperCase() },
+            { email: { equals: identifier, mode: 'insensitive' } },
             ...(phoneKey ? [{ phoneKey }] : []),
           ],
         },
@@ -67,17 +71,30 @@ export async function patientAuthRoutes(fastify: FastifyInstance) {
   // for staff. Always clears mustResetPassword so the portal knows the
   // placeholder password staff never saw has been replaced.
   fastify.post('/patient-auth/set-password', { config: { rateLimit: SET_PASSWORD_RATE_LIMIT } }, async (request, reply) => {
-    const { token, password } = request.body as any;
+    const { token, password, phone } = request.body as any;
 
     if (!token || !password || password.length < MIN_PASSWORD_LENGTH) {
       return reply.status(400).send({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
     }
 
     try {
-      const resetToken = await prisma.patientPasswordResetToken.findUnique({ where: { tokenHash: hashToken(token) } });
+      const resetToken = await prisma.patientPasswordResetToken.findUnique({
+        where: { tokenHash: hashToken(token) },
+        include: { patientAccount: { select: { phoneKey: true } } },
+      });
 
       if (!resetToken || resetToken.usedAt || resetToken.expiresAt < new Date()) {
         return reply.status(400).send({ error: 'This link is invalid or has expired' });
+      }
+
+      // A second factor beyond possession of the emailed link: registration
+      // emails can be mistyped, and whoever holds the link would otherwise
+      // own the account. The phone number is something the real patient gave
+      // their facility. A wrong answer doesn't consume the link (the rate
+      // limit above bounds guessing).
+      const phoneKey = typeof phone === 'string' ? normalizePhoneKey(phone) : '';
+      if (!phoneKey || phoneKey !== resetToken.patientAccount.phoneKey) {
+        return reply.status(400).send({ error: 'The phone number does not match the one registered with your facility' });
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -94,5 +111,37 @@ export async function patientAuthRoutes(fastify: FastifyInstance) {
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });
     }
+  });
+
+  // Emails a password-reset link. Always answers the same way whether or not
+  // an account matches, so it can't be used to discover who has an account.
+  fastify.post('/patient-auth/forgot-password', { config: { rateLimit: FORGOT_PASSWORD_RATE_LIMIT } }, async (request, reply) => {
+    const identifier = typeof (request.body as any)?.identifier === 'string' ? (request.body as any).identifier.trim() : '';
+    const genericResponse = { success: true, message: 'If an account matches, a password reset link has been emailed.' };
+    if (!identifier) return genericResponse;
+
+    try {
+      const account = await prisma.patientAccount.findFirst({
+        where: {
+          status: 'ACTIVE',
+          OR: [{ portableId: identifier.toUpperCase() }, { email: { equals: identifier, mode: 'insensitive' } }],
+        },
+      });
+      if (account) {
+        await sendPasswordLink({
+          patientAccountId: account.id,
+          email: account.email,
+          patientName: '',
+          clinicName: '',
+          portableId: account.portableId,
+          kind: 'reset',
+          log: (message) => fastify.log.info(message),
+        });
+      }
+    } catch (error) {
+      fastify.log.error(error, 'Patient forgot-password failed');
+    }
+
+    return genericResponse;
   });
 }

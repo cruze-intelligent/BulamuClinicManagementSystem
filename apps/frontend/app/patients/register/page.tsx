@@ -42,6 +42,7 @@ function NewPatientForm() {
   const router = useRouter();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [sex, setSex] = useState<'FEMALE' | 'MALE' | 'OTHER' | ''>('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [village, setVillage] = useState('');
@@ -60,6 +61,7 @@ function NewPatientForm() {
       await createPatientOffline({
         name,
         phone,
+        email: email.trim() || undefined,
         clinicId,
         sex: sex || undefined,
         dateOfBirth: dateOfBirth || undefined,
@@ -72,6 +74,7 @@ function NewPatientForm() {
 
       setName('');
       setPhone('');
+      setEmail('');
       setSex('');
       setDateOfBirth('');
       setVillage('');
@@ -113,6 +116,21 @@ function NewPatientForm() {
                 placeholder="e.g. 0756123456"
                 required
               />
+            </div>
+
+            <div>
+              <Label htmlFor="email">Email (optional)</Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="e.g. john@example.com"
+              />
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                If provided, the patient is emailed a link to set up their password and sign in to the Patient Portal
+                (sent once this record syncs). Please confirm the address with the patient.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

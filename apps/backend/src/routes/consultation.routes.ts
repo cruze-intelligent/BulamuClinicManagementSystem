@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, assertClinicMatch } from '../middleware/auth.middleware';
 import { isValidServiceTag } from '../lib/hmis';
+import { notifyNewPrescription } from '../lib/notifications';
 
 export async function consultationRoutes(fastify: FastifyInstance) {
 
@@ -45,6 +46,13 @@ export async function consultationRoutes(fastify: FastifyInstance) {
           invoice: true
         }
       });
+
+      const patient = await prisma.patient.findUnique({ where: { id: patientId }, select: { name: true } });
+      await notifyNewPrescription({
+        clinicId: appointment.clinicId,
+        patientName: patient?.name ?? 'a patient',
+        itemCount: consultation.prescriptions.length,
+      }, (message) => fastify.log.warn(message));
 
       return { success: true, consultation };
     } catch (error: any) {

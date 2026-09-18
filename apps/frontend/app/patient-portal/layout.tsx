@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LogOut, ShieldCheck, Users } from 'lucide-react';
+import { Bell, LogOut, ShieldCheck, Users } from 'lucide-react';
 import { usePatientAuth, clearPatientSession } from '@/lib/usePatientAuth';
+import { useUnreadNotifications } from '@/lib/useUnreadNotifications';
 
-const PUBLIC_PAGES = ['/patient-portal/login', '/patient-portal/set-password'];
+const PUBLIC_PAGES = ['/patient-portal/login', '/patient-portal/set-password', '/patient-portal/forgot-password'];
 
 export default function PatientPortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -26,6 +27,12 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
     }
     setAuthChecked(true);
   }, [pathname, isPublicPage, router]);
+
+  const unreadNotifications = useUnreadNotifications(
+    '/patient-portal/notifications/unread-count',
+    'patientToken',
+    !isPublicPage && authChecked
+  );
 
   const handleLogout = () => {
     clearPatientSession();
@@ -50,18 +57,33 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
           {!isPublicPage && (
             <div className="flex items-center gap-1">
               <Link
+                href="/patient-portal/notifications"
+                title="Notifications"
+                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+              >
+                <Bell className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Notifications</span>
+                {unreadNotifications > 0 && (
+                  <span aria-label={`${unreadNotifications} unread`} className="rounded-full bg-emerald-600 px-1.5 text-[11px] font-semibold leading-5 text-white">
+                    {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                  </span>
+                )}
+              </Link>
+              <Link
                 href="/patient-portal/access"
+                title="Access to your records"
                 className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
               >
                 <Users className="size-4" aria-hidden="true" />
-                Access
+                <span className="hidden sm:inline">Access</span>
               </Link>
               <button
                 onClick={handleLogout}
+                title="Sign out"
                 className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
               >
                 <LogOut className="size-4" aria-hidden="true" />
-                Sign out
+                <span className="hidden sm:inline">Sign out</span>
               </button>
             </div>
           )}

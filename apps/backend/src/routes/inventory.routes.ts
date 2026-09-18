@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch } from '../middleware/auth.middleware';
+import { notifyIfLowStock } from '../lib/notifications';
 
 export async function inventoryRoutes(fastify: FastifyInstance) {
 
@@ -33,6 +34,8 @@ export async function inventoryRoutes(fastify: FastifyInstance) {
         data: { clinicId, name, quantity, unit, reorderLevel, price, expiryDate: expiryDate ? new Date(expiryDate) : null }
       });
 
+      await notifyIfLowStock(medicine, null, (message) => fastify.log.warn(message));
+
       return { success: true, medicine };
     } catch (error: any) {
       return reply.status(400).send({ error: error.message });
@@ -55,6 +58,8 @@ export async function inventoryRoutes(fastify: FastifyInstance) {
         where: { id },
         data: { quantity }
       });
+
+      await notifyIfLowStock(medicine, existing.quantity, (message) => fastify.log.warn(message));
 
       return { success: true, medicine };
     } catch (error: any) {

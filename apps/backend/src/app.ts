@@ -26,6 +26,8 @@ import { patientAccountRoutes } from './routes/patient-account.routes';
 import { patientAuthRoutes } from './routes/patient-auth.routes';
 import { patientPortalRoutes } from './routes/patient-portal.routes';
 import { patientAccessRoutes } from './routes/patient-access.routes';
+import { notificationRoutes } from './routes/notification.routes';
+import { patientAccountClosureRoutes } from './routes/patient-account-closure.routes';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -94,6 +96,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(patientAuthRoutes);
   await server.register(patientPortalRoutes);
   await server.register(patientAccessRoutes);
+  await server.register(notificationRoutes);
+  await server.register(patientAccountClosureRoutes);
 
   return server;
 }

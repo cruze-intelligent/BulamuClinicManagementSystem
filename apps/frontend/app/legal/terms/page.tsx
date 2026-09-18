@@ -51,9 +51,11 @@ export default function TermsPage() {
       <p>
         Your facility retains ownership of the patient and operational records it enters into Bulamu. Cruze acts as
         a data processor on your behalf for the purpose of providing the Service, as described in our{' '}
-        <a href="/legal/privacy" className="text-emerald-700 hover:underline">Privacy Policy</a>. You are responsible
-        for obtaining any patient consent required by law before recording their information, and Bulamu provides
-        consent-tracking fields for this purpose.
+        <a href="/legal/privacy" className="text-emerald-700 hover:underline">Privacy Policy</a>. How long records
+        are kept, and what happens to them when a record, an account or a facility is deleted, is set out in our{' '}
+        <a href="/legal/data-retention" className="text-emerald-700 hover:underline">Data Retention and Deletion Policy</a>.
+        You are responsible for obtaining any patient consent required by law before recording their information, and
+        Bulamu provides consent-tracking fields for this purpose.
       </p>
 
       <h2>6. Acceptable use</h2>

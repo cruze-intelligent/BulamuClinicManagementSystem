@@ -76,11 +76,17 @@ export default function PatientsPage() {
                   </div>
                   <p className="text-sm text-slate-500 dark:text-slate-400">{patient.phone}</p>
                 </div>
-                <Link href={`/patients/${patient.id}`}>
-                  <Button size="sm" variant="outline">
-                    View History
+                {patient.syncStatus === 'pending' ? (
+                  <Button size="sm" variant="outline" disabled title="Available once this record has synced to the server">
+                    Syncing...
                   </Button>
-                </Link>
+                ) : (
+                  <Link href={`/patients/view?id=${patient.id}`}>
+                    <Button size="sm" variant="outline">
+                      View History
+                    </Button>
+                  </Link>
+                )}
               </Card>
             ))}
           </div>

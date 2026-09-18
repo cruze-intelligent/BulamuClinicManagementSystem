@@ -176,6 +176,7 @@ export default function Home() {
           <div className="flex flex-wrap items-center justify-center gap-4">
             <Link href="/legal/terms" className="hover:text-emerald-700 hover:underline">Terms of Service</Link>
             <Link href="/legal/privacy" className="hover:text-emerald-700 hover:underline">Privacy Policy</Link>
+            <Link href="/legal/data-retention" className="hover:text-emerald-700 hover:underline">Data Retention</Link>
             <Link href="/legal/refund-policy" className="hover:text-emerald-700 hover:underline">Refund Policy</Link>
             <ContactIcons />
           </div>

@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
+import { notifyPatient } from '../lib/notifications';
 
 export async function appointmentRoutes(fastify: FastifyInstance) {
 
@@ -155,6 +156,18 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
         metadata: { status: 'ACCEPTED', appointmentId: appointment.id },
       });
 
+      const clinic = await prisma.clinic.findUnique({ where: { id: existing.clinicId }, select: { name: true } });
+      await notifyPatient({
+        type: 'APPOINTMENT_CONFIRMED',
+        patientAccountId: existing.patientAccountId,
+        clinicId: existing.clinicId,
+        title: 'Your appointment is confirmed',
+        body: `${clinic?.name ?? 'Your facility'} confirmed your appointment on ${new Date(date).toLocaleDateString()} at ${time}.`,
+        link: '/patient-portal/dashboard',
+        emailSummary: 'Your appointment request has been confirmed. Sign in to your Patient Portal to see the details.',
+        log: (message) => fastify.log.warn(message),
+      });
+
       return { success: true, appointment, appointmentRequest };
     } catch (error: any) {
       return reply.status(400).send({ error: error.message });
@@ -189,6 +202,18 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
         entity: 'AppointmentRequest', recordId: id, clinicId: existing.clinicId,
         action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
         metadata: { status: 'DECLINED' },
+      });
+
+      const clinic = await prisma.clinic.findUnique({ where: { id: existing.clinicId }, select: { name: true } });
+      await notifyPatient({
+        type: 'APPOINTMENT_DECLINED',
+        patientAccountId: existing.patientAccountId,
+        clinicId: existing.clinicId,
+        title: 'Your appointment request could not be accepted',
+        body: `${clinic?.name ?? 'Your facility'} was unable to accept your appointment request${reason ? `: ${reason}` : '.'}`,
+        link: '/patient-portal/dashboard',
+        emailSummary: 'The facility was unable to accept your appointment request. Sign in to your Patient Portal to see the details and request another time.',
+        log: (message) => fastify.log.warn(message),
       });
 
       return { success: true, appointmentRequest };

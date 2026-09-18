@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
 import { requireRole } from '../middleware/rbac.middleware';
+import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
 
 export async function patientRoutes(fastify: FastifyInstance) {
 
@@ -11,6 +12,7 @@ export async function patientRoutes(fastify: FastifyInstance) {
     const {
       name,
       phone,
+      email,
       clinicId: requestedClinicId,
       sex,
       dateOfBirth,
@@ -32,6 +34,7 @@ export async function patientRoutes(fastify: FastifyInstance) {
         data: {
           name,
           phone,
+          email: isValidEmail(email) ? email.trim().toLowerCase() : null,
           clinicId,
           sex: sex || null,
           dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
@@ -51,7 +54,17 @@ export async function patientRoutes(fastify: FastifyInstance) {
         action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role,
       });
 
-      return { success: true, patient };
+      // If the patient gave an email, invite them to set up their portal
+      // account. Never fails the registration itself.
+      const portalInvitation = await inviteNewPatient({
+        patient,
+        phone,
+        email,
+        actor: { userId: authUser.userId, role: authUser.role },
+        log: (message) => fastify.log.info(message),
+      });
+
+      return { success: true, patient, ...(portalInvitation ? { portalInvitation } : {}) };
     } catch (error: any) {
       return reply.status(400).send({ error: error.message });
     }

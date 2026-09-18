@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { authenticatePatient, getPatientAuthUser } from '../middleware/patient-auth.middleware';
 import { generateStorageKey, saveFile, getFileStream, deleteFile } from '../lib/storage';
 import { recordAudit } from '../lib/audit';
+import { notifyStaff } from '../lib/notifications';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -24,7 +25,7 @@ async function isClinicAuthorized(patientAccountId: string, clinicId: string): P
 async function findOwnRecord(patientAccountId: string, recordId: string) {
   const record = await prisma.patient.findFirst({
     where: { id: recordId, patientAccountId, deletedAt: null },
-    select: { id: true, clinicId: true },
+    select: { id: true, clinicId: true, name: true },
   });
   if (!record) return null;
   return (await isClinicAuthorized(patientAccountId, record.clinicId)) ? record : null;
@@ -215,6 +216,16 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
           preferredTime: preferredTime || null,
           reason: reason || null,
         },
+      });
+
+      await notifyStaff({
+        type: 'APPOINTMENT_REQUESTED',
+        clinicId: record.clinicId,
+        title: 'New appointment request',
+        body: `${record.name} requested an appointment on ${new Date(preferredDate).toLocaleDateString()}${preferredTime ? ` at ${preferredTime}` : ''}.`,
+        link: '/appointments',
+        emailSummary: 'A patient has requested an appointment through the Patient Portal. Open Appointments to review it.',
+        log: (message) => fastify.log.warn(message),
       });
 
       return { success: true, appointmentRequest };

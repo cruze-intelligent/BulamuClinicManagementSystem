@@ -22,6 +22,10 @@ model User {
   documentsUploaded Document[]
   comments  Comment[]
   resolvedAppointmentRequests AppointmentRequest[]
+  notifications Notification[]
+  // Notification types this user has switched email off for (in-app
+  // notifications are always kept - only the email copy is optional).
+  emailOptOuts NotificationType[] @default([])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -167,6 +171,9 @@ model Patient {
   id           String        @id @default(uuid())
   name         String
   phone        String
+  // Optional contact email - when given at registration, the patient is
+  // emailed an invitation to set up their Patient Portal account.
+  email        String?
   sex          Sex?
   dateOfBirth  DateTime?
   village      String?
@@ -518,6 +525,12 @@ model PatientAccount {
   uploadedDocuments Document[]
   appointmentRequests AppointmentRequest[]
   accessOtps        PatientAccessOtp[]
+  notifications     Notification[]
+  emailOptOuts      NotificationType[]          @default([])
+  // Set when the patient closes their account: the row is kept as an
+  // anonymised tombstone because audit entries, grants and appointment
+  // requests reference it (see DATA_RETENTION.md).
+  closedAt          DateTime?
   createdAt         DateTime                    @default(now())
   updatedAt         DateTime                    @updatedAt
 
@@ -527,6 +540,7 @@ model PatientAccount {
 enum PatientAccountStatus {
   ACTIVE
   SUSPENDED
+  CLOSED
 }
 
 // The explicit, auditable, revocable trust boundary for cross-facility
@@ -620,4 +634,41 @@ model PatientAccessOtp {
   createdAt        DateTime       @default(now())
 
   @@index([patientAccountId, clinicId])
+}
+
+// What the notification is about. Which roles receive each type, and whether
+// they also get an email, is defined in one place: NOTIFICATION_RULES in
+// src/lib/notifications.ts.
+enum NotificationType {
+  LAB_RESULT_READY
+  LOW_STOCK
+  NEW_PRESCRIPTION
+  APPOINTMENT_REQUESTED
+  APPOINTMENT_CONFIRMED
+  APPOINTMENT_DECLINED
+  REFERRAL_RECEIVED
+  RECORD_ACCESS_GRANTED
+  NEW_NOTE
+}
+
+// An in-app notification for exactly one recipient: either a staff user or a
+// patient portal account. Titles and bodies may name patients or tests because
+// they are only ever shown after sign-in; the emailed copy is deliberately
+// generic and carries no clinical detail.
+model Notification {
+  id               String           @id @default(uuid())
+  userId           String?
+  user             User?            @relation(fields: [userId], references: [id])
+  patientAccountId String?
+  patientAccount   PatientAccount?  @relation(fields: [patientAccountId], references: [id])
+  clinicId         String?
+  type             NotificationType
+  title            String
+  body             String
+  link             String?
+  readAt           DateTime?
+  createdAt        DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@index([patientAccountId, createdAt])
 }

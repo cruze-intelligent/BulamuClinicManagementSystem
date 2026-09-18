@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   BarChart3,
+  Bell,
   CalendarDays,
   ClipboardList,
   CreditCard,
@@ -30,6 +31,7 @@ import { useAuth, getHomePath } from '@/lib/useAuth';
 import { useSidebar } from '@/lib/sidebar-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { roleLabel } from '@/lib/role-labels';
+import { useUnreadNotifications } from '@/lib/useUnreadNotifications';
 
 const navItems = [
   { name: 'Facility Management', path: '/super-admin', icon: Crown, roles: ['SUPER_ADMIN'] },
@@ -43,6 +45,7 @@ const navItems = [
   { name: 'Inventory', path: '/inventory', icon: Package, roles: ['ADMIN', 'PHARMACIST'] },
   { name: 'Invoices', path: '/invoices', icon: Receipt, roles: ['ADMIN'] },
   { name: 'Reports', path: '/reports', icon: BarChart3, roles: ['ADMIN', 'SUPER_ADMIN'] },
+  { name: 'Notifications', path: '/notifications', icon: Bell, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
   { name: 'Activity', path: '/sync-activity', icon: History, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
   { name: 'Staff', path: '/users', icon: ClipboardList, roles: ['ADMIN'] },
   { name: 'Billing', path: '/billing', icon: CreditCard, roles: ['ADMIN'] },
@@ -54,23 +57,26 @@ function NavLinks({
   pathname,
   compact,
   onNavigate,
+  badges = {},
 }: {
   items: typeof navItems;
   pathname: string;
   compact: boolean;
   onNavigate?: () => void;
+  badges?: Record<string, number>;
 }) {
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto p-4">
       {items.map((item) => {
         const active = pathname === item.path;
+        const badge = badges[item.path] || 0;
         return (
           <Link
             key={item.path}
             href={item.path}
             title={compact ? item.name : undefined}
             onClick={onNavigate}
-            className={`flex min-h-10 items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors ${compact ? 'justify-center' : ''} ${
+            className={`relative flex min-h-10 items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors ${compact ? 'justify-center' : ''} ${
               active
                 ? 'bg-emerald-50 font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400'
                 : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-50'
@@ -78,6 +84,16 @@ function NavLinks({
           >
             <item.icon className="size-4 shrink-0" aria-hidden="true" />
             {!compact && <span className="truncate">{item.name}</span>}
+            {badge > 0 && (
+              <span
+                aria-label={`${badge} unread`}
+                className={`rounded-full bg-emerald-600 px-1.5 text-[11px] font-semibold leading-5 text-white ${
+                  compact ? 'absolute right-1 top-1' : 'ml-auto'
+                }`}
+              >
+                {badge > 99 ? '99+' : badge}
+              </span>
+            )}
           </Link>
         );
       })}
@@ -99,6 +115,14 @@ export function Sidebar() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Platform admins have no facility notifications, so don't poll for them.
+  const unreadNotifications = useUnreadNotifications(
+    '/notifications/unread-count',
+    'token',
+    Boolean(user) && user?.role !== 'SUPER_ADMIN'
+  );
+  const badges = { '/notifications': unreadNotifications };
 
   if (!mounted || !user) return null;
 
@@ -146,7 +170,7 @@ export function Sidebar() {
           </div>
         )}
 
-        <NavLinks items={filteredNavItems} pathname={pathname} compact={collapsed} />
+        <NavLinks items={filteredNavItems} pathname={pathname} compact={collapsed} badges={badges} />
 
         <div className="border-t border-slate-200 p-4 space-y-1 dark:border-slate-800">
           <button
@@ -213,7 +237,7 @@ export function Sidebar() {
           </div>
         </div>
 
-        <NavLinks items={filteredNavItems} pathname={pathname} compact={false} onNavigate={closeMobile} />
+        <NavLinks items={filteredNavItems} pathname={pathname} compact={false} onNavigate={closeMobile} badges={badges} />
 
         <div className="border-t border-slate-200 p-4 space-y-1 dark:border-slate-800">
           <ThemeToggle collapsed={false} />

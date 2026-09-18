@@ -2,14 +2,15 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
-import { sendMail, feedbackSubmittedEmail, newCommentEmail, FEEDBACK_EMAIL } from '../lib/mailer';
+import { sendMail, feedbackSubmittedEmail, FEEDBACK_EMAIL } from '../lib/mailer';
+import { notifyStaff } from '../lib/notifications';
 
 const ENTITY_TYPES = ['FEEDBACK', 'PATIENT'] as const;
 
 export async function commentRoutes(fastify: FastifyInstance) {
   // Cross-role notes on a record (currently patients), plus general product
   // feedback. Feedback has no entityId and is emailed to the standing Bulamu
-  // inbox; record notes are emailed to that facility's admin(s).
+  // inbox; record notes notify that facility's admin(s) (see NOTIFICATION_RULES).
   fastify.post('/comments', { preHandler: [authenticate] }, async (request, reply) => {
     const { entityType, entityId, body } = request.body as any;
     const authUser = getAuthUser(request);
@@ -55,18 +56,20 @@ export async function commentRoutes(fastify: FastifyInstance) {
           html: feedbackSubmittedEmail(author.name, author.role, author.clinic.name, comment.body),
         });
       } else {
-        const recipients = await prisma.user.findMany({
-          where: { clinicId: author.clinicId, role: 'ADMIN', isActive: true, id: { not: author.id } },
-          select: { email: true },
+        // Facility admins are told about notes, in-app and (unless they opt
+        // out) by a generic email - the note text itself, which can name a
+        // patient, stays behind sign-in.
+        const preview = comment.body.length > 140 ? `${comment.body.slice(0, 140)}...` : comment.body;
+        await notifyStaff({
+          type: 'NEW_NOTE',
+          clinicId: author.clinicId,
+          title: `New note from ${author.name}`,
+          body: `${author.name} left a note on a ${entityType.toLowerCase()} record: "${preview}"`,
+          link: '/patients',
+          emailSummary: 'A colleague has left a note on a record at your facility. Open Bulamu to read it.',
+          excludeUserId: author.id,
+          log: (message) => fastify.log.warn(message),
         });
-        const consoleUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/patients`;
-        for (const recipient of recipients) {
-          await sendMail({
-            to: recipient.email,
-            subject: `New note from ${author.name}`,
-            html: newCommentEmail(author.name, author.role, entityType, comment.body, consoleUrl),
-          });
-        }
       }
 
       return { success: true, comment: { ...comment, authorName: author.name } };

@@ -27,7 +27,7 @@ async function createActivePortalAccount(app: FastifyInstance, staffToken: strin
   });
   const { portableId, devSetPasswordUrl } = createResponse.json();
   const setPasswordToken = new URL(devSetPasswordUrl).searchParams.get('token')!;
-  await app.inject({ method: 'POST', url: '/patient-auth/set-password', payload: { token: setPasswordToken, password } });
+  await app.inject({ method: 'POST', url: '/patient-auth/set-password', payload: { token: setPasswordToken, password, phone } });
 
   const loginResponse = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: portableId, password } });
   return { portableId, patientToken: loginResponse.json().token as string, password };
@@ -80,7 +80,7 @@ describe('patient portal', () => {
     const setPasswordResponse = await app.inject({
       method: 'POST',
       url: '/patient-auth/set-password',
-      payload: { token: setPasswordToken, password: 'MyNewPassword123!' },
+      payload: { token: setPasswordToken, password: 'MyNewPassword123!', phone: '0756111222' },
     });
     expect(setPasswordResponse.statusCode).toBe(200);
 
@@ -109,7 +109,7 @@ describe('patient portal', () => {
     });
     const { devSetPasswordUrl } = createResponse.json();
     const setPasswordToken = new URL(devSetPasswordUrl).searchParams.get('token')!;
-    await app.inject({ method: 'POST', url: '/patient-auth/set-password', payload: { token: setPasswordToken, password: 'MyNewPassword123!' } });
+    await app.inject({ method: 'POST', url: '/patient-auth/set-password', payload: { token: setPasswordToken, password: 'MyNewPassword123!', phone: '0756111222' } });
 
     const byEmail = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: 'jane@example.com', password: 'MyNewPassword123!' } });
     expect(byEmail.statusCode).toBe(200);

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, assertClinicMatch } from '../middleware/auth.middleware';
+import { notifyLabResultReady } from '../lib/notifications';
 
 export async function labRoutes(fastify: FastifyInstance) {
 
@@ -61,12 +62,17 @@ export async function labRoutes(fastify: FastifyInstance) {
 
       const test = await prisma.labTest.update({
         where: { id },
-        data: { 
-          results, 
+        data: {
+          results,
           status,
           ...(status === 'COMPLETED' && { completedAt: new Date() })
         }
       });
+
+      // Tell the patient once, when the result first becomes available
+      if (status === 'COMPLETED' && existing.status !== 'COMPLETED') {
+        await notifyLabResultReady({ patient: existing.patient, testName: test.testName }, (message) => fastify.log.warn(message));
+      }
 
       return { success: true, test };
     } catch (error: any) {

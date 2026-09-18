@@ -8,6 +8,7 @@ import { useAuth, getHomePath } from '@/lib/useAuth';
 const LEGAL_LINKS = [
   { href: '/legal/terms', label: 'Terms of Service' },
   { href: '/legal/privacy', label: 'Privacy Policy' },
+  { href: '/legal/data-retention', label: 'Data Retention' },
   { href: '/legal/refund-policy', label: 'Refund Policy' },
 ];
 

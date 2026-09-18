@@ -1,14 +1,13 @@
 import { FastifyInstance } from 'fastify';
-import bcrypt from 'bcrypt';
-import { prisma, isUniqueConstraintError } from '../lib/prisma';
+import { prisma } from '../lib/prisma';
 import { authenticate, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
-import { generateToken, hashToken } from '../lib/crypto';
-import { generatePortableId, normalizePhoneKey, findAccountByPhone } from '../lib/patient-account';
-import { sendMail, patientPortalAccountCreatedEmail } from '../lib/mailer';
+import { createPortalAccountForPatient, isValidEmail, sendPasswordLink } from '../lib/portal-invite';
 
-const SET_PASSWORD_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+// Front desk registers and verifies patients at reception, so they may manage
+// a patient's portal account alongside clinical staff.
+const PORTAL_STAFF_ROLES = ['NURSE', 'DOCTOR', 'ADMIN', 'STAFF'] as const;
 
 export async function patientAccountRoutes(fastify: FastifyInstance) {
   // Create a patient's portable portal account - staff-only, never a public
@@ -18,7 +17,7 @@ export async function patientAccountRoutes(fastify: FastifyInstance) {
   // linking flow instead of creating a duplicate identity.
   fastify.post(
     '/patients/:patientId/portal-account',
-    { preHandler: [requireRole('NURSE', 'DOCTOR', 'ADMIN')] },
+    { preHandler: [requireRole(...PORTAL_STAFF_ROLES)] },
     async (request, reply) => {
       const { patientId } = request.params as any;
       const { phone, email } = request.body as any;
@@ -26,94 +25,110 @@ export async function patientAccountRoutes(fastify: FastifyInstance) {
       if (!phone || !email) {
         return reply.status(400).send({ error: 'Phone and email are required' });
       }
+      if (!isValidEmail(email)) {
+        return reply.status(400).send({ error: 'Enter a valid email address' });
+      }
 
       const patient = await prisma.patient.findUnique({ where: { id: patientId }, include: { clinic: true } });
       if (!patient) return reply.status(404).send({ error: 'Patient not found' });
       if (!assertClinicMatch(request, reply, patient.clinicId)) return;
 
-      if (patient.patientAccountId) {
-        return reply.status(409).send({ error: 'This patient already has a portal account' });
-      }
-
-      const duplicate = await findAccountByPhone(phone);
-      if (duplicate) {
-        return reply.status(409).send({ error: `This phone number already has a portal account (Patient ID: ${duplicate.portableId}). Use the link-existing-patient flow instead of creating a new one.` });
-      }
-
       const authUser = getAuthUser(request);
 
       try {
-        const portableId = await generatePortableId();
-        // A random, never-communicated placeholder - the account is unusable
-        // until the patient sets their own password via the emailed link.
-        const placeholderPassword = await bcrypt.hash(generateToken(), 10);
-
-        const account = await prisma.patientAccount.create({
-          data: {
-            portableId,
-            phone,
-            phoneKey: normalizePhoneKey(phone),
-            email,
-            password: placeholderPassword,
-            mustResetPassword: true,
-            createdByClinicId: patient.clinicId,
-            createdByUserId: authUser.userId,
-          },
+        const outcome = await createPortalAccountForPatient({
+          patient,
+          clinicName: patient.clinic.name,
+          phone,
+          email,
+          actor: { userId: authUser.userId, role: authUser.role },
+          log: (message) => fastify.log.info(message),
         });
 
-        await prisma.patient.update({ where: { id: patient.id }, data: { patientAccountId: account.id } });
-
-        const rawToken = generateToken();
-        await prisma.patientPasswordResetToken.create({
-          data: {
-            patientAccountId: account.id,
-            tokenHash: hashToken(rawToken),
-            expiresAt: new Date(Date.now() + SET_PASSWORD_TOKEN_TTL_MS),
-          },
-        });
-
-        await recordAudit({
-          entity: 'PatientAccount', recordId: account.id, clinicId: patient.clinicId,
-          action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role,
-          metadata: { patientId: patient.id, portableId },
-        });
-
-        const setPasswordUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/patient-portal/set-password?token=${rawToken}`;
-        const mailResult = await sendMail({
-          to: email,
-          subject: 'Your Bulamu patient account',
-          html: patientPortalAccountCreatedEmail(patient.name, portableId, patient.clinic.name, setPasswordUrl),
-        });
-        if (!mailResult.sent) {
-          fastify.log.info(`Patient portal account created for ${email}: ${setPasswordUrl}`);
+        switch (outcome.status) {
+          case 'patient_has_account':
+            return reply.status(409).send({ error: 'This patient already has a portal account' });
+          case 'phone_in_use':
+            return reply.status(409).send({ error: `This phone number already has a portal account (Patient ID: ${outcome.portableId}). Use the link-existing-patient flow instead of creating a new one.` });
+          case 'email_in_use':
+            return reply.status(409).send({ error: 'This email is already used by another patient account' });
+          case 'created':
+            return {
+              success: true,
+              portableId: outcome.portableId,
+              ...(process.env.NODE_ENV !== 'production' ? { devSetPasswordUrl: outcome.setPasswordUrl } : {}),
+            };
         }
-
-        return {
-          success: true,
-          portableId,
-          ...(process.env.NODE_ENV !== 'production' ? { devSetPasswordUrl: setPasswordUrl } : {}),
-        };
       } catch (error: any) {
-        if (isUniqueConstraintError(error)) {
-          return reply.status(409).send({ error: 'This email is already used by another patient account' });
-        }
         return reply.status(400).send({ error: error.message });
       }
     }
   );
 
-  // Whether a patient already has a portal account - lets staff UI show the
-  // right action (create vs. already linked) without guessing.
+  // Whether a patient already has a portal account, and whether the patient
+  // has activated it yet - lets staff UI show the right action (create,
+  // resend the invitation, or nothing) without guessing.
   fastify.get('/patients/:patientId/portal-account', { preHandler: [authenticate] }, async (request, reply) => {
     const { patientId } = request.params as any;
 
     const patient = await prisma.patient.findUnique({
       where: { id: patientId },
-      select: { clinicId: true, patientAccountId: true, patientAccount: { select: { portableId: true, status: true } } },
+      select: {
+        clinicId: true,
+        patientAccountId: true,
+        patientAccount: { select: { portableId: true, status: true, mustResetPassword: true } },
+      },
     });
     if (!patient) return reply.status(404).send({ error: 'Patient not found' });
     if (!assertClinicMatch(request, reply, patient.clinicId)) return;
 
-    return { success: true, account: patient.patientAccount };
+    const account = patient.patientAccount
+      ? { portableId: patient.patientAccount.portableId, status: patient.patientAccount.status, activated: !patient.patientAccount.mustResetPassword }
+      : null;
+    return { success: true, account };
   });
+
+  // Re-send the set-up email to a patient who hasn't activated their account
+  // (lost or expired email, or a mistyped address that staff have corrected).
+  // Once activated, the patient uses "Forgot password" themselves instead.
+  fastify.post(
+    '/patients/:patientId/portal-account/resend',
+    { preHandler: [requireRole(...PORTAL_STAFF_ROLES)] },
+    async (request, reply) => {
+      const { patientId } = request.params as any;
+
+      const patient = await prisma.patient.findUnique({
+        where: { id: patientId },
+        include: { clinic: { select: { name: true } }, patientAccount: true },
+      });
+      if (!patient) return reply.status(404).send({ error: 'Patient not found' });
+      if (!assertClinicMatch(request, reply, patient.clinicId)) return;
+      if (!patient.patientAccount) return reply.status(404).send({ error: 'This patient has no portal account' });
+      if (!patient.patientAccount.mustResetPassword) {
+        return reply.status(409).send({ error: 'This patient has already activated their account. They can use "Forgot password" to reset it.' });
+      }
+
+      const authUser = getAuthUser(request);
+      const { setPasswordUrl } = await sendPasswordLink({
+        patientAccountId: patient.patientAccount.id,
+        email: patient.patientAccount.email,
+        patientName: patient.name,
+        clinicName: patient.clinic.name,
+        portableId: patient.patientAccount.portableId,
+        kind: 'invitation',
+        log: (message) => fastify.log.info(message),
+      });
+
+      await recordAudit({
+        entity: 'PatientAccount', recordId: patient.patientAccount.id, clinicId: patient.clinicId,
+        action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
+        metadata: { event: 'INVITATION_RESENT' },
+      });
+
+      return {
+        success: true,
+        ...(process.env.NODE_ENV !== 'production' ? { devSetPasswordUrl: setPasswordUrl } : {}),
+      };
+    }
+  );
 }

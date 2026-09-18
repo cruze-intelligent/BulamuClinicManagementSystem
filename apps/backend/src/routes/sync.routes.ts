@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma';
 import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
 import { recordConflictIfStale } from '../lib/conflict';
 import { recordAudit } from '../lib/audit';
+import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
+import { notifyIfLowStock, notifyLabResultReady, notifyNewPrescription } from '../lib/notifications';
 
 export async function syncRoutes(fastify: FastifyInstance) {
   // Push queued offline mutations to backend (Last-Write-Wins by timestamp,
@@ -75,6 +77,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 id: payload.id,
                 name: payload.name,
                 phone: payload.phone,
+                email: isValidEmail(payload.email) ? payload.email.trim().toLowerCase() : null,
                 sex: payload.sex || null,
                 dateOfBirth: payload.dateOfBirth ? new Date(payload.dateOfBirth) : null,
                 village: payload.village || null,
@@ -94,6 +97,19 @@ export async function syncRoutes(fastify: FastifyInstance) {
               entity: 'Patient', recordId: record.id, clinicId: record.clinicId,
               action: existing ? 'UPDATE' : 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role,
             });
+
+            // A newly registered patient who gave an email is invited to set up
+            // their portal account (this is when an offline registration
+            // finally reaches the server). Never fails the sync.
+            if (!existing) {
+              await inviteNewPatient({
+                patient: record,
+                phone: record.phone,
+                email: payload.email,
+                actor: { userId: authUser.userId, role: authUser.role },
+                log: (message) => fastify.log.info(message),
+              });
+            }
           }
         } else if (entity === 'appointment') {
           const existing = await prisma.appointment.findUnique({ where: { id: payload.id } });
@@ -193,6 +209,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
               },
             });
 
+            let prescribedCount = 0;
             if (Array.isArray(payload.prescriptions)) {
               for (const rx of payload.prescriptions) {
                 if (rx.medication) {
@@ -205,8 +222,18 @@ export async function syncRoutes(fastify: FastifyInstance) {
                       duration: rx.duration || '',
                     },
                   });
+                  prescribedCount++;
                 }
               }
+            }
+
+            if (!existing) {
+              const consultedPatient = await prisma.patient.findUnique({ where: { id: payload.patientId }, select: { name: true } });
+              await notifyNewPrescription({
+                clinicId: appointment.clinicId,
+                patientName: consultedPatient?.name ?? 'a patient',
+                itemCount: prescribedCount,
+              }, (message) => fastify.log.warn(message));
             }
           }
         } else if (entity === 'labTest') {
@@ -257,6 +284,11 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 updatedAt: incomingUpdatedAt,
               },
             });
+
+            // Tell the patient once, when the result first becomes available
+            if (record.status === 'COMPLETED' && existing?.status !== 'COMPLETED') {
+              await notifyLabResultReady({ patient, testName: record.testName }, (message) => fastify.log.warn(message));
+            }
           }
         } else if (entity === 'reproductiveHealth') {
           const patient = await prisma.patient.findUnique({ where: { id: payload.patientId } });
@@ -362,6 +394,8 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 updatedAt: incomingUpdatedAt,
               },
             });
+
+            await notifyIfLowStock(record, existing ? existing.quantity : null, (message) => fastify.log.warn(message));
           }
         }
 

@@ -20,6 +20,7 @@ function SetPasswordForm() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token') || '';
 
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,7 +44,7 @@ function SetPasswordForm() {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patient-auth/set-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, password, phone }),
       });
       const data = await response.json();
 
@@ -77,6 +78,13 @@ function SetPasswordForm() {
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">This finishes activating your Bulamu patient account.</p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        <div>
+          <Label htmlFor="phone">Phone number</Label>
+          <Input id="phone" type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="The number you gave your facility" />
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            This confirms the account is yours.
+          </p>
+        </div>
         <div>
           <Label htmlFor="password">New password</Label>
           <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />

@@ -70,6 +70,12 @@ export default function PatientPortalLoginPage() {
           </Button>
         </form>
 
+        <div className="mt-4 text-center">
+          <a href="/patient-portal/forgot-password" className="text-sm text-emerald-700 hover:underline">
+            Forgot your password?
+          </a>
+        </div>
+
         <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
           Your account is created by the facility that registers you. Check your email for a set-password link.
         </p>

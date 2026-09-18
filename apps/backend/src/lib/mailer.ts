@@ -165,11 +165,51 @@ export function patientPortalAccountCreatedEmail(patientName: string, portableId
     <p style="margin:0 0 20px;font-size:20px;font-weight:bold;letter-spacing:1px;color:${BRAND_TEAL};">${portableId}</p>
     <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
       Keep this ID - any Bulamu facility you visit can use it to link your visit there once you approve it.
-      Set your password to finish activating your account. This link expires in 1 hour.
+      Use the button below to set your password and sign in to the Patient Portal, where you can view your
+      records, upload documents and request appointments. You will be asked to confirm the phone number you gave
+      the facility. This link expires in 72 hours.
     </p>
     <a href="${setPasswordUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
       Set Password
     </a>
+    <p style="margin:20px 0 0;font-size:12px;color:#64748b;">
+      If you were not expecting this email, you can safely ignore it - no one can access your account until this
+      link is used.
+    </p>
+  `);
+}
+
+export function patientAccountClosedEmail(): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">Your Patient Portal account has been closed</h2>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      Your Bulamu Patient Portal account was closed at your request. Your email address, phone number and password
+      have been erased from the account, along with your notifications and any documents you uploaded yourself, and
+      no facility can access your records through the account any more.
+    </p>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      The clinical records that each facility holds about you have not been removed, because facilities are required
+      to keep them. To ask about those records, please contact the facility directly.
+    </p>
+    <p style="margin:0;font-size:12px;color:#64748b;">
+      If you did not close this account, please contact Bulamu support straight away.
+    </p>
+  `);
+}
+
+export function patientPasswordResetEmail(setPasswordUrl: string): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">Reset your Patient Portal password</h2>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
+      We received a request to reset the password on your Bulamu patient account. You will be asked to confirm the
+      phone number you gave your facility. This link expires in 1 hour.
+    </p>
+    <a href="${setPasswordUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
+      Reset Password
+    </a>
+    <p style="margin:20px 0 0;font-size:12px;color:#64748b;">
+      If you did not request this, you can safely ignore this email.
+    </p>
   `);
 }
 
@@ -183,6 +223,22 @@ export function patientAccessOtpEmail(clinicName: string, code: string): string 
     <p style="margin:0 0 20px;font-size:28px;font-weight:bold;letter-spacing:4px;color:${BRAND_TEAL};">${code}</p>
     <p style="margin:0;font-size:13px;color:#64748b;">
       If you did not request this, you can safely ignore this email - no changes were made to your account.
+    </p>
+  `);
+}
+
+// Notification emails never contain patient names or clinical details - they
+// only say that something needs attention and link to the app, where the
+// detail is shown after sign-in.
+export function notificationEmail(input: { heading: string; message: string; ctaUrl: string; ctaLabel: string }): string {
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">${input.heading}</h2>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">${input.message}</p>
+    <a href="${input.ctaUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
+      ${input.ctaLabel}
+    </a>
+    <p style="margin:20px 0 0;font-size:12px;color:#64748b;">
+      You can choose which notification emails you receive from the Notifications page after you sign in.
     </p>
   `);
 }
@@ -229,17 +285,6 @@ export function feedbackSubmittedEmail(authorName: string, authorRole: string, c
       ${authorName} (${authorRole}) - ${clinicName}
     </p>
     <p style="margin:0;font-size:14px;line-height:1.5;white-space:pre-wrap;">${body}</p>
-  `);
-}
-
-export function newCommentEmail(authorName: string, authorRole: string, entityType: string, body: string, consoleUrl: string): string {
-  return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">New note on a ${entityType.toLowerCase()} record</h2>
-    <p style="margin:0 0 8px;font-size:13px;color:#64748b;">${authorName} (${authorRole})</p>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;white-space:pre-wrap;">${body}</p>
-    <a href="${consoleUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
-      Open Bulamu
-    </a>
   `);
 }
 

@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
+import { notifyStaff } from '../lib/notifications';
 
 export async function referralRoutes(fastify: FastifyInstance) {
   // Refer a patient to another facility (e.g. HC II -> HC III for a complicated case)
@@ -33,6 +34,17 @@ export async function referralRoutes(fastify: FastifyInstance) {
             toClinicId,
             reason,
           },
+        });
+
+        const fromClinic = await prisma.clinic.findUnique({ where: { id: patient.clinicId }, select: { name: true } });
+        await notifyStaff({
+          type: 'REFERRAL_RECEIVED',
+          clinicId: toClinicId,
+          title: 'New referral received',
+          body: `${fromClinic?.name ?? 'Another facility'} referred ${patient.name} to your facility.`,
+          link: '/referrals',
+          emailSummary: 'Another facility has referred a patient to yours. Open Referrals to review it.',
+          log: (message) => fastify.log.warn(message),
         });
 
         return { success: true, referral };

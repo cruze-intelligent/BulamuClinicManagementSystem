@@ -168,6 +168,11 @@ export async function authRoutes(fastify: FastifyInstance) {
       const user = await prisma.user.findUnique({ where: { email } });
 
       if (user && user.isActive) {
+        // Retention: drop this user's expired and already-used reset tokens
+        // now that a new one is being issued (see DATA_RETENTION.md).
+        await prisma.passwordResetToken.deleteMany({
+          where: { userId: user.id, OR: [{ expiresAt: { lt: new Date() } }, { usedAt: { not: null } }] },
+        });
         const rawToken = generateToken();
         await prisma.passwordResetToken.create({
           data: {

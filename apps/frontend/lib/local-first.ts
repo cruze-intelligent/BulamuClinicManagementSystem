@@ -2,6 +2,7 @@ export type LocalPatient = {
   id: string;
   name: string;
   phone: string;
+  email?: string;
   sex?: "FEMALE" | "MALE" | "OTHER";
   dateOfBirth?: string;
   village?: string;
@@ -317,6 +318,7 @@ export async function refreshPatientsFromServer(clinicId: string): Promise<Local
 export async function createPatientOffline(input: {
   name: string;
   phone: string;
+  email?: string;
   clinicId: string;
   sex?: LocalPatient["sex"];
   dateOfBirth?: string;
@@ -333,6 +335,7 @@ export async function createPatientOffline(input: {
     id: createId(),
     name: input.name,
     phone: input.phone,
+    email: input.email,
     sex: input.sex,
     dateOfBirth: input.dateOfBirth,
     village: input.village,
@@ -359,6 +362,7 @@ export async function createPatientOffline(input: {
       id: patient.id,
       name: patient.name,
       phone: patient.phone,
+      email: patient.email,
       sex: patient.sex,
       dateOfBirth: patient.dateOfBirth,
       village: patient.village,

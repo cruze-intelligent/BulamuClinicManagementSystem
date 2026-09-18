@@ -65,7 +65,8 @@ function PatientHistoryContent() {
   const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [portalAccount, setPortalAccount] = useState<{ portableId: string; status: string } | null>(null);
+  const [portalAccount, setPortalAccount] = useState<{ portableId: string; status: string; activated?: boolean } | null>(null);
+  const [resendingInvite, setResendingInvite] = useState(false);
   const [showPortalForm, setShowPortalForm] = useState(false);
   const [portalPhone, setPortalPhone] = useState('');
   const [portalEmail, setPortalEmail] = useState('');
@@ -92,6 +93,24 @@ function PatientHistoryContent() {
     }
   };
 
+  const handleResendInvitation = async () => {
+    setResendingInvite(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${patientId}/portal-account/resend`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Could not resend the email');
+      alert('The set-up email has been sent again.');
+    } catch (error: any) {
+      alert(`Error: ${error.message}`);
+    } finally {
+      setResendingInvite(false);
+    }
+  };
+
   const handleCreatePortalAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreatingPortalAccount(true);
@@ -106,7 +125,7 @@ function PatientHistoryContent() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Failed to create portal account');
 
-      setPortalAccount({ portableId: data.portableId, status: 'ACTIVE' });
+      setPortalAccount({ portableId: data.portableId, status: 'ACTIVE', activated: false });
       setShowPortalForm(false);
       alert(`Portal account created. Patient ID: ${data.portableId}. An email with a set-password link was sent to ${portalEmail}.`);
     } catch (error: any) {
@@ -305,9 +324,25 @@ function PatientHistoryContent() {
   };
 
   if (loading) return <div className="p-8">Loading...</div>;
-  if (!patient) return <div className="p-8">Patient not found</div>;
+  if (!patient) {
+    return (
+      <div className="p-8 space-y-3">
+        <p className="font-medium">This patient record could not be loaded.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          If it was just registered offline, it becomes available here once it has synced. Otherwise, check your
+          connection and try again.
+        </p>
+        <Link href="/patients">
+          <Button variant="outline" size="sm">Back to patients</Button>
+        </Link>
+      </div>
+    );
+  }
 
   const canEditClinicalData = hasRole('NURSE', 'DOCTOR', 'ADMIN');
+  // Front desk registers and verifies patients at reception, so they manage
+  // the patient's portal account too (but not clinical data).
+  const canManagePortal = hasRole('NURSE', 'DOCTOR', 'ADMIN', 'STAFF');
 
   return (
     <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
@@ -334,13 +369,36 @@ function PatientHistoryContent() {
 
           <div className="mt-4 border-t pt-4">
             {portalAccount ? (
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Patient portal: <span className="font-mono font-medium text-emerald-700 dark:text-emerald-500">{portalAccount.portableId}</span>
-                {portalAccount.status !== 'ACTIVE' && <span className="ml-2 text-amber-600">({portalAccount.status})</span>}
-              </p>
-            ) : canEditClinicalData ? (
+              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
+                <span>
+                  Patient portal: <span className="font-mono font-medium text-emerald-700 dark:text-emerald-500">{portalAccount.portableId}</span>
+                  {portalAccount.status !== 'ACTIVE' && <span className="ml-2 text-amber-600">({portalAccount.status})</span>}
+                </span>
+                {portalAccount.activated === false && (
+                  <>
+                    <span className="text-amber-600">Invitation sent - awaiting activation</span>
+                    {canManagePortal && (
+                      <Button size="sm" variant="outline" disabled={resendingInvite} onClick={handleResendInvitation}>
+                        {resendingInvite ? 'Sending...' : 'Resend set-up email'}
+                      </Button>
+                    )}
+                  </>
+                )}
+                {portalAccount.activated === true && <span className="text-emerald-700 dark:text-emerald-500">Activated</span>}
+              </div>
+            ) : canManagePortal ? (
               <>
-                <Button size="sm" variant="outline" onClick={() => setShowPortalForm((v) => !v)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (!showPortalForm) {
+                      setPortalPhone((current) => current || patient.phone || '');
+                      setPortalEmail((current) => current || patient.email || '');
+                    }
+                    setShowPortalForm((v) => !v);
+                  }}
+                >
                   {showPortalForm ? 'Cancel' : 'Create portal account'}
                 </Button>
                 {showPortalForm && (

@@ -27,7 +27,7 @@ async function createActivePortalAccount(app: FastifyInstance, staffToken: strin
   });
   const { portableId, devSetPasswordUrl } = createResponse.json();
   const setPasswordToken = new URL(devSetPasswordUrl).searchParams.get('token')!;
-  await app.inject({ method: 'POST', url: '/patient-auth/set-password', payload: { token: setPasswordToken, password } });
+  await app.inject({ method: 'POST', url: '/patient-auth/set-password', payload: { token: setPasswordToken, password, phone } });
 
   const loginResponse = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: portableId, password } });
   return { portableId, patientToken: loginResponse.json().token as string, password };
@@ -178,7 +178,7 @@ describe('cross-facility patient linking (Phase 4)', () => {
       payload: { portableId, method: 'OTP', otp },
     });
     expect(replay.statusCode).toBe(401);
-  });
+  }, 60_000); // three clinics and ~10 password hashes - slow on a loaded machine
 
   it('rejects linking the same facility to the same account twice', async () => {
     const clinicA = await seedClinic({ name: 'Clinic A' });

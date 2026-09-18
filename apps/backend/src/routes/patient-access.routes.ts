@@ -7,6 +7,7 @@ import { recordAudit } from '../lib/audit';
 import { generateOtp } from '../lib/patient-account';
 import { hashToken } from '../lib/crypto';
 import { sendMail, patientAccessOtpEmail } from '../lib/mailer';
+import { notifyPatient } from '../lib/notifications';
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -22,7 +23,7 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
   // clinical data, never contact details beyond what staff already typed.
   fastify.post(
     '/patients/lookup-account',
-    { preHandler: [requireRole('NURSE', 'DOCTOR', 'ADMIN')], config: { rateLimit: LOOKUP_RATE_LIMIT } },
+    { preHandler: [requireRole('NURSE', 'DOCTOR', 'ADMIN', 'STAFF')], config: { rateLimit: LOOKUP_RATE_LIMIT } },
     async (request, reply) => {
       const { portableId } = request.body as any;
       const authUser = getAuthUser(request);
@@ -61,7 +62,7 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
   // own phone/email, out of band from the staff device doing the lookup.
   fastify.post(
     '/patients/link-account/otp',
-    { preHandler: [requireRole('NURSE', 'DOCTOR', 'ADMIN')], config: { rateLimit: LOOKUP_RATE_LIMIT } },
+    { preHandler: [requireRole('NURSE', 'DOCTOR', 'ADMIN', 'STAFF')], config: { rateLimit: LOOKUP_RATE_LIMIT } },
     async (request, reply) => {
       const { portableId } = request.body as any;
       const authUser = getAuthUser(request);
@@ -75,6 +76,15 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
       const clinic = await prisma.clinic.findUnique({ where: { id: authUser.clinicId }, select: { name: true } });
 
       const code = generateOtp();
+      // Retention: expired and used codes for this patient/facility pair are
+      // removed when a new one is issued (see DATA_RETENTION.md).
+      await prisma.patientAccessOtp.deleteMany({
+        where: {
+          patientAccountId: account.id,
+          clinicId: authUser.clinicId,
+          OR: [{ expiresAt: { lt: new Date() } }, { usedAt: { not: null } }],
+        },
+      });
       await prisma.patientAccessOtp.create({
         data: {
           patientAccountId: account.id,
@@ -108,7 +118,7 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
   // makes this facility's data visible in the patient's own aggregated view.
   fastify.post(
     '/patients/link-account',
-    { preHandler: [requireRole('NURSE', 'DOCTOR', 'ADMIN')], config: { rateLimit: LINK_RATE_LIMIT } },
+    { preHandler: [requireRole('NURSE', 'DOCTOR', 'ADMIN', 'STAFF')], config: { rateLimit: LINK_RATE_LIMIT } },
     async (request, reply) => {
       const { portableId, method, password, otp } = request.body as any;
       const authUser = getAuthUser(request);
@@ -180,6 +190,23 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
         action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role,
         metadata: { patientAccountId: account.id, method, patientId: patient.id },
       });
+
+      // A security notice: the patient should always hear when another
+      // facility is given access to their records, so they can spot (and
+      // revoke) one they didn't expect.
+      if (!existingGrant) {
+        const grantedClinic = await prisma.clinic.findUnique({ where: { id: authUser.clinicId }, select: { name: true } });
+        await notifyPatient({
+          type: 'RECORD_ACCESS_GRANTED',
+          patientAccountId: account.id,
+          clinicId: authUser.clinicId,
+          title: 'A new facility can now see your records',
+          body: `${grantedClinic?.name ?? 'A facility'} was given access to your records after confirming your identity with your ${method === 'PIN' ? 'password' : 'email code'}. If this was not you, revoke the access from the Access page and change your password.`,
+          link: '/patient-portal/access',
+          emailSummary: 'A facility was given access to your Bulamu records. If you did not expect this, sign in to review it and revoke the access.',
+          log: (message) => fastify.log.warn(message),
+        });
+      }
 
       return { success: true, patient };
     }

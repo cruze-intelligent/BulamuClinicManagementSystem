@@ -60,7 +60,7 @@ const roleSteps: Record<string, Step[]> = {
   ADMIN: [
     {
       title: 'Set up your team',
-      body: 'Create staff accounts and assign roles - Doctor, Nurse, Pharmacist, or Front Desk Staff - from Staff.',
+      body: 'Create staff accounts and assign roles - Doctor, Nurse, Pharmacist, or Front Desk - from Staff.',
       icon: Users,
     },
     {
