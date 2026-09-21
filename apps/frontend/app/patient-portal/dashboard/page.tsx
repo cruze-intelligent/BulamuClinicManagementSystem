@@ -5,7 +5,9 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Building2, CalendarClock, CalendarPlus, FileDown, FlaskConical, Paperclip, Pill, Stethoscope, Trash2, Upload } from 'lucide-react';
+import { Building2, CalendarClock, CalendarPlus, FlaskConical, Paperclip, Pill, Stethoscope, Upload } from 'lucide-react';
+import { DocumentItem, type DocumentFormat } from '@/components/document-item';
+import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, openDocumentPreview } from '@/lib/document-preview';
 
 const DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
   LAB_RESULT: 'Lab Result',
@@ -24,6 +26,7 @@ type Document = {
   fileSize: number;
   createdAt: string;
   uploadedByPatientAccountId: string | null;
+  format?: DocumentFormat;
 };
 
 type AppointmentRequest = {
@@ -55,12 +58,6 @@ type MeResponse = {
   account: { portableId: string; email: string; phone: string; createdAt: string };
   records: PatientRecord[];
 };
-
-function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 const STATUS_STYLES: Record<string, string> = {
   PENDING: 'text-amber-600 dark:text-amber-400',
@@ -158,6 +155,14 @@ export default function PatientPortalDashboardPage() {
       alert('Error downloading document');
     } finally {
       setDownloadingDocId(null);
+    }
+  };
+
+  const handleViewDocument = async (docId: string) => {
+    try {
+      await openDocumentPreview(`${process.env.NEXT_PUBLIC_API_URL}/patient-portal/documents/${docId}/download`, localStorage.getItem('patientToken'));
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -356,6 +361,7 @@ export default function PatientPortalDashboardPage() {
                 type="file"
                 onChange={(e) => handleUploadDocument(record.id, e)}
                 disabled={uploadingRecordId === record.id}
+                accept={DOCUMENT_ACCEPT}
                 className="hidden"
               />
               <Button
@@ -368,43 +374,25 @@ export default function PatientPortalDashboardPage() {
                 {uploadingRecordId === record.id ? 'Uploading...' : 'Upload'}
               </Button>
             </div>
+            <p className="mt-1 text-xs text-slate-400">{DOCUMENT_TYPES_HELP}</p>
             {record.documents.length === 0 ? (
               <p className="mt-2 text-sm text-slate-400">No documents yet</p>
             ) : (
-              <ul className="mt-2 space-y-1.5">
+              <div className="mt-2 space-y-1.5">
                 {record.documents.map((d) => (
-                  <li key={d.id} className="flex items-center justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-slate-800 dark:text-slate-200">{d.fileName}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {DOCUMENT_CATEGORY_LABELS[d.category] || d.category} - {formatFileSize(d.fileSize)} - {new Date(d.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        disabled={downloadingDocId === d.id}
-                        onClick={() => handleDownloadDocument(d.id, d.fileName)}
-                        title="Download"
-                      >
-                        <FileDown className="size-4" aria-hidden="true" />
-                      </Button>
-                      {d.uploadedByPatientAccountId && (
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteDocument(d.id)}
-                          title="Delete"
-                          className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
-                        >
-                          <Trash2 className="size-4" aria-hidden="true" />
-                        </Button>
-                      )}
-                    </div>
-                  </li>
+                  <DocumentItem
+                    key={d.id}
+                    fileName={d.fileName}
+                    fileSize={d.fileSize}
+                    format={d.format}
+                    busy={downloadingDocId === d.id}
+                    detail={`${DOCUMENT_CATEGORY_LABELS[d.category] || d.category} · ${new Date(d.createdAt).toLocaleDateString()}`}
+                    onView={() => handleViewDocument(d.id)}
+                    onDownload={() => handleDownloadDocument(d.id, d.fileName)}
+                    onDelete={d.uploadedByPatientAccountId ? () => handleDeleteDocument(d.id) : undefined}
+                  />
                 ))}
-              </ul>
+              </div>
             )}
           </div>
         </Card>

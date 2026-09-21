@@ -6,7 +6,7 @@ const SCHEDULE: Array<{ category: string; includes: string; kept: string; after:
   {
     category: 'Clinical records',
     includes: 'Patient details, appointments, consultations, prescriptions, lab tests, reproductive health records, referrals and invoices entered by a facility.',
-    kept: 'While the facility account is active, and afterwards for 10 years from the last entry on the record.*',
+    kept: 'While the facility account is active, and afterwards for 5 years from the last entry on the record.*',
     after: 'Permanently erased.',
   },
   {
@@ -61,7 +61,7 @@ const SCHEDULE: Array<{ category: string; includes: string; kept: string; after:
 
 export default function DataRetentionPage() {
   return (
-    <LegalLayout title="Data Retention and Deletion Policy" effectiveDate="18 September 2026">
+    <LegalLayout title="Data Retention and Deletion Policy" effectiveDate="21 September 2026">
       <p>
         This policy explains how long Bulamu Medical Facility OS (&quot;Bulamu&quot;) keeps information, and exactly
         what happens to it when a record, a staff account, a Patient Portal account or a whole facility is deleted or

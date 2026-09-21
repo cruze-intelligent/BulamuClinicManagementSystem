@@ -4,6 +4,7 @@ import { authenticate, assertClinicMatch, getAuthUser } from '../middleware/auth
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { generateStorageKey, saveFile, getFileStream, deleteFile } from '../lib/storage';
+import { detectDocumentFormat, normalizeFileName, setDownloadHeaders, withFormat, SUPPORTED_FORMATS_MESSAGE } from '../lib/document-format';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_CATEGORIES = ['LAB_RESULT', 'CONSENT_FORM', 'ID_COPY', 'REFERRAL_LETTER', 'OTHER'];
@@ -33,8 +34,13 @@ export async function documentRoutes(fastify: FastifyInstance) {
         return reply.status(413).send({ error: 'File too large (10MB max)' });
       }
 
+      // Decide the type from the file's own bytes, not from what the browser claimed.
+      const format = detectDocumentFormat(buffer, data.filename);
+      if (!format) return reply.status(415).send({ error: SUPPORTED_FORMATS_MESSAGE });
+      const fileName = normalizeFileName(data.filename, format);
+
       const authUser = getAuthUser(request);
-      const storageKey = generateStorageKey(data.filename);
+      const storageKey = generateStorageKey(fileName);
       await saveFile(storageKey, buffer);
 
       const document = await prisma.document.create({
@@ -42,8 +48,8 @@ export async function documentRoutes(fastify: FastifyInstance) {
           clinicId: patient.clinicId,
           patientId: patient.id,
           category: resolvedCategory,
-          fileName: data.filename,
-          mimeType: data.mimetype,
+          fileName,
+          mimeType: format.mimeType,
           fileSize: buffer.length,
           storageKey,
           uploadedByUserId: authUser.userId,
@@ -56,7 +62,7 @@ export async function documentRoutes(fastify: FastifyInstance) {
         metadata: { patientId: patient.id, fileName: document.fileName },
       });
 
-      return { success: true, document };
+      return { success: true, document: withFormat(document) };
     }
   );
 
@@ -77,7 +83,7 @@ export async function documentRoutes(fastify: FastifyInstance) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return { success: true, documents };
+    return { success: true, documents: documents.map(withFormat) };
   });
 
   // Download a document's underlying file
@@ -88,8 +94,7 @@ export async function documentRoutes(fastify: FastifyInstance) {
     if (!document) return reply.status(404).send({ error: 'Document not found' });
     if (!assertClinicMatch(request, reply, document.clinicId)) return;
 
-    reply.header('Content-Type', document.mimeType);
-    reply.header('Content-Disposition', `attachment; filename="${document.fileName}"`);
+    setDownloadHeaders(reply, document);
     return reply.send(getFileStream(document.storageKey));
   });
 

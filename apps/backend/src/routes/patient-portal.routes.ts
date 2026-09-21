@@ -4,6 +4,7 @@ import { authenticatePatient, getPatientAuthUser } from '../middleware/patient-a
 import { generateStorageKey, saveFile, getFileStream, deleteFile } from '../lib/storage';
 import { recordAudit } from '../lib/audit';
 import { notifyStaff } from '../lib/notifications';
+import { detectDocumentFormat, normalizeFileName, setDownloadHeaders, withFormat, SUPPORTED_FORMATS_MESSAGE } from '../lib/document-format';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -95,7 +96,9 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
         },
       });
 
-      const records = allRecords.filter((r) => authorizedClinicIds.has(r.clinic.id));
+      const records = allRecords
+        .filter((r) => authorizedClinicIds.has(r.clinic.id))
+        .map((r) => ({ ...r, documents: r.documents.map(withFormat) }));
 
       return { success: true, account, records };
     } catch (error: any) {
@@ -125,7 +128,11 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
       return reply.status(413).send({ error: 'File too large (10MB max)' });
     }
 
-    const storageKey = generateStorageKey(data.filename);
+    const format = detectDocumentFormat(buffer, data.filename);
+    if (!format) return reply.status(415).send({ error: SUPPORTED_FORMATS_MESSAGE });
+    const fileName = normalizeFileName(data.filename, format);
+
+    const storageKey = generateStorageKey(fileName);
     await saveFile(storageKey, buffer);
 
     const document = await prisma.document.create({
@@ -133,8 +140,8 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
         clinicId: record.clinicId,
         patientId: record.id,
         category: 'PATIENT_UPLOAD',
-        fileName: data.filename,
-        mimeType: data.mimetype,
+        fileName,
+        mimeType: format.mimeType,
         fileSize: buffer.length,
         storageKey,
         uploadedByPatientAccountId: authUser.patientAccountId,
@@ -147,7 +154,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
       metadata: { patientId: record.id, fileName: document.fileName },
     });
 
-    return { success: true, document };
+    return { success: true, document: withFormat(document) };
   });
 
   // Download any document attached to one of the patient's own linked
@@ -162,8 +169,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     const record = await findOwnRecord(authUser.patientAccountId, document.patientId);
     if (!record) return reply.status(404).send({ error: 'Document not found' });
 
-    reply.header('Content-Type', document.mimeType);
-    reply.header('Content-Disposition', `attachment; filename="${document.fileName}"`);
+    setDownloadHeaders(reply, document);
     return reply.send(getFileStream(document.storageKey));
   });
 

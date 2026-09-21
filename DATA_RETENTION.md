@@ -7,18 +7,24 @@ code, says which parts happen automatically and which are a manual procedure,
 and lists the known gaps. Keep the two in step: change a period in one, change
 it in the other.
 
-> The retention periods below (10 years clinical, 7 years financial and audit)
-> are proposed defaults. They must be confirmed against Ugandan health-record
-> and tax record-keeping requirements by the company's legal adviser before the
-> policy is relied on. Where the law requires longer, the longer period applies.
+> The retention periods below (5 years clinical, 7 years financial and audit)
+> were set by the business as a middle course between a short and a long
+> period. They should still be confirmed against Ugandan health-record and tax
+> record-keeping requirements by the company's legal adviser before the policy
+> is relied on. Where the law requires longer, the longer period applies.
+>
+> History: the first draft used 10 years for clinical records; the instruction
+> "no more than 6 months after account deletion" was considered and set aside as
+> too short for records clinicians and facilities must be able to rely on; 5
+> years was chosen on 21 September 2026.
 
 ## 1. Retention schedule
 
 | Category | Kept | At the end |
 | --- | --- | --- |
-| Clinical records (patients, appointments, consultations, prescriptions, lab tests, reproductive health, referrals, invoices) | While the facility is active, then 10 years from the last entry | Erase |
+| Clinical records (patients, appointments, consultations, prescriptions, lab tests, reproductive health, referrals, invoices) | While the facility is active, then 5 years from the last entry | Erase |
 | Documents | With the clinical record; deleting a document erases it at once | Erase |
-| Facility and staff account details | While the facility is active; after facility deletion, 10 years (same as clinical) | Erase |
+| Facility and staff account details | While the facility is active; after facility deletion, 5 years (same as clinical) | Erase |
 | Subscription, payment and receipt records | 7 years | Erase |
 | Patient Portal account | Until the patient closes it | Erased on closure |
 | Notifications | 90 days | Erase |

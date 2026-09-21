@@ -4,7 +4,7 @@ export const metadata = { title: 'Privacy Policy | Bulamu' };
 
 export default function PrivacyPage() {
   return (
-    <LegalLayout title="Privacy Policy" effectiveDate="18 September 2026">
+    <LegalLayout title="Privacy Policy" effectiveDate="21 September 2026">
       <p>
         This Privacy Policy explains how Cruze Intelligent Systems (U) Ltd (&quot;Cruze&quot;, &quot;we&quot;) handles
         information processed through Bulamu Medical Facility OS (&quot;Bulamu&quot;). It is written to align with
@@ -51,7 +51,8 @@ export default function PrivacyPage() {
         Clinical records are retained for as long as your facility&apos;s account remains active and as required for
         continuity of patient care and applicable Ugandan health-record retention obligations. Records are
         soft-deleted (retained with a deletion marker) rather than immediately erased, to preserve audit and clinical
-        history integrity, and are permanently removed on request where legally permissible. Our{' '}
+        history integrity. Once a record or facility has been deleted, its clinical information is kept, restricted, for
+        5 years and then permanently erased (earlier on request where legally permissible). Our{' '}
         <a href="/legal/data-retention" className="text-emerald-700 hover:underline">Data Retention and Deletion Policy</a>{' '}
         sets out how long each kind of information is kept and exactly what happens when a record, a staff account, a
         Patient Portal account or a facility is deleted or closed.

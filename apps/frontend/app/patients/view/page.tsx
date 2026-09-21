@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-import { FileDown, Trash2, Upload } from 'lucide-react';
+import { Upload } from 'lucide-react';
+import { DocumentItem } from '@/components/document-item';
+import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, openDocumentPreview } from '@/lib/document-preview';
 import { useAuth } from '@/lib/useAuth';
 import { calculateAgeYears } from '@/lib/age';
 import { validateReproductiveHealthForm } from '@/lib/reproductive-health-validation';
@@ -207,6 +209,14 @@ function PatientHistoryContent() {
     }
   };
 
+  const handleViewDocument = async (docId: string) => {
+    try {
+      await openDocumentPreview(`${process.env.NEXT_PUBLIC_API_URL}/documents/${docId}/download`, localStorage.getItem('token'));
+    } catch (error: any) {
+      alert(error.message);
+    }
+  };
+
   const handleDeleteDocument = async (docId: string) => {
     if (!confirm('Delete this document? This cannot be undone.')) return;
     const token = localStorage.getItem('token');
@@ -224,12 +234,6 @@ function PatientHistoryContent() {
     } finally {
       setDeletingDocId(null);
     }
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const fetchPatientHistory = async () => {
@@ -587,6 +591,7 @@ function PatientHistoryContent() {
                 type="file"
                 onChange={handleUploadDocument}
                 disabled={uploading}
+                accept={DOCUMENT_ACCEPT}
                 className="hidden"
                 id="document-upload-input"
               />
@@ -599,7 +604,7 @@ function PatientHistoryContent() {
                 <Upload className="size-4" aria-hidden="true" />
                 {uploading ? 'Uploading...' : 'Upload Document'}
               </Button>
-              <span className="text-xs text-muted-foreground">Max 10MB</span>
+              <span className="text-xs text-muted-foreground">{DOCUMENT_TYPES_HELP}</span>
             </div>
           )}
 
@@ -610,44 +615,24 @@ function PatientHistoryContent() {
           ) : (
             <div className="space-y-2">
               {documents.map((doc) => (
-                <div
+                <DocumentItem
                   key={doc.id}
-                  className="flex justify-between items-center bg-slate-50 dark:bg-slate-800 p-3 rounded text-sm"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{doc.fileName}</p>
-                    <p className="text-xs text-muted-foreground">
+                  fileName={doc.fileName}
+                  fileSize={doc.fileSize}
+                  format={doc.format}
+                  busy={downloadingDocId === doc.id || deletingDocId === doc.id}
+                  detail={
+                    <>
                       {DOCUMENT_CATEGORIES.find((c) => c.value === doc.category)?.label || doc.category}
-                      {' · '}{formatFileSize(doc.fileSize)}
                       {' · '}{new Date(doc.createdAt).toLocaleDateString()}
                       {doc.uploadedBy?.name ? ` · ${doc.uploadedBy.name}` : ''}
                       {doc.uploadedByPatientAccount ? ` · Uploaded by patient (${doc.uploadedByPatientAccount.portableId})` : ''}
-                    </p>
-                  </div>
-                  <div className="flex gap-1 items-center shrink-0 ml-3">
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      disabled={downloadingDocId === doc.id}
-                      onClick={() => handleDownloadDocument(doc.id, doc.fileName)}
-                      title="Download"
-                    >
-                      <FileDown className="size-4" aria-hidden="true" />
-                    </Button>
-                    {canEditClinicalData && (
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        disabled={deletingDocId === doc.id}
-                        onClick={() => handleDeleteDocument(doc.id)}
-                        title="Delete"
-                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
-                      >
-                        <Trash2 className="size-4" aria-hidden="true" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                    </>
+                  }
+                  onView={() => handleViewDocument(doc.id)}
+                  onDownload={() => handleDownloadDocument(doc.id, doc.fileName)}
+                  onDelete={canEditClinicalData ? () => handleDeleteDocument(doc.id) : undefined}
+                />
               ))}
             </div>
           )}
