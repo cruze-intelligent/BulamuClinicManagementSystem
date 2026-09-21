@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { roleLabel } from '@/lib/role-labels';
+import { Select } from '@/components/ui/select';
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -135,9 +136,8 @@ export default function UsersPage() {
 
               <div>
                 <Label htmlFor="role">Role</Label>
-                <select
+                <Select
                   id="role"
-                  className="w-full p-2 border rounded"
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                 >
@@ -145,7 +145,7 @@ export default function UsersPage() {
                   <option value="NURSE">Nurse</option>
                   <option value="PHARMACIST">Pharmacist</option>
                   <option value="STAFF">Front Desk</option>
-                </select>
+                </Select>
               </div>
 
               <Button type="submit" className="w-full">Add Staff Member</Button>

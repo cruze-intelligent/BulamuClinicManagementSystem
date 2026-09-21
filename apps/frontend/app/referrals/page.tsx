@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { facilityTypeLabel } from '@/lib/facility-types';
+import { Select } from '@/components/ui/select';
 
 export default function ReferralsPage() {
   const [referrals, setReferrals] = useState<any[]>([]);
@@ -97,33 +98,31 @@ export default function ReferralsPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="patientId">Patient</Label>
-                <select
+                <Select
                   id="patientId"
                   required
                   value={formData.patientId}
                   onChange={(e) => setFormData((f) => ({ ...f, patientId: e.target.value }))}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 >
                   <option value="">Select patient</option>
                   {patients.map((p: any) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="toClinicId">Refer To</Label>
-                <select
+                <Select
                   id="toClinicId"
                   required
                   value={formData.toClinicId}
                   onChange={(e) => setFormData((f) => ({ ...f, toClinicId: e.target.value }))}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 >
                   <option value="">Select facility</option>
                   {clinics.map((c: any) => (
                     <option key={c.id} value={c.id}>{c.name} ({facilityTypeLabel(c.facilityType)})</option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="reason">Reason</Label>

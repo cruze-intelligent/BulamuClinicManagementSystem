@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/useAuth';
 import { FACILITY_TYPES, facilityTypeLabel } from '@/lib/facility-types';
+import { Select } from '@/components/ui/select';
 
 
 type Facility = {
@@ -471,16 +472,15 @@ export default function SuperAdminPage() {
             </div>
             <div>
               <Label htmlFor="facilityType">Facility type</Label>
-              <select
-                id="facilityType"
-                className="mt-2 h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm"
+              <Select
+                id="facilityType" className="mt-2"
                 value={formData.facilityType}
                 onChange={(e) => setFormData({ ...formData, facilityType: e.target.value })}
               >
                 {FACILITY_TYPES.map((type) => (
                   <option key={type.value} value={type.value}>{type.label}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <Label htmlFor="phone">Facility phone</Label>

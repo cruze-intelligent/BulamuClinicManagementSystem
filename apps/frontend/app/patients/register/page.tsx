@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { createPatientOffline, getCurrentClinicId } from '@/lib/local-first';
 import { LinkExistingPatient } from '@/components/link-existing-patient';
+import { Select } from '@/components/ui/select';
 
 export default function RegisterPatient() {
   const [mode, setMode] = useState<'new' | 'link'>('new');
@@ -136,17 +137,16 @@ function NewPatientForm() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="sex">Sex</Label>
-                <select
+                <Select
                   id="sex"
                   value={sex}
                   onChange={(e) => setSex(e.target.value as typeof sex)}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                 >
                   <option value="">Not specified</option>
                   <option value="FEMALE">Female</option>
                   <option value="MALE">Male</option>
                   <option value="OTHER">Other</option>
-                </select>
+                </Select>
               </div>
 
               <div>

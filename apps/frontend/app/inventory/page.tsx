@@ -14,6 +14,7 @@ import {
   subscribeToLocalChanges,
   LocalMedicine,
 } from '@/lib/local-first';
+import { Select } from '@/components/ui/select';
 
 export default function InventoryPage() {
   const [medicines, setMedicines] = useState<LocalMedicine[]>([]);
@@ -123,9 +124,8 @@ export default function InventoryPage() {
 
               <div>
                 <Label htmlFor="unit">Unit</Label>
-                <select
+                <Select
                   id="unit"
-                  className="w-full p-2 border rounded bg-white dark:bg-slate-900"
                   value={formData.unit}
                   onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                 >
@@ -134,7 +134,7 @@ export default function InventoryPage() {
                   <option value="boxes">Boxes</option>
                   <option value="vials">Vials</option>
                   <option value="ml">ML</option>
-                </select>
+                </Select>
               </div>
 
               <div>

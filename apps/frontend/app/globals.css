@@ -116,6 +116,23 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* The theme is switched with a class, so the browser has to be told which
+     scheme it is in. Without this, native controls (the pop-up list of every
+     dropdown, date pickers, scrollbars) follow the operating system instead
+     and can end up as light text on a light list, or dark on dark. */
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+  /* Give every dropdown list explicit colours so it is readable in both themes,
+     whatever background the closed control has. */
+  select option,
+  select optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;

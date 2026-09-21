@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { getCurrentClinicId } from '@/lib/local-first';
 import { useAuth } from '@/lib/useAuth';
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
+import { Select } from '@/components/ui/select';
 
 export default function ReportsPage() {
   const { hasRole } = useAuth();
@@ -140,8 +141,7 @@ export default function ReportsPage() {
           <div className="flex gap-4 items-end">
             <div>
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Reporting Month</label>
-              <select
-                className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded mt-1 bg-white dark:bg-slate-900"
+              <Select className="mt-1"
                 value={month}
                 onChange={(e) => setMonth(Number(e.target.value))}
               >
@@ -150,7 +150,7 @@ export default function ReportsPage() {
                     {new Date(0, i).toLocaleString('default', { month: 'long' })}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Year</label>

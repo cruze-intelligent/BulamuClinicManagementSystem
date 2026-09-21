@@ -13,6 +13,7 @@ import {
   getCurrentClinicId,
   LocalPatient,
 } from '@/lib/local-first';
+import { Select } from '@/components/ui/select';
 
 export default function BookAppointment() {
   const router = useRouter();
@@ -69,8 +70,7 @@ export default function BookAppointment() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label>Patient</Label>
-              <select
-                className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+              <Select
                 value={patientId}
                 onChange={(e) => setPatientId(e.target.value)}
                 required
@@ -81,7 +81,7 @@ export default function BookAppointment() {
                     {p.name} ({p.phone})
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div>

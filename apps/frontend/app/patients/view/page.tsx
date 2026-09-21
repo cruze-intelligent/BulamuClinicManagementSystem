@@ -14,6 +14,7 @@ import { useAuth } from '@/lib/useAuth';
 import { calculateAgeYears } from '@/lib/age';
 import { validateReproductiveHealthForm } from '@/lib/reproductive-health-validation';
 import { CommentsSection } from '@/components/comments-section';
+import { Select } from '@/components/ui/select';
 
 const DOCUMENT_CATEGORIES = [
   { value: 'LAB_RESULT', label: 'Lab Result' },
@@ -470,29 +471,27 @@ function PatientHistoryContent() {
                   </div>
                   <div>
                     <Label htmlFor="familyPlanningMethod">Family Planning Method</Label>
-                    <select
+                    <Select
                       id="familyPlanningMethod"
                       value={rhForm.familyPlanningMethod}
                       onChange={(e) => setRhForm((f) => ({ ...f, familyPlanningMethod: e.target.value }))}
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                     >
                       {['NONE', 'CONDOM', 'PILL', 'INJECTABLE', 'IMPLANT', 'IUD', 'NATURAL', 'PERMANENT', 'OTHER'].map((m) => (
                         <option key={m} value={m}>{m}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <Label htmlFor="pregnancyStatus">Pregnancy Status</Label>
-                    <select
+                    <Select
                       id="pregnancyStatus"
                       value={rhForm.pregnancyStatus}
                       onChange={(e) => setRhForm((f) => ({ ...f, pregnancyStatus: e.target.value }))}
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                     >
                       {['UNKNOWN', 'NOT_PREGNANT', 'PREGNANT', 'POSTPARTUM'].map((s) => (
                         <option key={s} value={s}>{s}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
@@ -576,16 +575,16 @@ function PatientHistoryContent() {
 
           {canEditClinicalData && (
             <div className="flex flex-wrap gap-2 items-center mb-4 pb-4 border-b">
-              <select
+              <Select
                 value={uploadCategory}
                 onChange={(e) => setUploadCategory(e.target.value)}
-                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm"
+                className="w-auto"
                 disabled={uploading}
               >
                 {STAFF_DOCUMENT_CATEGORIES.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
-              </select>
+              </Select>
               <input
                 ref={fileInputRef}
                 type="file"

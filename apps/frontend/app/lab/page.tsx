@@ -16,6 +16,7 @@ import {
   LocalLabTest,
   LocalPatient,
 } from '@/lib/local-first';
+import { Select } from '@/components/ui/select';
 
 export default function LabTestsPage() {
   const [tests, setTests] = useState<LocalLabTest[]>([]);
@@ -114,8 +115,7 @@ export default function LabTestsPage() {
             <form onSubmit={orderTest} className="space-y-4">
               <div>
                 <Label>Patient</Label>
-                <select
-                  className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                <Select
                   value={formData.patientId}
                   onChange={(e) => setFormData({ ...formData, patientId: e.target.value })}
                   required
@@ -126,7 +126,7 @@ export default function LabTestsPage() {
                       {p.name} ({p.phone})
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div>
