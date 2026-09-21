@@ -15,7 +15,7 @@ export default function TermsPage() {
       <h2>1. Who may use Bulamu</h2>
       <p>
         Bulamu is intended for licensed and legitimate medical facilities - clinics, health centres, hospitals,
-        laboratories, pharmacies, and community/mobile health teams - and their authorized staff. Every facility
+        laboratories, imaging centres, pharmacies, and community/mobile health teams - and their authorized staff. Every facility
         account is reviewed and approved by a Bulamu administrator before it becomes active.
       </p>
 

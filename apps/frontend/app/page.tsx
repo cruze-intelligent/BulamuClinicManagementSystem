@@ -107,7 +107,7 @@ export default function Home() {
               One operating layer for facilities that must keep working.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
-              Bulamu supports clinics, health centres, hospitals, laboratories, pharmacies, outreach teams, and mobile
+              Bulamu supports clinics, health centres, hospitals, laboratories, imaging centres, pharmacies, outreach teams, and mobile
               units with offline-first operations, national reporting, and centralized administrative governance.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">

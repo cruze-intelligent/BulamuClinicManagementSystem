@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "FacilityType" ADD VALUE 'IMAGING_CENTRE';

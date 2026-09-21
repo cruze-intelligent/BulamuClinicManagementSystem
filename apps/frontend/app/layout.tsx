@@ -20,7 +20,7 @@ const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-3BR26W
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://bulamu.site";
 const SITE_TITLE = "Bulamu Medical Facility OS";
 const SITE_DESCRIPTION =
-  "Offline-first clinic management system for Ugandan medical facilities - clinics, Health Centre II/III/IV, hospitals, laboratories, pharmacies, mobile units, and community outreach teams. Patient records, appointments, prescriptions, billing, and HMIS 105 / FHIR reporting that keeps working without internet.";
+  "Offline-first clinic management system for Ugandan medical facilities - clinics, Health Centre II/III/IV, hospitals, laboratories, imaging centres, pharmacies, mobile units, and community outreach teams. Patient records, appointments, prescriptions, billing, and HMIS 105 / FHIR reporting that keeps working without internet.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

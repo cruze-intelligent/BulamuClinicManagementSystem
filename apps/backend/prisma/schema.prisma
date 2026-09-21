@@ -165,6 +165,7 @@ enum FacilityType {
   PHARMACY
   COMMUNITY_OUTREACH
   MOBILE_UNIT
+  IMAGING_CENTRE
 }
 
 model Patient {

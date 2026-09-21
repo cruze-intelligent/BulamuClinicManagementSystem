@@ -82,6 +82,27 @@ describe('self-service facility registration', () => {
     expect(admin?.role).toBe('ADMIN');
   });
 
+  it('registers an imaging centre, and rejects a facility type that does not exist', async () => {
+    const register = (facilityType: string, suffix: string) => app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        facilityName: `Facility ${suffix}`, facilityType, phone: `07001112${suffix}`, address: 'Kampala, Uganda',
+        adminName: 'Imaging Admin', adminEmail: `admin${suffix}@imaging.ug`, adminPassword: 'SuperSecret123!',
+      },
+    });
+
+    const imaging = await register('IMAGING_CENTRE', '33');
+    expect(imaging.statusCode).toBe(200);
+    const clinic = await prisma.clinic.findFirst({ where: { name: 'Facility 33' } });
+    expect(clinic?.facilityType).toBe('IMAGING_CENTRE');
+    expect(clinic?.registrationStatus).toBe('PENDING');
+
+    const bogus = await register('SPACE_STATION', '44');
+    expect(bogus.statusCode).toBe(400);
+    expect(await prisma.clinic.count({ where: { name: 'Facility 44' } })).toBe(0);
+  });
+
   it('ignores any role supplied in the payload and always creates an ADMIN', async () => {
     await app.inject({
       method: 'POST',

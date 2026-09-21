@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { facilityTypeLabel } from '@/lib/facility-types';
 
 export default function ReferralsPage() {
   const [referrals, setReferrals] = useState<any[]>([]);
@@ -120,7 +121,7 @@ export default function ReferralsPage() {
                 >
                   <option value="">Select facility</option>
                   {clinics.map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.facilityType})</option>
+                    <option key={c.id} value={c.id}>{c.name} ({facilityTypeLabel(c.facilityType)})</option>
                   ))}
                 </select>
               </div>

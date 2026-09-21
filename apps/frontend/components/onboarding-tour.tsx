@@ -28,7 +28,7 @@ type Step = { title: string; body: string; icon: LucideIcon };
 
 const welcomeStep: Step = {
   title: 'Welcome to Bulamu',
-  body: 'Bulamu is a management system for clinics, health centres, hospitals, laboratories, pharmacies, mobile units, and community outreach teams.',
+  body: 'Bulamu is a management system for clinics, health centres, hospitals, laboratories, imaging centres, pharmacies, mobile units, and community outreach teams.',
   icon: ShieldCheck,
 };
 

@@ -25,18 +25,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/useAuth';
+import { FACILITY_TYPES, facilityTypeLabel } from '@/lib/facility-types';
 
-const facilityTypes = [
-  { value: 'CLINIC', label: 'Clinic' },
-  { value: 'HEALTH_CENTRE_II', label: 'Health Centre II' },
-  { value: 'HEALTH_CENTRE_III', label: 'Health Centre III' },
-  { value: 'HEALTH_CENTRE_IV', label: 'Health Centre IV' },
-  { value: 'HOSPITAL', label: 'Hospital' },
-  { value: 'LABORATORY', label: 'Laboratory' },
-  { value: 'PHARMACY', label: 'Pharmacy' },
-  { value: 'COMMUNITY_OUTREACH', label: 'Community Outreach' },
-  { value: 'MOBILE_UNIT', label: 'Mobile Unit' },
-];
 
 type Facility = {
   id: string;
@@ -89,9 +79,7 @@ const emptyForm = {
   adminPassword: '',
 };
 
-function facilityLabel(value: string) {
-  return facilityTypes.find((item) => item.value === value)?.label || value.replaceAll('_', ' ');
-}
+const facilityLabel = facilityTypeLabel;
 
 export default function SuperAdminPage() {
   const { hasRole } = useAuth();
@@ -351,7 +339,7 @@ export default function SuperAdminPage() {
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Authorized facilities</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Includes clinics, hospitals, labs, pharmacies, outreach, and mobile units.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Includes clinics, hospitals, labs, imaging centres, pharmacies, outreach, and mobile units.</p>
             </div>
             {loading && <span className="text-sm text-slate-500 dark:text-slate-400">Loading...</span>}
           </div>
@@ -489,7 +477,7 @@ export default function SuperAdminPage() {
                 value={formData.facilityType}
                 onChange={(e) => setFormData({ ...formData, facilityType: e.target.value })}
               >
-                {facilityTypes.map((type) => (
+                {FACILITY_TYPES.map((type) => (
                   <option key={type.value} value={type.value}>{type.label}</option>
                 ))}
               </select>

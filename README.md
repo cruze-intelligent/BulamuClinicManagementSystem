@@ -1,6 +1,6 @@
 # Bulamu Medical Facility OS
 
-Bulamu is an offline-first management system for Ugandan medical facilities. It supports clinics, Health Centre II/III/IV facilities, hospitals, laboratories, pharmacies, mobile units, and community outreach teams.
+Bulamu is an offline-first management system for Ugandan medical facilities. It supports clinics, Health Centre II/III/IV facilities, hospitals, laboratories, imaging centres, pharmacies, mobile units, and community outreach teams.
 
 ## Seeded Access Accounts (local development only)
 
