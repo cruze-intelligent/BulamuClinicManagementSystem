@@ -5,8 +5,11 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Building2, CalendarClock, CalendarPlus, FlaskConical, Paperclip, Pill, Stethoscope, Upload } from 'lucide-react';
+import { Building2, CalendarClock, CalendarPlus, FlaskConical, Paperclip, Stethoscope, Upload } from 'lucide-react';
 import { DocumentItem, type DocumentFormat } from '@/components/document-item';
+import { ConsultationDetails } from '@/components/consultation-details';
+import type { DiagnosisView } from '@/lib/diagnosis';
+import type { PrescriptionView } from '@/lib/prescription';
 import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, openDocumentPreview } from '@/lib/document-preview';
 
 const DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
@@ -46,7 +49,8 @@ type PatientRecord = {
   appointments: Array<{ id: string; date: string; time: string; status: string; notes: string | null; doctor: { name: string } }>;
   consultations: Array<{
     id: string; diagnosis: string; symptoms: string; createdAt: string;
-    prescriptions: Array<{ id: string; medication: string; dosage: string; frequency: string; duration: string }>;
+    diagnoses: DiagnosisView[];
+    prescriptions: Array<PrescriptionView & { id: string }>;
     invoice: { id: string; amount: number; status: string; createdAt: string } | null;
   }>;
   labTests: Array<{ id: string; testName: string; results: string; status: string; createdAt: string }>;
@@ -155,6 +159,19 @@ export default function PatientPortalDashboardPage() {
       alert('Error downloading document');
     } finally {
       setDownloadingDocId(null);
+    }
+  };
+
+  const [printingRxId, setPrintingRxId] = useState<string | null>(null);
+
+  const handlePrintPrescription = async (consultationId: string) => {
+    setPrintingRxId(consultationId);
+    try {
+      await openDocumentPreview(`${process.env.NEXT_PUBLIC_API_URL}/patient-portal/consultations/${consultationId}/prescription/pdf`, localStorage.getItem('patientToken'));
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setPrintingRxId(null);
     }
   };
 
@@ -309,17 +326,14 @@ export default function PatientPortalDashboardPage() {
             ) : (
               <ul className="mt-2 space-y-2">
                 {record.consultations.map((c) => (
-                  <li key={c.id} className="rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800">
-                    <p className="font-medium text-slate-800 dark:text-slate-200">{c.diagnosis} - {new Date(c.createdAt).toLocaleDateString()}</p>
-                    <p className="text-slate-500 dark:text-slate-400">{c.symptoms}</p>
-                    {c.prescriptions.length > 0 && (
-                      <div className="mt-1.5 flex items-start gap-1.5">
-                        <Pill className="mt-0.5 size-3.5 shrink-0 text-slate-400" aria-hidden="true" />
-                        <p className="text-slate-600 dark:text-slate-300">
-                          {c.prescriptions.map((p) => `${p.medication} (${p.dosage}, ${p.frequency}, ${p.duration})`).join('; ')}
-                        </p>
-                      </div>
-                    )}
+                  <li key={c.id} className="rounded-md bg-slate-50 px-3 py-3 text-sm dark:bg-slate-800/60">
+                    <p className="mb-2 font-medium text-slate-800 dark:text-slate-200">Visit on {new Date(c.createdAt).toLocaleDateString()}</p>
+                    <ConsultationDetails
+                      consultation={c}
+                      showNotes={false}
+                      onPrintPrescription={() => handlePrintPrescription(c.id)}
+                      printing={printingRxId === c.id}
+                    />
                     {c.invoice && (
                       <p className="mt-1 text-slate-500 dark:text-slate-400">
                         Invoice: UGX {c.invoice.amount.toLocaleString()} - {c.invoice.status}

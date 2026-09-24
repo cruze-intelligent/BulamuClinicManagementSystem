@@ -76,7 +76,7 @@ const faqCategories: FaqCategory[] = [
       {
         question: 'How do I book an appointment and record a consultation?',
         answer:
-          'Book a visit from Appointments, then record the consultation with diagnosis, symptoms, and prescriptions once the patient is seen. Each consultation can generate an invoice automatically.',
+          'Book a visit from Appointments, then record the consultation once the patient is seen: presenting complaints, one or more diagnoses (search by name or ICD-10 code, and mark a diagnosis Suspected while it is still a working diagnosis), your assessment and plan, and each prescription with its strength, route, dose, frequency and duration. A printable prescription is available from the consultation history. Each consultation can generate an invoice automatically.',
       },
       {
         question: 'Can I track reproductive health information?',

@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
+import { formatPrescriptionLine } from './clinical';
 
 const BRAND_TEAL = '#0f766e';
 const BRAND_TEAL_DARK = '#0c5f58';
@@ -36,6 +37,7 @@ function drawLetterhead(doc: PDFKit.PDFDocument, clinicName: string) {
     .text(clinicName, 0, 26, { align: 'right', width: doc.page.width - 50 });
 
   doc.fillColor(INK).font('Helvetica').fontSize(10);
+  doc.x = 50;
   doc.y = 95;
 }
 
@@ -141,6 +143,121 @@ export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer
     .fontSize(10)
     .fillColor(statusColor)
     .text(input.status, 0, amountY + 16, { align: 'right', width: doc.page.width - 50 });
+
+  await drawFooter(doc);
+  doc.end();
+  return done;
+}
+
+export type PrescriptionPdfInput = {
+  consultationId: string;
+  clinicName: string;
+  facilityCode: string;
+  patientName: string;
+  patientPhone: string;
+  patientSex?: string | null;
+  patientAge?: string;
+  prescriberName?: string;
+  date: Date;
+  diagnoses: Array<{ icd10Code: string | null; description: string; type: string; certainty: string; notes: string | null }>;
+  prescriptions: Array<{
+    medication: string; strength: string | null; form: string | null; dosage: string; route: string | null;
+    frequency: string; duration: string; quantity: number | null; instructions: string | null;
+  }>;
+};
+
+/**
+ * A prescription laid out the way a pharmacist expects to read one: who it is
+ * for (with age and sex - doses depend on them), why, then each numbered item
+ * with the drug on one line and its directions in plain words beneath, and
+ * signature lines for the prescriber and the dispenser.
+ */
+export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Promise<Buffer> {
+  const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
+  const chunks: Buffer[] = [];
+  doc.on('data', (chunk) => chunks.push(chunk));
+
+  const done = new Promise<Buffer>((resolve) => {
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+
+  drawLetterhead(doc, input.clinicName);
+
+  doc.moveDown(1.5);
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('PRESCRIPTION');
+  doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(`#${input.consultationId}`);
+  doc.moveDown(1);
+
+  const labelX = 50;
+  const valueX = 170;
+  const sexAge = [input.patientSex ? input.patientSex.charAt(0) + input.patientSex.slice(1).toLowerCase() : '', input.patientAge].filter(Boolean).join(', ');
+  const details: [string, string][] = [
+    ['Patient', input.patientName],
+    ['Age / sex', sexAge || '-'],
+    ['Phone', input.patientPhone || '-'],
+    ['Date', input.date.toLocaleDateString()],
+    ['Prescriber', input.prescriberName || '-'],
+    ['Facility ID', input.facilityCode],
+  ];
+  doc.fontSize(10);
+  for (const [label, value] of details) {
+    const y = doc.y;
+    doc.fillColor(MUTED).font('Helvetica').text(label, labelX, y, { width: 110 });
+    doc.fillColor(INK).font('Helvetica-Bold').text(value, valueX, y, { width: 370 });
+    doc.moveDown(0.5);
+  }
+
+  const rule = () => {
+    doc.moveDown(0.6);
+    doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.8);
+  };
+
+  rule();
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text('Diagnosis', labelX, doc.y);
+  doc.moveDown(0.3);
+  for (const d of input.diagnoses) {
+    const code = d.icd10Code ? ` (${d.icd10Code})` : '';
+    const status = d.certainty === 'PROVISIONAL' ? ' - provisional' : '';
+    const role = d.type === 'PRIMARY' ? 'Primary: ' : 'Also: ';
+    doc.font('Helvetica').fontSize(10).fillColor(INK).text(`${role}${d.description}${code}${status}`, labelX, doc.y, { width: 495 });
+  }
+
+  rule();
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text('Rx', labelX, doc.y);
+  doc.moveDown(0.4);
+
+  // A continuation page always says whose prescription it is - a loose page must
+  // never be separable from its patient.
+  const continuePage = () => {
+    doc.addPage();
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED)
+      .text(`Prescription for ${input.patientName} (continued) - #${input.consultationId.slice(0, 8)}`, labelX, 50, { width: 495 });
+    doc.y = 80;
+  };
+
+  input.prescriptions.forEach((rx, index) => {
+    const line = formatPrescriptionLine(rx);
+    // Keep an item's lines together: start a new page rather than split one across pages.
+    if (doc.y > doc.page.maxY() - 140) continuePage();
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text(`${index + 1}.  ${line.title}`, labelX, doc.y, { width: 495 });
+    doc.font('Helvetica').fontSize(10).fillColor(INK);
+    if (line.sig) doc.text(line.sig, labelX + 18, doc.y, { width: 477 });
+    const extras = [line.quantity, line.instructions].filter(Boolean).join('   |   ');
+    if (extras) doc.fillColor(MUTED).text(extras, labelX + 18, doc.y, { width: 477 });
+    doc.moveDown(0.8);
+  });
+
+  // Signature lines sit clear of the footer; add a page if the list ran long.
+  if (doc.y > doc.page.maxY() - 150) continuePage();
+  doc.moveDown(1.5);
+  const sigY = doc.y;
+  doc.strokeColor(MUTED).lineWidth(0.5);
+  doc.moveTo(50, sigY + 20).lineTo(250, sigY + 20).stroke();
+  doc.moveTo(310, sigY + 20).lineTo(545, sigY + 20).stroke();
+  doc.font('Helvetica').fontSize(8).fillColor(MUTED)
+    .text('Prescriber signature', 50, sigY + 24)
+    .text('Dispensed by / date', 310, sigY + 24);
 
   await drawFooter(doc);
   doc.end();

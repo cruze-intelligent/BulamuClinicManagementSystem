@@ -6,6 +6,7 @@ import { computeHmis105Report } from '../services/hmis105.service';
 import { encryptSecret, decryptSecret } from '../lib/crypto';
 import { buildDataValueSet, pushDataValueSet } from '../services/dhis2.service';
 import { recordAudit } from '../lib/audit';
+import { rankDiagnoses, formatPrescriptionLine } from '../lib/clinical';
 
 export async function reportsRoutes(fastify: FastifyInstance) {
 
@@ -20,7 +21,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
       const startDate = new Date(Number(year), Number(month) - 1, 1);
       const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
 
-      const [totalPatients, totalAppointments, totalConsultations, revenue, topDiagnoses] = await Promise.all([
+      const [totalPatients, totalAppointments, totalConsultations, revenue, primaryDiagnoses] = await Promise.all([
         prisma.patient.count({
           where: {
             clinicId,
@@ -47,15 +48,14 @@ export async function reportsRoutes(fastify: FastifyInstance) {
           },
           _sum: { amount: true }
         }),
-        prisma.consultation.groupBy({
-          by: ['diagnosis'],
+        // Primary diagnoses of the month's visits; ranked below by ICD-10 code
+        // so "Malaria" and "malaria (RDT+)" count as one condition.
+        prisma.diagnosis.findMany({
           where: {
-            createdAt: { gte: startDate, lte: endDate },
-            appointment: { clinicId }
+            type: 'PRIMARY',
+            consultation: { createdAt: { gte: startDate, lte: endDate }, deletedAt: null, appointment: { clinicId } }
           },
-          _count: { diagnosis: true },
-          orderBy: { _count: { diagnosis: 'desc' } },
-          take: 5
+          select: { icd10Code: true, description: true }
         })
       ]);
 
@@ -67,7 +67,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
           totalAppointments,
           totalConsultations,
           revenue: revenue._sum.amount || 0,
-          topDiagnoses
+          topDiagnoses: rankDiagnoses(primaryDiagnoses)
         }
       };
     } catch (error: any) {
@@ -195,7 +195,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
       const patients = await prisma.patient.findMany({
         where: { clinicId, deletedAt: null },
         include: {
-          consultations: { where: { deletedAt: null } },
+          consultations: { where: { deletedAt: null }, include: { diagnoses: true, prescriptions: true } },
           labTests: true,
           reproductiveHealthRecords: { where: { deletedAt: null } },
         },
@@ -219,6 +219,12 @@ export async function reportsRoutes(fastify: FastifyInstance) {
         });
 
         for (const consultation of patient.consultations) {
+          // ICD-10 is the coding system for diagnoses (an uncoded one is carried as text only).
+          const diagnosisCoding = (d: { icd10Code: string | null; description: string }) => ({
+            ...(d.icd10Code ? { coding: [{ system: 'http://hl7.org/fhir/sid/icd-10', code: d.icd10Code, display: d.description }] } : {}),
+            text: d.description,
+          });
+
           entries.push({
             fullUrl: `urn:uuid:${consultation.id}`,
             resource: {
@@ -226,10 +232,56 @@ export async function reportsRoutes(fastify: FastifyInstance) {
               id: consultation.id,
               status: 'finished',
               subject: { reference: `urn:uuid:${patient.id}` },
-              reasonCode: [{ text: consultation.diagnosis }],
+              reasonCode: consultation.diagnoses.length > 0
+                ? consultation.diagnoses.map(diagnosisCoding)
+                : [{ text: consultation.diagnosis }],
               meta: { lastUpdated: consultation.updatedAt.toISOString() },
             },
           });
+
+          for (const d of consultation.diagnoses) {
+            entries.push({
+              fullUrl: `urn:uuid:${d.id}`,
+              resource: {
+                resourceType: 'Condition',
+                id: d.id,
+                clinicalStatus: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/condition-clinical', code: 'active' }] },
+                verificationStatus: {
+                  coding: [{
+                    system: 'http://terminology.hl7.org/CodeSystem/condition-ver-status',
+                    code: d.certainty === 'CONFIRMED' ? 'confirmed' : 'provisional',
+                  }],
+                },
+                category: [{ coding: [{ system: 'http://terminology.hl7.org/CodeSystem/condition-category', code: 'encounter-diagnosis' }] }],
+                code: diagnosisCoding(d),
+                subject: { reference: `urn:uuid:${patient.id}` },
+                encounter: { reference: `urn:uuid:${consultation.id}` },
+                ...(d.notes ? { note: [{ text: d.notes }] } : {}),
+              },
+            });
+          }
+
+          for (const rx of consultation.prescriptions) {
+            const line = formatPrescriptionLine(rx);
+            entries.push({
+              fullUrl: `urn:uuid:${rx.id}`,
+              resource: {
+                resourceType: 'MedicationRequest',
+                id: rx.id,
+                status: 'active',
+                intent: 'order',
+                medicationCodeableConcept: { text: line.title },
+                subject: { reference: `urn:uuid:${patient.id}` },
+                encounter: { reference: `urn:uuid:${consultation.id}` },
+                authoredOn: rx.createdAt.toISOString(),
+                dosageInstruction: [{
+                  text: [line.sig, line.instructions].filter(Boolean).join('. '),
+                  ...(rx.route ? { route: { text: rx.route } } : {}),
+                }],
+                ...(rx.quantity ? { dispenseRequest: { quantity: { value: rx.quantity } } } : {}),
+              },
+            });
+          }
         }
 
         for (const rh of patient.reproductiveHealthRecords) {

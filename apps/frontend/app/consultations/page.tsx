@@ -9,10 +9,27 @@ import {
   subscribeToLocalChanges,
   LocalConsultation,
 } from '@/lib/local-first';
+import { ConsultationDetails } from '@/components/consultation-details';
+import { openDocumentPreview } from '@/lib/document-preview';
 
 export default function ConsultationsPage() {
   const [consultations, setConsultations] = useState<LocalConsultation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [printingId, setPrintingId] = useState<string | null>(null);
+
+  const printPrescription = async (consultationId: string) => {
+    setPrintingId(consultationId);
+    try {
+      await openDocumentPreview(
+        `${process.env.NEXT_PUBLIC_API_URL}/consultations/${consultationId}/prescription/pdf`,
+        localStorage.getItem('token')
+      );
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setPrintingId(null);
+    }
+  };
 
   const loadConsultations = async () => {
     const localData = await listLocalConsultations();
@@ -53,7 +70,7 @@ export default function ConsultationsPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-lg text-slate-800 dark:text-slate-200">
-                        {consult.patient?.name || 'Patient'} — {consult.diagnosis}
+                        {consult.patient?.name || 'Patient'}
                       </h3>
                       {consult.syncStatus === 'pending' && (
                         <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">
@@ -67,27 +84,12 @@ export default function ConsultationsPage() {
                   </div>
                 </div>
 
-                <div className="mb-4">
-                  <p className="text-sm text-slate-700 dark:text-slate-300">
-                    <strong className="font-semibold">Symptoms / Complaints:</strong> {consult.symptoms}
-                  </p>
-                </div>
-
-                {consult.prescriptions && consult.prescriptions.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-200 mb-2">Prescriptions & Dosage:</h4>
-                    <div className="space-y-1.5">
-                      {consult.prescriptions.map((rx, idx) => (
-                        <div key={idx} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-md text-sm text-slate-800 dark:text-slate-200">
-                          <span className="font-medium text-blue-900">{rx.medication}</span>
-                          <span className="text-slate-500 dark:text-slate-400 ml-2">
-                            {rx.dosage} • {rx.frequency} • {rx.duration}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <ConsultationDetails
+                  consultation={consult}
+                  onPrintPrescription={() => printPrescription(consult.id)}
+                  printing={printingId === consult.id}
+                  printDisabledReason={consult.syncStatus === 'pending' ? 'Available once this record has synced' : undefined}
+                />
               </Card>
             ))}
           </div>

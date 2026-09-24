@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { getHmisAgeCohort, HMIS_AGE_COHORTS } from '../lib/age';
 import { HMIS_SERVICE_TAGS } from '../lib/hmis';
+import { classifyHmisCondition } from '../lib/clinical';
 
 /**
  * Computes the HMIS 105 Health Unit Outpatient Monthly Report for a clinic.
@@ -18,7 +19,7 @@ export async function computeHmis105Report(clinicId: string, month: number, year
       deletedAt: null,
       patient: { clinicId },
     },
-    include: { patient: true, prescriptions: true, labTests: true },
+    include: { patient: true, prescriptions: true, labTests: true, diagnoses: true },
   });
 
   const medicines = await prisma.medicine.findMany({ where: { clinicId, deletedAt: null } });
@@ -44,14 +45,19 @@ export async function computeHmis105Report(clinicId: string, month: number, year
   let respiratoryCases = 0;
   let otherCases = 0;
 
+  // Each visit is counted once, under its PRIMARY diagnosis. The ICD-10 code
+  // decides the line when there is one (and a suspected malaria is reported as
+  // unconfirmed, not confirmed); visits recorded before coding fall back to the
+  // diagnosis text.
   consultations.forEach((c) => {
-    const diag = c.diagnosis.toLowerCase();
-    if (diag.includes('malaria')) malariaCases++;
-    else if (diag.includes('fever') || diag.includes('pyrexia')) feverCases++;
-    else if (diag.includes('dysentery') || diag.includes('diarrhea') || diag.includes('diarrhoea')) dysenteryCases++;
-    else if (diag.includes('measles')) measlesCases++;
-    else if (diag.includes('meningitis')) meningitisCases++;
-    else if (diag.includes('respiratory') || diag.includes('cough') || diag.includes('pneumonia')) respiratoryCases++;
+    const primary = c.diagnoses.find((d) => d.type === 'PRIMARY') ?? c.diagnoses[0];
+    const condition = classifyHmisCondition(primary ?? { description: c.diagnosis });
+    if (condition === 'malaria') malariaCases++;
+    else if (condition === 'fever') feverCases++;
+    else if (condition === 'dysentery') dysenteryCases++;
+    else if (condition === 'measles') measlesCases++;
+    else if (condition === 'meningitis') meningitisCases++;
+    else if (condition === 'respiratory') respiratoryCases++;
     else otherCases++;
   });
 

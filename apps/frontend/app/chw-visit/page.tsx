@@ -65,7 +65,7 @@ export default function ChwVisitPage() {
         appointmentId: appointment.id,
         patientId: patient.id,
         clinicId,
-        diagnosis: summary.diagnosis,
+        diagnoses: [{ description: summary.diagnosis, type: 'PRIMARY', certainty: 'CONFIRMED' }],
         symptoms: summary.symptomsText,
         serviceTags: ['COMMUNITY_HOUSEHOLD_VISIT'],
         prescriptions: [],

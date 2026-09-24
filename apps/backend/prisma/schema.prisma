@@ -324,7 +324,11 @@ model Consultation {
   patient       Patient  @relation(fields: [patientId], references: [id])
   diagnosis     String
   symptoms      String
+  // Assessment, plan and advice given - the clinician's free-text narrative
+  // beyond the structured diagnoses and prescriptions.
+  clinicalNotes String?
   serviceTags   String[] @default([])
+  diagnoses     Diagnosis[]
   prescriptions Prescription[]
   invoice       Invoice?
   labTests LabTest[]
@@ -335,17 +339,63 @@ model Consultation {
   @@index([patientId])
 }
 
+// One diagnosis made at a consultation. A consultation has one PRIMARY
+// (the main reason for the visit) and any number of SECONDARY diagnoses
+// (co-morbidities, complications). icd10Code is optional: a clinician can code
+// it (B54, J18.9...) or just describe it, and the code drives reporting.
+model Diagnosis {
+  id             String             @id @default(uuid())
+  consultationId String
+  consultation   Consultation       @relation(fields: [consultationId], references: [id])
+  icd10Code      String?
+  description    String
+  type           DiagnosisType      @default(PRIMARY)
+  certainty      DiagnosisCertainty @default(CONFIRMED)
+  notes          String?
+  createdAt      DateTime           @default(now())
+
+  @@index([consultationId])
+  @@index([icd10Code])
+}
+
+enum DiagnosisType {
+  PRIMARY
+  SECONDARY
+}
+
+// CONFIRMED: established (e.g. positive RDT). PROVISIONAL: suspected or
+// working diagnosis, still to be confirmed or ruled out.
+enum DiagnosisCertainty {
+  CONFIRMED
+  PROVISIONAL
+}
+
+// One prescribed item. medication/dosage/frequency/duration are the original
+// free-text fields and stay for records made before structured prescribing;
+// the rest describe the drug precisely (strength, form, route) and how much to
+// supply, the way a paper prescription does.
 model Prescription {
   id              String       @id @default(uuid())
   consultationId  String
   consultation    Consultation @relation(fields: [consultationId], references: [id])
   medication      String
+  strength        String?
+  form            String?
   dosage          String
+  route           String?
   frequency       String
   duration        String
+  quantity        Int?
+  instructions    String?
+  // Soft link to the facility's stock item this was prescribed from, so the
+  // pharmacist knows exactly what to dispense. Nullable: the drug may not be
+  // stocked, or the stock item may since have been removed.
+  medicineId      String?
+  medicine        Medicine?    @relation(fields: [medicineId], references: [id], onDelete: SetNull)
   createdAt       DateTime     @default(now())
 
   @@index([consultationId])
+  @@index([medicineId])
 }
 
 model Invoice {
@@ -377,6 +427,7 @@ model Medicine {
   reorderLevel Int
   price       Float
   expiryDate  DateTime?
+  prescriptions Prescription[]
   deletedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

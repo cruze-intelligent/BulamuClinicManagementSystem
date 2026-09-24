@@ -38,17 +38,36 @@ export type LocalAppointment = {
 export type LocalPrescription = {
   id?: string;
   medication: string;
+  strength?: string | null;
+  form?: string | null;
   dosage: string;
+  route?: string | null;
   frequency: string;
   duration: string;
+  quantity?: number | null;
+  instructions?: string | null;
+  medicineId?: string | null;
+};
+
+export type LocalDiagnosis = {
+  id?: string;
+  icd10Code?: string | null;
+  description: string;
+  type: "PRIMARY" | "SECONDARY";
+  certainty: "CONFIRMED" | "PROVISIONAL";
+  notes?: string | null;
 };
 
 export type LocalConsultation = {
   id: string;
   appointmentId: string;
   patientId: string;
+  /** The primary diagnosis's name - kept for older records and simple lists. */
   diagnosis: string;
+  /** Every diagnosis, primary first. Absent on records made before structured diagnoses. */
+  diagnoses?: LocalDiagnosis[];
   symptoms: string;
+  clinicalNotes?: string | null;
   serviceTags?: string[];
   prescriptions: LocalPrescription[];
   patient?: { name: string; phone: string };
@@ -495,19 +514,24 @@ export async function createConsultationOffline(input: {
   appointmentId: string;
   patientId: string;
   clinicId: string;
-  diagnosis: string;
+  /** Structured diagnoses, primary first. */
+  diagnoses: LocalDiagnosis[];
   symptoms: string;
+  clinicalNotes?: string;
   serviceTags?: string[];
   prescriptions: LocalPrescription[];
   patientName?: string;
 }): Promise<LocalConsultation> {
   const now = new Date().toISOString();
+  const primary = input.diagnoses.find((d) => d.type === "PRIMARY") ?? input.diagnoses[0];
   const consultation: LocalConsultation = {
     id: createId(),
     appointmentId: input.appointmentId,
     patientId: input.patientId,
-    diagnosis: input.diagnosis,
+    diagnosis: primary?.description ?? "",
+    diagnoses: input.diagnoses,
     symptoms: input.symptoms,
+    clinicalNotes: input.clinicalNotes || null,
     serviceTags: input.serviceTags,
     prescriptions: input.prescriptions,
     patient: input.patientName ? { name: input.patientName, phone: "" } : undefined,
@@ -527,7 +551,9 @@ export async function createConsultationOffline(input: {
       appointmentId: consultation.appointmentId,
       patientId: consultation.patientId,
       diagnosis: consultation.diagnosis,
+      diagnoses: consultation.diagnoses,
       symptoms: consultation.symptoms,
+      clinicalNotes: consultation.clinicalNotes,
       serviceTags: consultation.serviceTags || [],
       prescriptions: consultation.prescriptions,
       createdAt: consultation.createdAt,

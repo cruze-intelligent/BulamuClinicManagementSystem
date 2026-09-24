@@ -15,6 +15,7 @@ import { calculateAgeYears } from '@/lib/age';
 import { validateReproductiveHealthForm } from '@/lib/reproductive-health-validation';
 import { CommentsSection } from '@/components/comments-section';
 import { Select } from '@/components/ui/select';
+import { ConsultationDetails } from '@/components/consultation-details';
 
 const DOCUMENT_CATEGORIES = [
   { value: 'LAB_RESULT', label: 'Lab Result' },
@@ -207,6 +208,19 @@ function PatientHistoryContent() {
       alert('Error downloading document');
     } finally {
       setDownloadingDocId(null);
+    }
+  };
+
+  const [printingRxId, setPrintingRxId] = useState<string | null>(null);
+
+  const handlePrintPrescription = async (consultationId: string) => {
+    setPrintingRxId(consultationId);
+    try {
+      await openDocumentPreview(`${process.env.NEXT_PUBLIC_API_URL}/consultations/${consultationId}/prescription/pdf`, localStorage.getItem('token'));
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setPrintingRxId(null);
     }
   };
 
@@ -645,32 +659,22 @@ function PatientHistoryContent() {
           <div className="space-y-4">
             {consultations.map((consult: any) => (
               <Card key={consult.id} className="p-6">
-                <div className="mb-4">
-                  <div className="flex justify-between items-start">
-                    <h3 className="font-bold text-lg">{consult.diagnosis}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(consult.createdAt).toLocaleDateString()}
-                    </p>
+                <div className="mb-4 flex justify-between items-start gap-3">
+                  <div>
+                    <h3 className="font-bold text-lg">Visit on {new Date(consult.createdAt).toLocaleDateString()}</h3>
+                    {consult.appointment?.doctor?.name && (
+                      <p className="text-sm text-muted-foreground">Seen by {consult.appointment.doctor.name}</p>
+                    )}
                   </div>
                 </div>
 
                 <div className="mb-4">
-                  <p className="text-sm"><strong>Symptoms:</strong> {consult.symptoms}</p>
+                  <ConsultationDetails
+                    consultation={consult}
+                    onPrintPrescription={() => handlePrintPrescription(consult.id)}
+                    printing={printingRxId === consult.id}
+                  />
                 </div>
-
-                {consult.prescriptions.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="font-semibold mb-2">Prescriptions:</h4>
-                    {consult.prescriptions.map((rx: any) => (
-                      <div key={rx.id} className="bg-slate-50 dark:bg-slate-800 p-3 rounded mb-2">
-                        <p className="font-medium">{rx.medication}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {rx.dosage} • {rx.frequency} • {rx.duration}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
 
                 {consult.invoice && (
                   <div className="border-t pt-4">

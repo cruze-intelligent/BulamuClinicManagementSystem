@@ -5,6 +5,8 @@ import { recordConflictIfStale } from '../lib/conflict';
 import { recordAudit } from '../lib/audit';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
 import { notifyIfLowStock, notifyLabResultReady, notifyNewPrescription } from '../lib/notifications';
+import { normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
+import { consultationChildren, linkStockItems } from '../lib/consultation-records';
 
 export async function syncRoutes(fastify: FastifyInstance) {
   // Push queued offline mutations to backend (Last-Write-Wins by timestamp,
@@ -189,43 +191,72 @@ export async function syncRoutes(fastify: FastifyInstance) {
               if (stale) continue;
             }
 
-            record = await prisma.consultation.upsert({
-              where: { id: payload.id },
-              update: {
-                diagnosis: payload.diagnosis,
-                symptoms: payload.symptoms,
-                serviceTags: payload.serviceTags || [],
-                updatedAt: incomingUpdatedAt,
-              },
-              create: {
-                id: payload.id,
-                appointmentId: payload.appointmentId,
-                patientId: payload.patientId,
-                diagnosis: payload.diagnosis,
-                symptoms: payload.symptoms,
-                serviceTags: payload.serviceTags || [],
-                createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
-                updatedAt: incomingUpdatedAt,
-              },
-            });
-
-            let prescribedCount = 0;
-            if (Array.isArray(payload.prescriptions)) {
-              for (const rx of payload.prescriptions) {
-                if (rx.medication) {
-                  await prisma.prescription.create({
-                    data: {
-                      consultationId: record.id,
-                      medication: rx.medication,
-                      dosage: rx.dosage || '',
-                      frequency: rx.frequency || '',
-                      duration: rx.duration || '',
-                    },
-                  });
-                  prescribedCount++;
-                }
-              }
+            // Diagnoses and prescriptions are validated and reduced to known
+            // fields, exactly as on the online route. An older client that only
+            // sends a `diagnosis` string is upgraded to one uncoded primary.
+            const validDiagnoses = normalizeDiagnoses(payload.diagnoses, payload.diagnosis);
+            if (!validDiagnoses.ok) {
+              fastify.log.warn(`Rejected consultation mutation ${mutationId}: ${validDiagnoses.error}`);
+              continue;
             }
+            // `prescriptions` absent means "leave them as they are"; a list replaces them.
+            const validPrescriptions = Array.isArray(payload.prescriptions) ? normalizePrescriptions(payload.prescriptions) : null;
+            if (validPrescriptions && !validPrescriptions.ok) {
+              fastify.log.warn(`Rejected consultation mutation ${mutationId}: ${validPrescriptions.error}`);
+              continue;
+            }
+            const prescriptions = validPrescriptions?.ok ? await linkStockItems(appointment.clinicId, validPrescriptions.value) : null;
+            const diagnoses = validDiagnoses.value;
+            const diagnosisText = primaryDiagnosisText(diagnoses);
+            const clinicalNotes = typeof payload.clinicalNotes === 'string' ? payload.clinicalNotes.trim().slice(0, 4000) || null : undefined;
+
+            // An older client re-sending a record it only knows as a string must
+            // not flatten diagnoses a newer client already coded: leave them
+            // alone unless the primary diagnosis text actually changed.
+            const keepDiagnoses = !!existing && payload.diagnoses === undefined && existing.diagnosis === diagnosisText;
+
+            // Replace, never append: a retried or edited push carries the whole
+            // record, so children are rewritten in one transaction instead of
+            // being added to the ones already stored (which duplicated them).
+            record = await prisma.$transaction(async (tx) => {
+              const saved = await tx.consultation.upsert({
+                where: { id: payload.id },
+                update: {
+                  diagnosis: keepDiagnoses ? existing!.diagnosis : diagnosisText,
+                  symptoms: payload.symptoms,
+                  ...(clinicalNotes !== undefined ? { clinicalNotes } : {}),
+                  serviceTags: payload.serviceTags || [],
+                  updatedAt: incomingUpdatedAt,
+                },
+                create: {
+                  id: payload.id,
+                  appointmentId: payload.appointmentId,
+                  patientId: payload.patientId,
+                  diagnosis: diagnosisText,
+                  symptoms: payload.symptoms,
+                  clinicalNotes: clinicalNotes ?? null,
+                  serviceTags: payload.serviceTags || [],
+                  createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
+                  updatedAt: incomingUpdatedAt,
+                },
+              });
+              if (!keepDiagnoses) {
+                await tx.diagnosis.deleteMany({ where: { consultationId: saved.id } });
+                await tx.diagnosis.createMany({ data: diagnoses.map((d) => ({ ...d, consultationId: saved.id })) });
+              }
+              if (prescriptions) {
+                await tx.prescription.deleteMany({ where: { consultationId: saved.id } });
+                await tx.prescription.createMany({ data: prescriptions.map((rx) => ({ ...rx, consultationId: saved.id })) });
+              }
+              // Send the whole record back, children included: the app replaces its
+              // local copy with this, so leaving them out would make a saved
+              // prescription disappear from the screen until the next pull.
+              return tx.consultation.findUniqueOrThrow({
+                where: { id: saved.id },
+                include: { ...consultationChildren, patient: { select: { name: true, phone: true } } },
+              });
+            });
+            const prescribedCount = prescriptions?.length ?? 0;
 
             if (!existing) {
               const consultedPatient = await prisma.patient.findUnique({ where: { id: payload.patientId }, select: { name: true } });
@@ -431,7 +462,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
         }),
         prisma.consultation.findMany({
           where: { patient: { clinicId }, updatedAt: { gte: sinceDate } },
-          include: { prescriptions: true, patient: { select: { name: true, phone: true } } },
+          include: { ...consultationChildren, patient: { select: { name: true, phone: true } } },
         }),
         prisma.labTest.findMany({
           where: { patient: { clinicId }, updatedAt: { gte: sinceDate } },

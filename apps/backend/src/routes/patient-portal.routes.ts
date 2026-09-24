@@ -4,6 +4,7 @@ import { authenticatePatient, getPatientAuthUser } from '../middleware/patient-a
 import { generateStorageKey, saveFile, getFileStream, deleteFile } from '../lib/storage';
 import { recordAudit } from '../lib/audit';
 import { notifyStaff } from '../lib/notifications';
+import { buildPrescriptionPdf } from '../lib/consultation-records';
 import { detectDocumentFormat, normalizeFileName, setDownloadHeaders, withFormat, SUPPORTED_FORMATS_MESSAGE } from '../lib/document-format';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -76,7 +77,17 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
             orderBy: { createdAt: 'desc' },
             select: {
               id: true, diagnosis: true, symptoms: true, createdAt: true,
-              prescriptions: { select: { id: true, medication: true, dosage: true, frequency: true, duration: true } },
+              diagnoses: {
+                orderBy: [{ type: 'asc' }, { createdAt: 'asc' }],
+                select: { id: true, icd10Code: true, description: true, type: true, certainty: true, notes: true },
+              },
+              prescriptions: {
+                orderBy: { createdAt: 'asc' },
+                select: {
+                  id: true, medication: true, strength: true, form: true, dosage: true, route: true,
+                  frequency: true, duration: true, quantity: true, instructions: true,
+                },
+              },
               invoice: { select: { id: true, amount: true, status: true, createdAt: true } },
             },
           },
@@ -155,6 +166,30 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     });
 
     return { success: true, document: withFormat(document) };
+  });
+
+  // The patient's own copy of a prescription, to take to any pharmacy. Same
+  // access rule as everything else here: only a consultation on one of their own
+  // linked records, at a facility that is currently authorized.
+  fastify.get('/patient-portal/consultations/:id/prescription/pdf', { preHandler: [authenticatePatient] }, async (request, reply) => {
+    const authUser = getPatientAuthUser(request);
+    const { id } = request.params as any;
+
+    const consultation = await prisma.consultation.findFirst({
+      where: { id, deletedAt: null },
+      select: { patientId: true, _count: { select: { prescriptions: true } } },
+    });
+    if (!consultation) return reply.status(404).send({ error: 'Prescription not found' });
+    const record = await findOwnRecord(authUser.patientAccountId, consultation.patientId);
+    if (!record) return reply.status(404).send({ error: 'Prescription not found' });
+    if (consultation._count.prescriptions === 0) return reply.status(404).send({ error: 'Prescription not found' });
+
+    const built = await buildPrescriptionPdf(id);
+    if (!built) return reply.status(404).send({ error: 'Prescription not found' });
+
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `inline; filename="prescription-${id}.pdf"`);
+    return reply.send(built.pdf);
   });
 
   // Download any document attached to one of the patient's own linked

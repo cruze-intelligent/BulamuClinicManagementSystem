@@ -29,3 +29,18 @@ export function getHmisAgeCohort(dateOfBirth: string | Date, referenceDate: Date
   if (years <= 19) return '10-19 years';
   return '20+ years';
 }
+
+/**
+ * A patient's age as a clinician states it: days for a newborn, months for a
+ * young child, years otherwise ("12 days", "8 months", "34 years"). Doses and
+ * many diagnoses depend on which of these it is.
+ */
+export function formatAge(dateOfBirth: string | Date, referenceDate: Date = new Date()): string {
+  const days = calculateAgeDays(dateOfBirth, referenceDate);
+  if (days < 0) return '';
+  if (days < 31) return `${days} day${days === 1 ? '' : 's'}`;
+  const months = Math.floor(days / 30.4375);
+  if (months < 24) return `${months} month${months === 1 ? '' : 's'}`;
+  const years = calculateAgeYears(dateOfBirth, referenceDate);
+  return `${years} year${years === 1 ? '' : 's'}`;
+}

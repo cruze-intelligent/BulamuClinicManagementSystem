@@ -199,7 +199,12 @@ export default function ReportsPage() {
               <div className="space-y-2">
                 {report.topDiagnoses.map((item: any, index: number) => (
                   <div key={index} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800 rounded-md">
-                    <span className="font-medium text-slate-800 dark:text-slate-200">{item.diagnosis}</span>
+                    <span className="font-medium text-slate-800 dark:text-slate-200">
+                      {item.icd10Code && (
+                        <span className="mr-2 rounded bg-slate-200 px-1.5 py-0.5 font-mono text-xs font-semibold text-slate-800 dark:bg-slate-700 dark:text-slate-100">{item.icd10Code}</span>
+                      )}
+                      {item.diagnosis}
+                    </span>
                     <span className="text-sm text-slate-500 dark:text-slate-400 font-semibold">{item._count.diagnosis} cases</span>
                   </div>
                 ))}
