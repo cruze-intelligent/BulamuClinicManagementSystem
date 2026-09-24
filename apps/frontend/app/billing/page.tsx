@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileDown } from 'lucide-react';
+import { Eye, FileDown } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { SubscriptionCalendar } from '@/components/subscription-calendar';
 import { ContactIcons } from '@/components/contact-icons';
+import { FacilityDetailsModal } from '@/components/facility-details-modal';
 
 type Subscription = {
   status: 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED';
@@ -47,6 +48,7 @@ export default function BillingPage() {
   const [subscribing, setSubscribing] = useState(false);
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [showFacilityDetails, setShowFacilityDetails] = useState(false);
 
   const fetchStatus = async () => {
     const token = localStorage.getItem('token');
@@ -129,6 +131,15 @@ export default function BillingPage() {
     }
   })();
 
+  const clinicId = (() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}')?.clinicId || null;
+    } catch {
+      return null;
+    }
+  })();
+
   if (!hasRole('ADMIN')) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-8">
@@ -144,10 +155,17 @@ export default function BillingPage() {
       <div className="mx-auto max-w-2xl">
         <h1 className="mb-2 text-3xl font-bold text-slate-800 dark:text-slate-200">Billing & Subscription</h1>
         <p className="mb-1 text-sm text-slate-500 dark:text-slate-400">Manage your facility&apos;s Bulamu subscription.</p>
-        {facilityCode && (
-          <p className="mb-6 font-mono text-xs text-slate-400 dark:text-slate-500">Facility ID: {facilityCode}</p>
-        )}
-        {!facilityCode && <div className="mb-6" />}
+        <div className="mb-6 flex items-center justify-between gap-3">
+          {facilityCode ? (
+            <p className="font-mono text-xs text-slate-400 dark:text-slate-500">Facility ID: {facilityCode}</p>
+          ) : <span />}
+          {clinicId && (
+            <Button size="sm" variant="outline" onClick={() => setShowFacilityDetails(true)}>
+              <Eye className="size-4" aria-hidden="true" />
+              View facility details
+            </Button>
+          )}
+        </div>
 
         <Card className="p-6">
           {loading ? (
@@ -275,6 +293,10 @@ export default function BillingPage() {
           </Card>
         )}
       </div>
+
+      {showFacilityDetails && clinicId && (
+        <FacilityDetailsModal clinicId={clinicId} onClose={() => setShowFacilityDetails(false)} />
+      )}
     </div>
   );
 }

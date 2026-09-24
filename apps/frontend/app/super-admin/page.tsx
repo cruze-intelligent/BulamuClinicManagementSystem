@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   Crown,
   DatabaseZap,
+  Eye,
   MessageSquare,
   PauseCircle,
   PlayCircle,
@@ -27,6 +28,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/useAuth';
 import { FACILITY_TYPES, facilityTypeLabel } from '@/lib/facility-types';
 import { Select } from '@/components/ui/select';
+import { FacilityDetailsModal } from '@/components/facility-details-modal';
 
 
 type Facility = {
@@ -91,6 +93,7 @@ export default function SuperAdminPage() {
   const [pending, setPending] = useState<PendingFacility[]>([]);
   const [formData, setFormData] = useState(emptyForm);
   const [feedback, setFeedback] = useState<{ id: string; body: string; authorName: string; authorRole: string; clinicName: string; createdAt: string }[]>([]);
+  const [detailsFacilityId, setDetailsFacilityId] = useState<string | null>(null);
 
   const fetchOverview = async () => {
     const token = localStorage.getItem('token');
@@ -320,6 +323,10 @@ export default function SuperAdminPage() {
                   </p>
                 </div>
                 <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setDetailsFacilityId(facility.id)}>
+                    <Eye className="size-4" aria-hidden="true" />
+                    View
+                  </Button>
                   <Button size="sm" onClick={() => approveFacility(facility.id)}>
                     <ThumbsUp className="size-4" aria-hidden="true" />
                     Approve
@@ -359,7 +366,12 @@ export default function SuperAdminPage() {
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                 {(overview?.clinics || []).map((facility) => (
-                  <tr key={facility.id} className="bg-white dark:bg-slate-900">
+                  <tr
+                    key={facility.id}
+                    onClick={() => setDetailsFacilityId(facility.id)}
+                    className="cursor-pointer bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800"
+                    title="View facility details"
+                  >
                     <td className="px-4 py-3">
                       <p className="font-medium text-slate-950 dark:text-slate-50">{facility.name}</p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">{facility.address}</p>
@@ -385,8 +397,12 @@ export default function SuperAdminPage() {
                         {facility.isActive ? 'Active' : 'Suspended'}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setDetailsFacilityId(facility.id)}>
+                          <Eye className="size-4" />
+                          View
+                        </Button>
                         <Button size="sm" variant="outline" onClick={() => updateFacilityStatus(facility)}>
                           {facility.isActive ? <PauseCircle className="size-4" /> : <PlayCircle className="size-4" />}
                           {facility.isActive ? 'Suspend' : 'Reactivate'}
@@ -507,6 +523,10 @@ export default function SuperAdminPage() {
             </div>
           </form>
         </Card>
+      )}
+
+      {detailsFacilityId && (
+        <FacilityDetailsModal clinicId={detailsFacilityId} onClose={() => setDetailsFacilityId(null)} />
       )}
     </main>
   );

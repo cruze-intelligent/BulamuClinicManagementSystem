@@ -1,11 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { prisma, isUniqueConstraintError } from '../lib/prisma';
 import { requireRole } from '../middleware/rbac.middleware';
-import { authenticate, getAuthUser } from '../middleware/auth.middleware';
+import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
 import { sendMail, facilityApprovedEmail, facilityRejectedEmail } from '../lib/mailer';
 import { generateReceiptPdf } from '../lib/pdf';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
+import { buildCsv, sendCsv } from '../lib/csv';
 import bcrypt from 'bcrypt';
 
 const TRIAL_LENGTH_MS = 14 * 24 * 60 * 60 * 1000; // 2-week free trial
@@ -155,6 +156,102 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       });
 
       return { success: true, clinics };
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
+  });
+
+  // Full facility record, including everything entered at sign-up (address,
+  // district/sub-county/parish, registration history) - not just the summary
+  // columns the facilities table shows. SUPER_ADMIN for any facility; ADMIN
+  // for their own only, via resolveClinicScope. This backs the "view details"
+  // card on the facilities table and, for an ADMIN, on their own Billing page.
+  async function fetchFacilityDetail(clinicId: string) {
+    const clinic = await prisma.clinic.findUnique({
+      where: { id: clinicId },
+      include: {
+        users: { where: { role: 'ADMIN' }, select: { id: true, name: true, email: true, isActive: true }, take: 1 },
+        subscription: { select: { status: true, plan: true, amount: true, currency: true, trialEndsAt: true, currentPeriodEnd: true, planNotes: true } },
+        _count: { select: { users: true, patients: true } },
+      },
+    });
+    if (!clinic) return null;
+    return {
+      id: clinic.id,
+      facilityCode: clinic.facilityCode,
+      name: clinic.name,
+      facilityType: clinic.facilityType,
+      phone: clinic.phone,
+      address: clinic.address,
+      district: clinic.district,
+      subCounty: clinic.subCounty,
+      parish: clinic.parish,
+      registrationStatus: clinic.registrationStatus,
+      rejectionReason: clinic.rejectionReason,
+      isActive: clinic.isActive,
+      createdAt: clinic.createdAt,
+      approvedAt: clinic.approvedAt,
+      deletedAt: clinic.deletedAt,
+      admin: clinic.users[0] || null,
+      subscription: clinic.subscription,
+      users: clinic._count.users,
+      patients: clinic._count.patients,
+    };
+  }
+
+  fastify.get('/clinics/:id', { preHandler: [requireRole('ADMIN', 'SUPER_ADMIN')] }, async (request, reply) => {
+    const { id } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, id);
+    if (!clinicId) return;
+    try {
+      const facility = await fetchFacilityDetail(clinicId);
+      if (!facility) return reply.status(404).send({ error: 'Facility not found' });
+      return { success: true, facility };
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
+  });
+
+  // The same facility record as a single-row CSV download.
+  fastify.get('/clinics/:id/export', { preHandler: [requireRole('ADMIN', 'SUPER_ADMIN')] }, async (request, reply) => {
+    const { id } = request.params as any;
+    const clinicId = resolveClinicScope(request, reply, id);
+    if (!clinicId) return;
+    try {
+      const facility = await fetchFacilityDetail(clinicId);
+      if (!facility) return reply.status(404).send({ error: 'Facility not found' });
+
+      const csv = buildCsv<typeof facility>(
+        [
+          ['Facility ID', (f) => f.facilityCode],
+          ['Name', (f) => f.name],
+          ['Type', (f) => f.facilityType],
+          ['Phone', (f) => f.phone],
+          ['Address', (f) => f.address],
+          ['District', (f) => f.district],
+          ['Sub-county', (f) => f.subCounty],
+          ['Parish', (f) => f.parish],
+          ['Registration status', (f) => f.registrationStatus],
+          ['Rejection reason', (f) => f.rejectionReason],
+          ['Active', (f) => (f.isActive ? 'Yes' : 'No')],
+          ['Registered on', (f) => f.createdAt],
+          ['Approved on', (f) => f.approvedAt],
+          ['Deleted on', (f) => f.deletedAt],
+          ['Administrator name', (f) => f.admin?.name],
+          ['Administrator email', (f) => f.admin?.email],
+          ['Administrator active', (f) => (f.admin ? (f.admin.isActive ? 'Yes' : 'No') : '')],
+          ['Subscription status', (f) => f.subscription?.status],
+          ['Subscription plan', (f) => f.subscription?.plan],
+          ['Monthly amount', (f) => f.subscription?.amount],
+          ['Currency', (f) => f.subscription?.currency],
+          ['Trial ends', (f) => f.subscription?.trialEndsAt],
+          ['Current period ends', (f) => f.subscription?.currentPeriodEnd],
+          ['Staff count', (f) => f.users],
+          ['Patient count', (f) => f.patients],
+        ],
+        [facility]
+      );
+      return sendCsv(reply, `bulamu-facility-${facility.facilityCode}.csv`, csv);
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });
     }

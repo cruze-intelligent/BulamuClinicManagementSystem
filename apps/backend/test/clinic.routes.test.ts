@@ -158,3 +158,78 @@ describe('facility approval workflow', () => {
     expect(response.statusCode).toBe(403);
   });
 });
+
+describe('facility detail and export', () => {
+  let app: FastifyInstance;
+
+  beforeEach(async () => {
+    await resetDb();
+    app = await buildTestApp();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('gives SUPER_ADMIN the full sign-up detail of any facility, including location fields', async () => {
+    const hq = await seedClinic({ name: 'HQ' });
+    const { user, password } = await seedUser({ clinicId: hq.id, role: 'SUPER_ADMIN' });
+    const { token } = await loginAs(app, user.email, password);
+
+    const clinic = await seedClinic({ name: 'Detail Clinic', address: '12 Clinic Road' });
+    await seedUser({ clinicId: clinic.id, role: 'ADMIN', name: 'Facility Admin' });
+
+    const response = await app.inject({ method: 'GET', url: `/clinics/${clinic.id}`, headers: authHeader(token) });
+    expect(response.statusCode).toBe(200);
+    const { facility } = response.json();
+    expect(facility.name).toBe('Detail Clinic');
+    expect(facility.address).toBe('12 Clinic Road');
+    expect(facility.facilityCode).toBe(clinic.facilityCode);
+    expect(facility.admin.name).toBe('Facility Admin');
+    expect(facility.subscription.status).toBe('ACTIVE');
+    expect(facility.users).toBe(1);
+  });
+
+  it('lets an ADMIN view and export their own facility\'s detail, but not another facility\'s', async () => {
+    const clinic = await seedClinic({ name: 'Own Facility' });
+    const { user, password } = await seedUser({ clinicId: clinic.id, role: 'ADMIN' });
+    const { token } = await loginAs(app, user.email, password);
+
+    const own = await app.inject({ method: 'GET', url: `/clinics/${clinic.id}`, headers: authHeader(token) });
+    expect(own.statusCode).toBe(200);
+    expect(own.json().facility.name).toBe('Own Facility');
+
+    const exportRes = await app.inject({ method: 'GET', url: `/clinics/${clinic.id}/export`, headers: authHeader(token) });
+    expect(exportRes.statusCode).toBe(200);
+    expect(exportRes.headers['content-type']).toContain('text/csv');
+    expect(exportRes.headers['content-disposition']).toContain('attachment');
+    expect(exportRes.body).toContain('Own Facility');
+    expect(exportRes.body).toContain(clinic.facilityCode);
+
+    const otherClinic = await seedClinic({ name: 'Not Mine' });
+    const denied = await app.inject({ method: 'GET', url: `/clinics/${otherClinic.id}`, headers: authHeader(token) });
+    expect(denied.statusCode).toBe(403);
+    const deniedExport = await app.inject({ method: 'GET', url: `/clinics/${otherClinic.id}/export`, headers: authHeader(token) });
+    expect(deniedExport.statusCode).toBe(403);
+  });
+
+  it('rejects non-ADMIN/non-SUPER_ADMIN roles from facility detail and export', async () => {
+    const clinic = await seedClinic();
+    const { user, password } = await seedUser({ clinicId: clinic.id, role: 'NURSE' });
+    const { token } = await loginAs(app, user.email, password);
+
+    const detail = await app.inject({ method: 'GET', url: `/clinics/${clinic.id}`, headers: authHeader(token) });
+    expect(detail.statusCode).toBe(403);
+    const exportRes = await app.inject({ method: 'GET', url: `/clinics/${clinic.id}/export`, headers: authHeader(token) });
+    expect(exportRes.statusCode).toBe(403);
+  });
+
+  it('404s for a facility that does not exist', async () => {
+    const hq = await seedClinic({ name: 'HQ' });
+    const { user, password } = await seedUser({ clinicId: hq.id, role: 'SUPER_ADMIN' });
+    const { token } = await loginAs(app, user.email, password);
+
+    const response = await app.inject({ method: 'GET', url: '/clinics/does-not-exist', headers: authHeader(token) });
+    expect(response.statusCode).toBe(404);
+  });
+});
