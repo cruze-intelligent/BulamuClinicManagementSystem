@@ -1,11 +1,12 @@
 import { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
 import { recordConflictIfStale } from '../lib/conflict';
 import { recordAudit } from '../lib/audit';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
 import { notifyIfLowStock, notifyLabResultReady, notifyNewPrescription } from '../lib/notifications';
-import { normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
+import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
 import { consultationChildren, linkStockItems } from '../lib/consultation-records';
 
 export async function syncRoutes(fastify: FastifyInstance) {
@@ -245,8 +246,23 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 await tx.diagnosis.createMany({ data: diagnoses.map((d) => ({ ...d, consultationId: saved.id })) });
               }
               if (prescriptions) {
-                await tx.prescription.deleteMany({ where: { consultationId: saved.id } });
-                await tx.prescription.createMany({ data: prescriptions.map((rx) => ({ ...rx, consultationId: saved.id })) });
+                // Anything already dispensed is a record of what left the shelf and
+                // is never rewritten: only the items still waiting are replaced. If
+                // the incoming copy still lists a dispensed item, it is matched to
+                // the stored one instead of being added again (which would put it
+                // back in the pharmacist's queue and risk a second dispense).
+                const dispensed = await tx.prescription.findMany({ where: { consultationId: saved.id, dispensedAt: { not: null } } });
+                await tx.prescription.deleteMany({ where: { consultationId: saved.id, dispensedAt: null } });
+                const signature = (rx: { medication: string; strength?: string | null; form?: string | null; dosage: string; route?: string | null; frequency: string; duration: string }) =>
+                  [rx.medication, rx.strength, rx.form, rx.dosage, rx.route, rx.frequency, rx.duration].map((v) => (v ?? '').toString().trim().toLowerCase()).join('|');
+                const alreadyDispensed = dispensed.map(signature);
+                const toCreate = prescriptions.filter((rx) => {
+                  const at = alreadyDispensed.indexOf(signature(rx));
+                  if (at === -1) return true;
+                  alreadyDispensed.splice(at, 1);
+                  return false;
+                });
+                await tx.prescription.createMany({ data: toCreate.map((rx) => ({ ...rx, consultationId: saved.id })) });
               }
               // Send the whole record back, children included: the app replaces its
               // local copy with this, so leaving them out would make a saved
@@ -381,6 +397,50 @@ export async function syncRoutes(fastify: FastifyInstance) {
               action: existing ? 'UPDATE' : 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role,
             });
           }
+        } else if (entity === 'patientAllergies') {
+          // The patient's allergy record, saved on its own (not as part of the
+          // whole patient) so recording an allergy can never overwrite anything
+          // else on the patient, and can be done by the clinicians who ask about
+          // it. payload.id is the patient's id.
+          if (!['NURSE', 'DOCTOR', 'PHARMACIST', 'ADMIN', 'SUPER_ADMIN'].includes(authUser.role)) {
+            fastify.log.warn(`Rejected allergy mutation ${mutationId}: role ${authUser.role} may not record allergies`);
+            continue;
+          }
+          const patient = await prisma.patient.findUnique({ where: { id: payload.id } });
+          if (!patient || patient.deletedAt || (!isSuperAdmin && patient.clinicId !== authUser.clinicId)) {
+            fastify.log.warn(`Rejected allergy mutation ${mutationId}: patient out of scope`);
+            continue;
+          }
+          const valid = normalizeAllergies(payload.allergyStatus, payload.allergies);
+          if (!valid.ok) {
+            fastify.log.warn(`Rejected allergy mutation ${mutationId}: ${valid.error}`);
+            continue;
+          }
+          // Last write wins by the time the allergy was recorded, not by when the
+          // rest of the patient last changed, so an unrelated edit never blocks it.
+          if (patient.allergiesUpdatedAt && incomingUpdatedAt < patient.allergiesUpdatedAt) {
+            await recordConflictIfStale({
+              entity: 'PatientAllergies', recordId: patient.id, clinicId: patient.clinicId, mutationId,
+              incomingUpdatedAt, currentUpdatedAt: patient.allergiesUpdatedAt,
+            });
+            continue;
+          }
+
+          record = await prisma.patient.update({
+            where: { id: patient.id },
+            data: {
+              allergyStatus: valid.value.status,
+              allergies: valid.value.status === 'KNOWN' ? valid.value.allergies : Prisma.DbNull,
+              allergiesUpdatedAt: incomingUpdatedAt,
+              allergiesUpdatedBy: authUser.userId,
+            },
+          });
+          // What was recorded is not written to the audit trail (allergy names are
+          // health information); that it changed, and who by, is.
+          await recordAudit({
+            entity: 'Patient', recordId: patient.id, clinicId: patient.clinicId, action: 'UPDATE',
+            actorUserId: authUser.userId, actorRole: authUser.role, metadata: { event: 'ALLERGIES_UPDATED', status: valid.value.status },
+          });
         } else if (entity === 'inventory') {
           const existing = await prisma.medicine.findUnique({ where: { id: payload.id } });
           if (existing && !isSuperAdmin && existing.clinicId !== authUser.clinicId) {

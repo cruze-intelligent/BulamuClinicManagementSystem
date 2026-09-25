@@ -101,7 +101,7 @@ const roleSteps: Record<string, Step[]> = {
   PHARMACIST: [
     {
       title: 'Manage the pharmacy',
-      body: 'Track medicine stock, set reorder levels, and fulfil prescriptions written during consultations from Inventory.',
+      body: 'Track medicine stock, set reorder levels, and dispense prescriptions written during consultations from the Dispensing page, where stock comes off the shelf as you go.',
       icon: Package,
     },
   ],

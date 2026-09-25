@@ -119,6 +119,18 @@ describe('checking and saving a prescription line', () => {
     expect(draftProblems(draft({}))).toEqual([]);
   });
 
+  it('needs the prescriber to confirm an allergy warning before the line can be saved', () => {
+    expect(draftProblems(draft({}), 1)).toEqual(['confirmation of the allergy warning']);
+    expect(draftProblems(draft({ allergyOverride: true }), 1)).toEqual([]);
+    expect(draftProblems(draft({}), 0)).toEqual([]);
+    expect(draftProblems(emptyDraft(), 1)).toEqual([]);
+  });
+
+  it('sends the acknowledgement only when one was given', () => {
+    expect(draftToPayload(draft({ allergyOverride: true })).allergyOverride).toBe(true);
+    expect(draftToPayload(draft({})).allergyOverride).toBeUndefined();
+  });
+
   it('does not need a duration for a single STAT dose', () => {
     expect(draftProblems(draft({ frequency: 'STAT', durationValue: '' }))).toEqual([]);
   });

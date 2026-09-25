@@ -218,6 +218,37 @@ export async function reportsRoutes(fastify: FastifyInstance) {
           },
         });
 
+        // Recorded allergies. "None known" is a fact worth exporting too, so it is
+        // sent as the standard "no known allergy" coding rather than left out.
+        if (patient.allergyStatus === 'KNOWN' && Array.isArray(patient.allergies)) {
+          (patient.allergies as Array<{ substance: string; reaction?: string | null; severity?: string | null }>).forEach((a, i) => {
+            entries.push({
+              fullUrl: `urn:uuid:${patient.id}-allergy-${i}`,
+              resource: {
+                resourceType: 'AllergyIntolerance',
+                id: `${patient.id}-allergy-${i}`,
+                clinicalStatus: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical', code: 'active' }] },
+                code: { text: a.substance },
+                patient: { reference: `urn:uuid:${patient.id}` },
+                ...(a.severity || a.reaction
+                  ? { reaction: [{ manifestation: [{ text: a.reaction || 'Reaction not described' }], ...(a.severity ? { severity: a.severity.toLowerCase() } : {}) }] }
+                  : {}),
+              },
+            });
+          });
+        } else if (patient.allergyStatus === 'NONE_KNOWN') {
+          entries.push({
+            fullUrl: `urn:uuid:${patient.id}-nka`,
+            resource: {
+              resourceType: 'AllergyIntolerance',
+              id: `${patient.id}-nka`,
+              clinicalStatus: { coding: [{ system: 'http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical', code: 'active' }] },
+              code: { coding: [{ system: 'http://snomed.info/sct', code: '716186003', display: 'No known allergy' }] },
+              patient: { reference: `urn:uuid:${patient.id}` },
+            },
+          });
+        }
+
         for (const consultation of patient.consultations) {
           // ICD-10 is the coding system for diagnoses (an uncoded one is carried as text only).
           const diagnosisCoding = (d: { icd10Code: string | null; description: string }) => ({

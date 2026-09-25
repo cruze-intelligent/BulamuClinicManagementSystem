@@ -39,6 +39,7 @@ it in the other.
 | Patient | `Patient` | Soft delete (`deletedAt`) via `DELETE /patients/:id` (ADMIN) or sync. Hidden from every list, search and report. | Manual, end of retention |
 | Appointment, consultation, lab test, reproductive-health record, medicine | respective models | Soft delete (`deletedAt`) via sync | Manual, end of retention |
 | Diagnosis, prescription, invoice, referral | `Diagnosis`, `Prescription`, `Invoice`, `Referral` | No delete path; retained with the parent record (a consultation's diagnoses and prescriptions are replaced, not appended, when it is re-synced) | Manual, end of retention |
+| Allergies, dispensing record | `Patient.allergies` / `allergyStatus`, `Prescription.dispensed*` | Kept with the patient and the prescription they belong to. An allergy record is replaced, not appended, when updated. Audit entries note that allergies changed, never what they were. | Manual, end of retention |
 | Document | `Document` + file | **Hard delete** (file and row) by the uploader, a facility ADMIN, or the patient for their own uploads | Immediately |
 | Staff user | `User` | Deactivate only (`isActive = false`, `PATCH /users/:id/deactivate`). Existing sessions stop on the next request. No delete route. | Manual, with the facility |
 | Facility | `Clinic` | Soft delete (`deletedAt`, `deletedBy`, `isActive = false`) via `DELETE /clinics/:id` (SUPER_ADMIN, exact-name confirmation). All its users are deactivated. Records are **not** erased. | Manual, end of retention |

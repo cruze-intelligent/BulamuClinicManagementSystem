@@ -16,14 +16,17 @@ export function TrialBanner() {
   const { user, hasRole } = useAuth();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
 
+  const signedIn = !!user;
+  const role = user?.role;
+
   useEffect(() => {
-    if (!user || user.role === 'SUPER_ADMIN') return;
+    if (!signedIn || role === 'SUPER_ADMIN') return;
     const token = localStorage.getItem('token');
     fetch(`${process.env.NEXT_PUBLIC_API_URL}/billing/status`, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => res.json())
       .then((data) => { if (data.success) setSubscription(data.subscription); })
       .catch(() => {});
-  }, [user]);
+  }, [signedIn, role]);
 
   if (!subscription || subscription.status === 'ACTIVE' || subscription.status === 'CANCELLED') return null;
 

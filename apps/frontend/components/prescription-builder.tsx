@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ import {
   type PrescriptionDraft,
 } from '@/lib/prescription';
 import type { LocalMedicine } from '@/lib/local-first';
+import { describeConflict, findAllergyConflicts, type AllergyRecord } from '@/lib/allergy';
 
 const MAX_ITEMS = 30;
 
@@ -40,12 +41,14 @@ const variantLabel = (v: CatalogVariant) => `${v.strength} ${v.form}`;
  * line, the directions are written out in plain words to check before saving.
  */
 export function PrescriptionBuilder({
-  value, onChange, stock, showProblems,
+  value, onChange, stock, showProblems, allergies,
 }: {
   value: PrescriptionDraft[];
   onChange: (next: PrescriptionDraft[]) => void;
   stock: LocalMedicine[];
   showProblems?: boolean;
+  /** The patient's recorded allergies: a medicine that matches one is flagged and must be confirmed. */
+  allergies?: AllergyRecord | null;
 }) {
   const update = (key: string, patch: Partial<PrescriptionDraft>) =>
     onChange(value.map((d) => (d.key === key ? { ...d, ...patch } : d)));
@@ -78,7 +81,7 @@ export function PrescriptionBuilder({
       if (!item) return;
       const catalog = catalogEntry(item.name);
       update(d.key, {
-        medication: item.name, medicineId: item.id, doseUnit: stockDoseUnit(item.unit),
+        medication: item.name, medicineId: item.id, allergyOverride: false, doseUnit: stockDoseUnit(item.unit),
         ...(catalog ? { route: catalog.route } : {}),
         ...(catalog && catalog.variants.length === 1 ? { strength: catalog.variants[0].strength, form: catalog.variants[0].form } : {}),
       });
@@ -89,7 +92,7 @@ export function PrescriptionBuilder({
     const linked = stock.find((m) => m.name.toLowerCase() === medicine.name.toLowerCase());
     const only = medicine.variants.length === 1 ? medicine.variants[0] : null;
     update(d.key, {
-      medication: medicine.name, medicineId: linked?.id ?? '', route: medicine.route,
+      medication: medicine.name, medicineId: linked?.id ?? '', allergyOverride: false, route: medicine.route,
       ...(only ? { strength: only.strength, form: only.form, doseUnit: defaultDoseUnit(only.form) } : {}),
     });
   };
@@ -99,9 +102,10 @@ export function PrescriptionBuilder({
       {value.map((d, index) => {
         const catalog = catalogEntry(d.medication);
         const linkedStock = d.medicineId ? stock.find((m) => m.id === d.medicineId) : undefined;
-        const problems = showProblems ? draftProblems(d) : [];
+        const conflicts = findAllergyConflicts(allergies, d.medication);
+        const problems = showProblems ? draftProblems(d, conflicts.length) : [];
         const suggested = suggestQuantity(d);
-        const complete = !isBlankDraft(d) && draftProblems(d).length === 0;
+        const complete = !isBlankDraft(d) && draftProblems(d, conflicts.length).length === 0;
         const line = complete ? formatPrescription(draftToPayload(d)) : null;
 
         return (
@@ -125,7 +129,7 @@ export function PrescriptionBuilder({
               className="mt-2"
               value={d.medication}
               placeholder="Search or type: amoxicillin, paracetamol, Coartem..."
-              onChange={(text) => update(d.key, { medication: text, ...(linkedStock && linkedStock.name !== text ? { medicineId: '' } : {}) })}
+              onChange={(text) => update(d.key, { medication: text, allergyOverride: false, ...(linkedStock && linkedStock.name !== text ? { medicineId: '' } : {}) })}
               suggestions={suggestionsFor(d.medication)}
               onPick={(key) => pickMedicine(d, key)}
               footer={d.medication.trim().length >= 2 ? <>Your facility&apos;s stock is listed first. Keep typing to use another name.</> : undefined}
@@ -134,6 +138,25 @@ export function PrescriptionBuilder({
               <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
                 Linked to stock: {linkedStock.quantity} {linkedStock.unit} available{linkedStock.quantity <= linkedStock.reorderLevel ? ' - running low' : ''}.
               </p>
+            )}
+
+            {conflicts.length > 0 && (
+              <div role="alert" className="mt-2 rounded-md border-2 border-rose-400 bg-rose-50 p-3 text-sm dark:border-rose-700 dark:bg-rose-950/40">
+                <p className="flex items-center gap-2 font-semibold text-rose-900 dark:text-rose-200">
+                  <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                  Allergy warning
+                </p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-6 text-rose-900 dark:text-rose-100">
+                  {conflicts.map((c) => <li key={c.allergy.substance}>{describeConflict(c, d.medication)}</li>)}
+                </ul>
+                <label className="mt-2 flex cursor-pointer items-start gap-2 text-rose-900 dark:text-rose-100">
+                  <input
+                    type="checkbox" className="mt-0.5" checked={d.allergyOverride}
+                    onChange={(e) => update(d.key, { allergyOverride: e.target.checked })}
+                  />
+                  <span>I have considered this allergy and still want to prescribe {d.medication.trim()}. This will be recorded on the prescription.</span>
+                </label>
+              </div>
             )}
 
             {catalog && catalog.variants.length > 1 && (

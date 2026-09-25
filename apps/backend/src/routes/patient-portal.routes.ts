@@ -67,6 +67,8 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
           name: true,
           sex: true,
           dateOfBirth: true,
+          allergyStatus: true,
+          allergies: true,
           clinic: { select: { id: true, name: true, facilityType: true } },
           appointments: {
             where: { deletedAt: null },
@@ -85,7 +87,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
                 orderBy: { createdAt: 'asc' },
                 select: {
                   id: true, medication: true, strength: true, form: true, dosage: true, route: true,
-                  frequency: true, duration: true, quantity: true, instructions: true,
+                  frequency: true, duration: true, quantity: true, instructions: true, dispensedAt: true,
                 },
               },
               invoice: { select: { id: true, amount: true, status: true, createdAt: true } },

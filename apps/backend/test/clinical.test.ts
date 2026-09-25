@@ -72,7 +72,7 @@ describe('normalizePrescriptions', () => {
   it('keeps only known fields - nothing else can reach the database', () => {
     const result = normalizePrescriptions([{ medication: 'Amoxicillin', consultationId: 'someone-elses', id: 'x', clinicId: 'y', role: 'ADMIN' }]);
     expect(result.ok && Object.keys(result.value[0]).sort()).toEqual(
-      ['dosage', 'duration', 'form', 'frequency', 'instructions', 'medication', 'medicineId', 'quantity', 'route', 'strength'].sort()
+      ['allergyOverride', 'dosage', 'duration', 'form', 'frequency', 'instructions', 'medication', 'medicineId', 'quantity', 'route', 'strength'].sort()
     );
   });
 

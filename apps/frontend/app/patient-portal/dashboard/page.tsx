@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Building2, CalendarClock, CalendarPlus, FlaskConical, Paperclip, Stethoscope, Upload } from 'lucide-react';
+import { AlertTriangle, Building2, CalendarClock, CalendarPlus, FlaskConical, Paperclip, Stethoscope, Upload } from 'lucide-react';
 import { DocumentItem, type DocumentFormat } from '@/components/document-item';
 import { ConsultationDetails } from '@/components/consultation-details';
 import type { DiagnosisView } from '@/lib/diagnosis';
@@ -46,6 +46,8 @@ type PatientRecord = {
   id: string;
   name: string;
   clinic: { id: string; name: string; facilityType: string };
+  allergyStatus?: 'UNKNOWN' | 'NONE_KNOWN' | 'KNOWN';
+  allergies?: Array<{ substance: string; reaction?: string | null; severity?: 'MILD' | 'MODERATE' | 'SEVERE' | null }> | null;
   appointments: Array<{ id: string; date: string; time: string; status: string; notes: string | null; doctor: { name: string } }>;
   consultations: Array<{
     id: string; diagnosis: string; symptoms: string; createdAt: string;
@@ -314,6 +316,20 @@ export default function PatientPortalDashboardPage() {
                 ))}
               </ul>
             )}
+          </div>
+
+          <div className="mt-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
+              <AlertTriangle className="size-4" aria-hidden="true" />
+              Allergies on record
+            </div>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              {record.allergyStatus === 'KNOWN' && record.allergies && record.allergies.length > 0
+                ? record.allergies.map((a) => `${a.substance}${a.reaction ? ` (${a.reaction})` : ''}`).join('; ')
+                : record.allergyStatus === 'NONE_KNOWN'
+                ? 'No known allergies'
+                : 'None recorded yet. Please tell your clinician about any allergies you have.'}
+            </p>
           </div>
 
           <div className="mt-4">

@@ -7,6 +7,7 @@ import { appointmentRoutes } from './routes/appointment.routes';
 import { authRoutes } from './routes/auth.routes';
 import { clinicRoutes } from './routes/clinic.routes';
 import { consultationRoutes } from './routes/consultation.routes';
+import { dispensingRoutes } from './routes/dispensing.routes';
 import { dashboardRoutes } from './routes/dashboard.routes';
 import { documentRoutes } from './routes/document.routes';
 import { inventoryRoutes } from './routes/inventory.routes';
@@ -46,6 +47,20 @@ export async function buildApp(): Promise<FastifyInstance> {
     logger: process.env.NODE_ENV === 'test' ? false : true,
   });
 
+  // Browsers often send "Content-Type: application/json" on a POST that has no
+  // body (an action button). Fastify's default parser rejects that outright, so a
+  // perfectly reasonable request would fail with a parse error before reaching its
+  // route. An empty JSON body is simply an empty object; malformed JSON is still a 400.
+  server.addContentTypeParser('application/json', { parseAs: 'string' }, (_request, body, done) => {
+    if (body === '' || body === undefined) return done(null, {});
+    try {
+      done(null, JSON.parse(body as string));
+    } catch (error) {
+      (error as { statusCode?: number }).statusCode = 400;
+      done(error as Error, undefined);
+    }
+  });
+
   await server.register(cors, {
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   });
@@ -78,6 +93,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(patientRoutes);
   await server.register(appointmentRoutes);
   await server.register(consultationRoutes);
+  await server.register(dispensingRoutes);
   await server.register(dashboardRoutes);
   await server.register(invoiceRoutes);
   await server.register(userRoutes);

@@ -1,3 +1,5 @@
+import type { Allergy, AllergyStatus } from "./allergy";
+
 export type LocalPatient = {
   id: string;
   name: string;
@@ -13,6 +15,10 @@ export type LocalPatient = {
   nextOfKinPhone?: string;
   consentGivenAt?: string;
   consentGivenBy?: string;
+  /** UNKNOWN until someone asks; NONE_KNOWN; or KNOWN with the list below. */
+  allergyStatus?: AllergyStatus;
+  allergies?: Allergy[] | null;
+  allergiesUpdatedAt?: string | null;
   clinicId: string;
   createdAt: string;
   updatedAt: string;
@@ -47,6 +53,10 @@ export type LocalPrescription = {
   quantity?: number | null;
   instructions?: string | null;
   medicineId?: string | null;
+  /** Prescribed despite a recorded allergy the prescriber saw and acknowledged. */
+  allergyOverride?: boolean;
+  dispensedAt?: string | null;
+  dispensedBy?: { name: string } | null;
 };
 
 export type LocalDiagnosis = {
@@ -125,7 +135,7 @@ export type LocalReproductiveHealthRecord = {
 
 export type LocalMutation = {
   id: string;
-  entity: "patient" | "appointment" | "consultation" | "labTest" | "inventory" | "reproductiveHealth";
+  entity: "patient" | "patientAllergies" | "appointment" | "consultation" | "labTest" | "inventory" | "reproductiveHealth";
   action: "upsert" | "delete";
   recordId: string;
   clinicId: string;
@@ -408,6 +418,51 @@ export async function createPatientOffline(input: {
   }
 
   return patient;
+}
+
+/**
+ * Records a patient's allergies. Saved on the device at once and sent to the
+ * server as its own change (not as part of the whole patient), so it works
+ * offline and can never overwrite anything else on the patient.
+ */
+export async function saveAllergiesOffline(input: {
+  patientId: string;
+  clinicId: string;
+  allergyStatus: AllergyStatus;
+  allergies: Allergy[];
+}): Promise<LocalPatient | undefined> {
+  const now = new Date().toISOString();
+  const existing = await getRecord<LocalPatient>(PATIENT_STORE, input.patientId);
+  const updated: LocalPatient | undefined = existing
+    ? {
+        ...existing,
+        allergyStatus: input.allergyStatus,
+        allergies: input.allergyStatus === "KNOWN" ? input.allergies : null,
+        allergiesUpdatedAt: now,
+        syncStatus: "pending",
+      }
+    : undefined;
+
+  const mutation: LocalMutation = {
+    id: createId(),
+    entity: "patientAllergies",
+    action: "upsert",
+    recordId: input.patientId,
+    clinicId: input.clinicId,
+    payload: { id: input.patientId, allergyStatus: input.allergyStatus, allergies: input.allergies, updatedAt: now },
+    createdAt: now,
+    attempts: 0,
+  };
+
+  if (updated) await putRecord(PATIENT_STORE, updated);
+  await putRecord(MUTATION_STORE, mutation);
+  emitLocalChange();
+
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    flushSyncQueue().catch(console.error);
+  }
+
+  return updated;
 }
 
 /* ================= APPOINTMENTS ================= */
@@ -851,6 +906,7 @@ export async function flushSyncQueue() {
             labTest: LAB_STORE,
             inventory: INVENTORY_STORE,
             reproductiveHealth: REPRODUCTIVE_HEALTH_STORE,
+            patientAllergies: PATIENT_STORE,
           };
           const targetStore = storeMap[item.entity];
           if (targetStore) {

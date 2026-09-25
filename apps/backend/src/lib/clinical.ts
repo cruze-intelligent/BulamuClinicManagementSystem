@@ -35,6 +35,8 @@ export type PrescriptionInput = {
   quantity: number | null;
   instructions: string | null;
   medicineId: string | null;
+  /** The prescriber saw a recorded allergy matching this medicine and prescribed it anyway. */
+  allergyOverride: boolean;
 };
 
 export type Validated<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -146,9 +148,59 @@ export function normalizePrescriptions(raw: unknown): Validated<PrescriptionInpu
       quantity,
       instructions: fields.instructions || null,
       medicineId: fields.medicineId || null,
+      allergyOverride: p.allergyOverride === true,
     });
   }
   return { ok: true, value: out };
+}
+
+// ---------------------------------------------------------------------------
+// Allergies
+// ---------------------------------------------------------------------------
+
+export type AllergyStatus = 'UNKNOWN' | 'NONE_KNOWN' | 'KNOWN';
+export type AllergyInput = { substance: string; reaction: string | null; severity: 'MILD' | 'MODERATE' | 'SEVERE' | null };
+
+const MAX_ALLERGIES = 20;
+
+/**
+ * Validates an allergy record. The status says what is known: UNKNOWN (nobody
+ * has asked), NONE_KNOWN (asked - none) or KNOWN (the list applies). Only KNOWN
+ * carries a list, and it must not be empty - "has allergies" with nothing named
+ * would look like a record but tell the prescriber nothing.
+ */
+export function normalizeAllergies(status: unknown, raw: unknown): Validated<{ status: AllergyStatus; allergies: AllergyInput[] }> {
+  if (status !== 'UNKNOWN' && status !== 'NONE_KNOWN' && status !== 'KNOWN') {
+    return fail('allergyStatus must be UNKNOWN, NONE_KNOWN or KNOWN');
+  }
+  if (status !== 'KNOWN') return { ok: true, value: { status, allergies: [] } };
+
+  if (!Array.isArray(raw)) return fail('allergies must be a list');
+  if (raw.length > MAX_ALLERGIES) return fail(`At most ${MAX_ALLERGIES} allergies can be recorded`);
+
+  const out: AllergyInput[] = [];
+  const seen = new Set<string>();
+  for (const [index, item] of raw.entries()) {
+    if (!item || typeof item !== 'object') return fail(`Allergy ${index + 1} is not valid`);
+    const a = item as Record<string, unknown>;
+
+    const substance = text(a.substance, 80);
+    if (substance.tooLong) return fail(`Allergy ${index + 1}: the name is too long (80 characters max)`);
+    if (!substance.value) continue; // a blank row
+    const reaction = text(a.reaction, 120);
+    if (reaction.tooLong) return fail(`Allergy ${index + 1}: the reaction is too long (120 characters max)`);
+
+    if (a.severity !== undefined && a.severity !== null && a.severity !== '' && a.severity !== 'MILD' && a.severity !== 'MODERATE' && a.severity !== 'SEVERE') {
+      return fail(`Allergy ${index + 1}: severity must be MILD, MODERATE or SEVERE`);
+    }
+
+    const key = substance.value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ substance: substance.value, reaction: reaction.value || null, severity: (a.severity || null) as AllergyInput['severity'] });
+  }
+  if (out.length === 0) return fail('Name at least one allergy, or record that there are none known');
+  return { ok: true, value: { status, allergies: out } };
 }
 
 /** The value kept in the legacy `diagnosis` column: the primary diagnosis's name. */

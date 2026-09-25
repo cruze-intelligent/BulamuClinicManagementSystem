@@ -23,7 +23,7 @@ export async function linkStockItems(clinicId: string, prescriptions: Prescripti
 /** What a consultation's children look like when read back, in reading order. */
 export const consultationChildren = {
   diagnoses: { orderBy: [{ type: 'asc' as const }, { createdAt: 'asc' as const }] },
-  prescriptions: { orderBy: { createdAt: 'asc' as const } },
+  prescriptions: { orderBy: { createdAt: 'asc' as const }, include: { dispensedBy: { select: { name: true } } } },
 };
 
 /** "34 years", "8 months", "12 days" - a child's dose depends on age, so a prescription states it. */

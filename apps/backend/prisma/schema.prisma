@@ -22,6 +22,7 @@ model User {
   documentsUploaded Document[]
   comments  Comment[]
   resolvedAppointmentRequests AppointmentRequest[]
+  dispensedPrescriptions Prescription[] @relation("PrescriptionDispensedBy")
   notifications Notification[]
   // Notification types this user has switched email off for (in-app
   // notifications are always kept - only the email copy is optional).
@@ -185,6 +186,13 @@ model Patient {
   nextOfKinPhone String?
   consentGivenAt  DateTime?
   consentGivenBy  String?
+  // Drug and other allergies. UNKNOWN means nobody has asked yet (a prompt to
+  // ask), NONE_KNOWN means the patient was asked and has none, KNOWN means the
+  // list in `allergies` applies: [{ substance, reaction?, severity? }].
+  allergyStatus     AllergyStatus @default(UNKNOWN)
+  allergies         Json?
+  allergiesUpdatedAt DateTime?
+  allergiesUpdatedBy String?
   clinicId     String
   clinic       Clinic        @relation(fields: [clinicId], references: [id])
   // Links this facility's own clinical record to the patient's portable,
@@ -205,6 +213,12 @@ model Patient {
 
   @@index([clinicId])
   @@index([patientAccountId])
+}
+
+enum AllergyStatus {
+  UNKNOWN
+  NONE_KNOWN
+  KNOWN
 }
 
 model Referral {
@@ -392,10 +406,20 @@ model Prescription {
   // stocked, or the stock item may since have been removed.
   medicineId      String?
   medicine        Medicine?    @relation(fields: [medicineId], references: [id], onDelete: SetNull)
+  // Set when the prescriber saw a recorded allergy that matched this medicine
+  // and chose to prescribe it anyway - a safety trail, not a permission.
+  allergyOverride Boolean      @default(false)
+  // Dispensing: filled in by the pharmacist. dispensedQuantity is what left the
+  // shelf (and was taken off the linked stock item, when there is one).
+  dispensedAt       DateTime?
+  dispensedByUserId String?
+  dispensedBy       User?      @relation("PrescriptionDispensedBy", fields: [dispensedByUserId], references: [id], onDelete: SetNull)
+  dispensedQuantity Int?
   createdAt       DateTime     @default(now())
 
   @@index([consultationId])
   @@index([medicineId])
+  @@index([dispensedAt])
 }
 
 model Invoice {

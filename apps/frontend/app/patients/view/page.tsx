@@ -16,6 +16,7 @@ import { validateReproductiveHealthForm } from '@/lib/reproductive-health-valida
 import { CommentsSection } from '@/components/comments-section';
 import { Select } from '@/components/ui/select';
 import { ConsultationDetails } from '@/components/consultation-details';
+import { AllergyPanel } from '@/components/allergy-panel';
 
 const DOCUMENT_CATEGORIES = [
   { value: 'LAB_RESULT', label: 'Lab Result' },
@@ -385,6 +386,16 @@ function PatientHistoryContent() {
           <p className="text-sm mt-2 text-slate-500 dark:text-slate-400">
             Patient since {new Date(patient.createdAt).toLocaleDateString()}
           </p>
+
+          <div className="mt-4">
+            <AllergyPanel
+              patientId={patient.id}
+              clinicId={patient.clinicId}
+              record={patient}
+              canEdit={hasRole('NURSE', 'DOCTOR', 'PHARMACIST', 'ADMIN')}
+              onSaved={(next) => setPatient((p: any) => (p ? { ...p, allergyStatus: next.allergyStatus, allergies: next.allergies } : p))}
+            />
+          </div>
 
           <div className="mt-4 border-t pt-4">
             {portalAccount ? (

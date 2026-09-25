@@ -260,7 +260,7 @@ export async function notifyNewPrescription(
     clinicId: input.clinicId,
     title: `New prescription: ${input.patientName}`,
     body: `${input.itemCount} item${input.itemCount === 1 ? '' : 's'} to dispense for ${input.patientName}.`,
-    link: '/inventory',
+    link: '/dispensing',
     emailSummary: 'A new prescription is waiting to be dispensed.',
     log,
   });

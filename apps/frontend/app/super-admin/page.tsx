@@ -127,15 +127,19 @@ export default function SuperAdminPage() {
     if (data.success) setFeedback(data.comments);
   };
 
+  const isSuperAdmin = hasRole('SUPER_ADMIN');
+
   useEffect(() => {
-    if (!hasRole('SUPER_ADMIN')) {
+    if (!isSuperAdmin) {
       router.push('/dashboard');
       return;
     }
     fetchOverview();
     fetchPending();
     fetchFeedback();
-  }, [hasRole, router]);
+    // Once on arrival - not whenever the component re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin]);
 
   const approveFacility = async (id: string) => {
     const token = localStorage.getItem('token');

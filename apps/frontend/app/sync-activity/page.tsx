@@ -30,6 +30,8 @@ export default function SyncActivityPage() {
   const [exporting, setExporting] = useState<'all' | 'actor' | null>(null);
 
   const role = user?.role;
+  const clinicId = user?.clinicId;
+  const signedIn = !!user;
   const isSuperAdmin = role === 'SUPER_ADMIN';
   const isAdmin = role === 'ADMIN';
   const canFilterByActor = isSuperAdmin || isAdmin;
@@ -38,7 +40,7 @@ export default function SyncActivityPage() {
     const base = isSuperAdmin
       ? `${process.env.NEXT_PUBLIC_API_URL}/audit-log`
       : isAdmin
-      ? `${process.env.NEXT_PUBLIC_API_URL}/audit-log/${user!.clinicId}`
+      ? `${process.env.NEXT_PUBLIC_API_URL}/audit-log/${clinicId}`
       : `${process.env.NEXT_PUBLIC_API_URL}/audit-log/me`;
     return actorUserId ? `${base}?actorUserId=${encodeURIComponent(actorUserId)}` : base;
   };
@@ -47,19 +49,19 @@ export default function SyncActivityPage() {
     const base = isSuperAdmin
       ? `${process.env.NEXT_PUBLIC_API_URL}/audit-log/export`
       : isAdmin
-      ? `${process.env.NEXT_PUBLIC_API_URL}/audit-log/${user!.clinicId}/export`
+      ? `${process.env.NEXT_PUBLIC_API_URL}/audit-log/${clinicId}/export`
       : `${process.env.NEXT_PUBLIC_API_URL}/audit-log/me/export`;
     return actorUserId ? `${base}?actorUserId=${encodeURIComponent(actorUserId)}` : base;
   };
 
   const fetchActivity = (actorUserId?: string) => {
-    if (!user) return;
+    if (!signedIn) return;
     const token = localStorage.getItem('token');
     const headers = { Authorization: `Bearer ${token}` };
 
     const requests: Promise<any>[] = [fetch(auditUrl(actorUserId), { headers }).then((r) => r.json())];
     if (isAdmin && !actorUserId) {
-      requests.push(fetch(`${process.env.NEXT_PUBLIC_API_URL}/sync-conflicts/${user.clinicId}`, { headers }).then((r) => r.json()));
+      requests.push(fetch(`${process.env.NEXT_PUBLIC_API_URL}/sync-conflicts/${clinicId}`, { headers }).then((r) => r.json()));
     }
 
     setLoading(true);
@@ -73,8 +75,9 @@ export default function SyncActivityPage() {
 
   useEffect(() => {
     fetchActivity();
+    // Runs once per sign-in (role/facility), not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, isSuperAdmin, isAdmin]);
+  }, [signedIn, role, clinicId]);
 
   // The actor dropdown lists whoever has appeared in the loaded feed so far -
   // good enough to pick someone active and reachable without a separate

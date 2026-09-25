@@ -8,6 +8,9 @@ import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { DiagnosisPicker } from '@/components/diagnosis-picker';
 import { PrescriptionBuilder } from '@/components/prescription-builder';
+import { AllergyPanel } from '@/components/allergy-panel';
+import { findAllergyConflicts } from '@/lib/allergy';
+import { useAuth } from '@/lib/useAuth';
 import {
   createConsultationOffline,
   listLocalPatients,
@@ -34,6 +37,7 @@ function StepHeading({ n, title, hint }: { n: number; title: string; hint?: stri
 
 function RecordConsultationForm() {
   const router = useRouter();
+  const { hasRole } = useAuth();
   const searchParams = useSearchParams();
   const appointmentId = searchParams.get('appointmentId') || `apt-${Date.now()}`;
   const queryPatientId = searchParams.get('patientId') || '';
@@ -61,7 +65,8 @@ function RecordConsultationForm() {
   }, [queryPatientId]);
 
   const diagnosisIssues = attempted ? diagnosisProblems(diagnoses) : [];
-  const prescriptionIssues = prescriptions.some((d) => draftProblems(d).length > 0);
+  const conflictCount = (d: PrescriptionDraft) => findAllergyConflicts(patient, d.medication).length;
+  const prescriptionIssues = prescriptions.some((d) => draftProblems(d, conflictCount(d)).length > 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +74,7 @@ function RecordConsultationForm() {
 
     // Everything is checked before anything is saved - a half-written
     // prescription must never reach a pharmacist.
-    if (diagnosisProblems(diagnoses).length > 0 || prescriptions.some((d) => draftProblems(d).length > 0)) {
+    if (diagnosisProblems(diagnoses).length > 0 || prescriptions.some((d) => draftProblems(d, conflictCount(d)).length > 0)) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -125,6 +130,16 @@ function RecordConsultationForm() {
               </div>
             )}
 
+            {patient && (
+              <AllergyPanel
+                patientId={patient.id}
+                clinicId={patient.clinicId}
+                record={patient}
+                canEdit={hasRole('NURSE', 'DOCTOR', 'PHARMACIST', 'ADMIN')}
+                onSaved={(next) => setPatient((p) => (p ? { ...p, allergyStatus: next.allergyStatus, allergies: next.allergies } : p))}
+              />
+            )}
+
             <section>
               <StepHeading n={1} title="Presenting complaints" hint="What the patient came in with, in their words and yours." />
               <Label htmlFor="symptoms" className="sr-only">Symptoms / presenting complaints</Label>
@@ -162,7 +177,7 @@ function RecordConsultationForm() {
 
             <section>
               <StepHeading n={4} title="Prescription" hint="Leave empty if nothing is prescribed. The pharmacist is told when a prescription is waiting." />
-              <PrescriptionBuilder value={prescriptions} onChange={setPrescriptions} stock={stock} showProblems={attempted} />
+              <PrescriptionBuilder value={prescriptions} onChange={setPrescriptions} stock={stock} showProblems={attempted} allergies={patient} />
             </section>
 
             <Button type="submit" disabled={loading} className="w-full">

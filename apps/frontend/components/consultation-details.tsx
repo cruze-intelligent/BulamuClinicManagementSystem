@@ -1,4 +1,4 @@
-import { Printer } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { diagnosesOf, type DiagnosisView } from '@/lib/diagnosis';
 import { formatPrescription, type PrescriptionView } from '@/lib/prescription';
@@ -21,11 +21,13 @@ const SECTION = 'text-xs font-semibold uppercase tracking-wide text-slate-500 da
  * is used everywhere a consultation is shown, for staff and for patients.
  */
 export function ConsultationDetails({
-  consultation, showNotes = true, onPrintPrescription, printDisabledReason, printing,
+  consultation, showNotes = true, showDispenseStatus = true, onPrintPrescription, printDisabledReason, printing,
 }: {
   consultation: ConsultationLike;
   /** The clinician's assessment and plan. Not shown to patients. */
   showNotes?: boolean;
+  /** Show whether each item has been dispensed. Only meaningful for records that have reached the server. */
+  showDispenseStatus?: boolean;
   onPrintPrescription?: () => void;
   /** Why printing is unavailable right now (for example, not yet synced). */
   printDisabledReason?: string;
@@ -109,6 +111,32 @@ export function ConsultationDetails({
                       {[line.quantity, line.instructions].filter(Boolean).join('  |  ')}
                     </p>
                   )}
+                  <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
+                    {rx.allergyOverride && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-800 dark:bg-rose-900 dark:text-rose-200">
+                        <AlertTriangle className="size-3" aria-hidden="true" />
+                        Prescribed despite a recorded allergy
+                      </span>
+                    )}
+                    {rx.dispensedAt && rx.dispensedBy && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                        <CheckCircle2 className="size-3" aria-hidden="true" />
+                        Dispensed {new Date(rx.dispensedAt).toLocaleDateString()} by {rx.dispensedBy.name}
+                      </span>
+                    )}
+                    {rx.dispensedAt && !rx.dispensedBy && rx.id && showDispenseStatus && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                        <CheckCircle2 className="size-3" aria-hidden="true" />
+                        Dispensed
+                      </span>
+                    )}
+                    {!rx.dispensedAt && rx.id && showDispenseStatus && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">
+                        <Clock className="size-3" aria-hidden="true" />
+                        Awaiting dispensing
+                      </span>
+                    )}
+                  </div>
                 </li>
               );
             })}

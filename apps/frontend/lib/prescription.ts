@@ -119,6 +119,8 @@ export type PrescriptionDraft = {
   durationUnit: string;
   quantity: string;
   instructions: string;
+  /** The prescriber has seen an allergy warning for this medicine and chosen to prescribe it. */
+  allergyOverride: boolean;
 };
 
 export type PrescriptionPayload = {
@@ -132,6 +134,7 @@ export type PrescriptionPayload = {
   quantity?: number;
   instructions?: string;
   medicineId?: string;
+  allergyOverride?: boolean;
 };
 
 let draftCounter = 0;
@@ -140,7 +143,7 @@ export function emptyDraft(): PrescriptionDraft {
   return {
     key: `rx-${Date.now()}-${draftCounter}`,
     medication: '', medicineId: '', strength: '', form: '', doseAmount: '', doseUnit: 'tablet', route: 'PO',
-    frequency: '', durationValue: '', durationUnit: 'days', quantity: '', instructions: '',
+    frequency: '', durationValue: '', durationUnit: 'days', quantity: '', instructions: '', allergyOverride: false,
   };
 }
 
@@ -164,10 +167,15 @@ export function suggestQuantity(d: Pick<PrescriptionDraft, 'doseAmount' | 'doseU
   return Math.ceil(amount * perDay * days);
 }
 
-/** What is still missing before a prescription line can be saved. Blank rows are skipped, not reported. */
-export function draftProblems(d: PrescriptionDraft): string[] {
+/**
+ * What is still missing before a prescription line can be saved. Blank rows are
+ * skipped, not reported. When the medicine matches a recorded allergy
+ * (`allergyConflicts`), the prescriber has to confirm they have seen it.
+ */
+export function draftProblems(d: PrescriptionDraft, allergyConflicts = 0): string[] {
   if (isBlankDraft(d)) return [];
   const problems: string[] = [];
+  if (allergyConflicts > 0 && !d.allergyOverride) problems.push('confirmation of the allergy warning');
   if (parseAmount(d.doseAmount) === null) problems.push('the dose (how much per time)');
   if (!d.route) problems.push('the route');
   if (!d.frequency) problems.push('how often');
@@ -189,6 +197,7 @@ export function draftToPayload(d: PrescriptionDraft): PrescriptionPayload {
   if (d.quantity.trim()) payload.quantity = Number(d.quantity);
   if (d.instructions.trim()) payload.instructions = d.instructions.trim();
   if (d.medicineId) payload.medicineId = d.medicineId;
+  if (d.allergyOverride) payload.allergyOverride = true;
   return payload;
 }
 
@@ -206,6 +215,9 @@ export type PrescriptionView = {
   duration?: string | null;
   quantity?: number | null;
   instructions?: string | null;
+  allergyOverride?: boolean;
+  dispensedAt?: string | null;
+  dispensedBy?: { name: string } | null;
 };
 
 /** "TDS" -> "three times daily (TDS)"; wording that is not a standard code is kept as written. */
