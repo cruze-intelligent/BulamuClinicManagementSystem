@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { getSubscriptionGate } from '../lib/subscription';
 import { prisma } from '../lib/prisma';
+import { trackUserActivity } from '../lib/usage-tracking';
 
 /**
  * Verifies the JWT and re-checks the account/facility is still active.
@@ -46,6 +47,8 @@ export async function verifyStaffSession(request: FastifyRequest, reply: Fastify
     return false;
   }
 
+  // A valid, active session: note that this person is using the app today.
+  trackUserActivity({ id: authUser.userId, clinicId: authUser.clinicId });
   return true;
 }
 

@@ -5,6 +5,7 @@ import { generateToken, hashToken } from '../lib/crypto';
 import { sendMail, passwordResetEmail, facilityPendingApprovalEmail, registrationReceivedEmail, ADMIN_NOTIFY_EMAIL } from '../lib/mailer';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import { isUniqueConstraintError } from '../lib/prisma';
+import { recordLoginEvent } from '../lib/usage-tracking';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MIN_PASSWORD_LENGTH = 10;
@@ -111,6 +112,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (!user) {
         return reply.status(401).send({ error: 'Invalid credentials' });
       }
+      const who = { id: user.id, clinicId: user.clinicId };
 
       // Verify password first - only reveal account/clinic status to someone
       // who already proved they know the password, so this endpoint can't be
@@ -118,7 +120,15 @@ export async function authRoutes(fastify: FastifyInstance) {
       const validPassword = await bcrypt.compare(password, user.password);
 
       if (!validPassword) {
+        recordLoginEvent(who, 'WRONG_PASSWORD');
         return reply.status(401).send({ error: 'Invalid credentials' });
+      }
+
+      if (
+        user.clinic.registrationStatus === 'PENDING' || user.clinic.registrationStatus === 'REJECTED' ||
+        !user.clinic.isActive || !user.isActive
+      ) {
+        recordLoginEvent(who, 'BLOCKED');
       }
 
       if (user.clinic.registrationStatus === 'PENDING') {
@@ -133,6 +143,8 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (!user.isActive) {
         return reply.status(403).send({ error: 'Your account has been deactivated', reason: 'ACCOUNT_DEACTIVATED' });
       }
+
+      recordLoginEvent(who, 'SUCCESS');
 
       // Generate JWT token (12h expiry - covers a full offline field shift)
        const token = fastify.jwt.sign(

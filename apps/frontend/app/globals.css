@@ -141,3 +141,12 @@
     background: color-mix(in oklab, var(--primary) 20%, transparent);
   }
 }
+
+/* Analytics charts: one validated series colour per theme (checked against each surface). */
+.viz-root {
+  --viz-series: #2a78d6;
+  --viz-grid: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.dark .viz-root {
+  --viz-series: #3987e5;
+}

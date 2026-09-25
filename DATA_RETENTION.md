@@ -30,6 +30,7 @@ it in the other.
 | Notifications | 90 days | Erase |
 | Sign-in / verification links and codes | Until they expire (10 min code, 1 h reset link, 72 h invitation) | Remove |
 | Audit trail | 7 years | Erase |
+| Staff activity and sign-in records (which day a staff member was active, when they were last seen, and whether a sign-in succeeded, failed or was blocked; no clinical content) | 13 months | Erase |
 | Backups | Hosting provider's rolling window | Expire |
 
 ## 2. What each deletion does today
@@ -49,6 +50,7 @@ it in the other.
 | Notifications | `Notification` | Removed lazily: a recipient's notifications older than 90 days are deleted whenever they open their list. Deleted on patient account closure. | Automatic |
 | Set-up / reset links, verification codes | `PasswordResetToken`, `PatientPasswordResetToken`, `PatientAccessOtp` | Expire; expired and used rows are removed the next time a new one is issued for that account. Deleted on patient account closure. | Automatic |
 | Audit trail | `AuditLog` | Retained; no delete path | Manual, 7 years |
+| Staff activity and sign-in records | `UserActivityDay`, `LoginEvent`, `User.lastSeenAt`/`lastLoginAt` | Rows older than 400 days are deleted whenever the platform operator opens the analytics page. Activity rows are deleted with the user. They record that a person used the system, never what they viewed or changed. | Automatic |
 
 ## 3. Patient Portal account closure
 

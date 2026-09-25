@@ -27,10 +27,53 @@ model User {
   // Notification types this user has switched email off for (in-app
   // notifications are always kept - only the email copy is optional).
   emailOptOuts NotificationType[] @default([])
+  // Platform usage, for the operator's analytics: when they last signed in and
+  // when they were last seen using the app (updated at most every few minutes).
+  lastLoginAt DateTime?
+  lastSeenAt  DateTime?
+  activityDays UserActivityDay[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([clinicId])
+}
+
+// One row per user per day they used the app - the raw material for daily /
+// weekly / monthly active users. Only the fact that they were active, never what
+// they did. Kept for 13 months (see DATA_RETENTION.md).
+model UserActivityDay {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clinicId  String
+  // The calendar day in East Africa Time (UTC+3), as a date.
+  day       DateTime @db.Date
+  createdAt DateTime @default(now())
+
+  @@unique([userId, day])
+  @@index([day])
+  @@index([clinicId, day])
+}
+
+enum LoginOutcome {
+  SUCCESS
+  WRONG_PASSWORD
+  BLOCKED
+}
+
+// Every staff sign-in attempt against a real account: who (by id, never by the
+// typed email) and how it went. Feeds sign-in and security metrics. Kept for 13
+// months (see DATA_RETENTION.md).
+model LoginEvent {
+  id        String       @id @default(uuid())
+  userId    String
+  clinicId  String
+  outcome   LoginOutcome
+  createdAt DateTime     @default(now())
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([clinicId, createdAt])
 }
 
 model PasswordResetToken {

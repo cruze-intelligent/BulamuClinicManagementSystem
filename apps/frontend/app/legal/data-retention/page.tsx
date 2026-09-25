@@ -46,6 +46,12 @@ const SCHEDULE: Array<{ category: string; includes: string; kept: string; after:
     after: 'Expired items are removed.',
   },
   {
+    category: 'Staff activity and sign-in records',
+    includes: 'Which days a staff member used Bulamu, when they were last seen, and whether each sign-in succeeded, failed or was blocked. Used for platform usage statistics. It never records what was viewed or changed, and never includes patient details.',
+    kept: '13 months.',
+    after: 'Permanently erased.',
+  },
+  {
     category: 'Audit trail',
     includes: 'A record of who created, changed or deleted sensitive records, and when. It identifies records by reference rather than repeating their contents.',
     kept: '7 years.*',

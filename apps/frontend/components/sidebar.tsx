@@ -36,6 +36,7 @@ import { useUnreadNotifications } from '@/lib/useUnreadNotifications';
 
 const navItems = [
   { name: 'Facility Management', path: '/super-admin', icon: Crown, roles: ['SUPER_ADMIN'] },
+  { name: 'Analytics', path: '/super-admin/analytics', icon: BarChart3, roles: ['SUPER_ADMIN'] },
   { name: 'Dashboard', path: '/dashboard', icon: Home, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
   { name: 'Patients', path: '/patients', icon: Users, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
   { name: 'Appointments', path: '/appointments', icon: CalendarDays, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },

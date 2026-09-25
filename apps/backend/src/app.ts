@@ -8,6 +8,8 @@ import { authRoutes } from './routes/auth.routes';
 import { clinicRoutes } from './routes/clinic.routes';
 import { consultationRoutes } from './routes/consultation.routes';
 import { dispensingRoutes } from './routes/dispensing.routes';
+import { superAdminAnalyticsRoutes } from './routes/super-admin-analytics.routes';
+import { recordRequest } from './lib/runtime-metrics';
 import { dashboardRoutes } from './routes/dashboard.routes';
 import { documentRoutes } from './routes/document.routes';
 import { inventoryRoutes } from './routes/inventory.routes';
@@ -45,6 +47,22 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   const server = Fastify({
     logger: process.env.NODE_ENV === 'test' ? false : true,
+  });
+
+  // Response-time and error counts for the operator's system panel. Routes are
+  // labelled by their pattern (/patients/:id), never the concrete URL, so the set
+  // stays small and no identifier ever lands in it. Health checks and CORS
+  // pre-flights are not real traffic.
+  server.addHook('onResponse', (request, reply, done) => {
+    if (request.method !== 'OPTIONS' && request.url !== '/health') {
+      recordRequest({
+        method: request.method,
+        route: request.routeOptions?.url ?? 'unmatched',
+        status: reply.statusCode,
+        ms: reply.elapsedTime,
+      });
+    }
+    done();
   });
 
   // Browsers often send "Content-Type: application/json" on a POST that has no
@@ -94,6 +112,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(appointmentRoutes);
   await server.register(consultationRoutes);
   await server.register(dispensingRoutes);
+  await server.register(superAdminAnalyticsRoutes);
   await server.register(dashboardRoutes);
   await server.register(invoiceRoutes);
   await server.register(userRoutes);
