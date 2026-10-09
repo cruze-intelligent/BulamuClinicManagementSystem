@@ -3,7 +3,7 @@ import { prisma, isUniqueConstraintError } from '../lib/prisma';
 import { requireRole } from '../middleware/rbac.middleware';
 import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
-import { sendMail, facilityApprovedEmail, facilityRejectedEmail, facilityStatusEmail, formatEmailDate, MailResult } from '../lib/mailer';
+import { sendMail, facilityApprovedEmail, facilityRejectedEmail, facilityStatusEmail, facilityRemovedEmail, formatEmailDate, MailResult } from '../lib/mailer';
 import { alertOperator, deliveryNote, frontendUrl } from '../lib/operator-alerts';
 import { generateReceiptPdf } from '../lib/pdf';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage, facilityTypeLabel, REAL_FACILITY } from '../lib/facility';
@@ -16,6 +16,10 @@ const DEFAULT_SUBSCRIPTION_AMOUNT = 100000; // UGX/month
 // The facility's administrator - the person facility emails go to.
 const facilityAdmin = (clinicId: string) =>
   prisma.user.findFirst({ where: { clinicId, role: 'ADMIN' }, orderBy: { createdAt: 'asc' }, select: { email: true, name: true } });
+
+// An optional operator-typed reason, as it will appear in the facility's email.
+const cleanReason = (value: unknown): string | null =>
+  typeof value === 'string' && value.trim() ? value.trim().slice(0, 500) : null;
 
 const actorName = async (userId: string) =>
   (await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }))?.name ?? 'A platform administrator';
@@ -459,6 +463,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
   fastify.patch('/clinics/:id/status', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
     const { id } = request.params as any;
     const { isActive } = request.body as any;
+    const reason = cleanReason((request.body as any)?.reason);
 
     try {
       const existing = await prisma.clinic.findUnique({ where: { id }, select: { isActive: true, deletedAt: true } });
@@ -483,14 +488,14 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       // Only an actual change is announced (pressing "suspend" twice sends nothing new).
       if (existing.isActive !== clinic.isActive) {
         const authUser = getAuthUser(request);
-        await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { isActive: clinic.isActive } });
+        await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { isActive: clinic.isActive, ...(reason ? { reason } : {}) } });
         void (async () => {
           const admin = await facilityAdmin(id);
           const result = admin
             ? await sendMail({
                 to: admin.email,
-                subject: clinic.isActive ? `${clinic.name} has been reactivated on Bulamu` : `${clinic.name} has been suspended on Bulamu`,
-                html: facilityStatusEmail(clinic.name, clinic.isActive, frontendUrl('/auth/login')),
+                subject: clinic.isActive ? `Access restored - ${clinic.name} - Bulamu` : `Access suspended - ${clinic.name} - Bulamu`,
+                html: facilityStatusEmail(clinic.name, clinic.isActive, frontendUrl('/auth/login'), { adminName: admin.name, facilityCode: clinic.facilityCode, reason }),
               })
             : null;
           await alertOperator({
@@ -500,6 +505,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
               ['Facility', clinic.name],
               ['Facility ID', clinic.facilityCode],
               [clinic.isActive ? 'Reactivated by' : 'Suspended by', await actorName(authUser.userId)],
+              ['Reason given', reason],
               ['Email to the facility', deliveryNote(result)],
             ],
           });
@@ -519,7 +525,8 @@ export async function clinicRoutes(fastify: FastifyInstance) {
   // confirmation, same pattern as GitHub's "delete this repository".
   fastify.delete('/clinics/:id', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
     const { id } = request.params as any;
-    const { confirmName } = request.body as any;
+    const { confirmName, notifyFacility } = request.body as any;
+    const reason = cleanReason((request.body as any)?.reason);
 
     try {
       const clinic = await prisma.clinic.findUnique({
@@ -543,18 +550,32 @@ export async function clinicRoutes(fastify: FastifyInstance) {
         prisma.user.updateMany({ where: { clinicId: id }, data: { isActive: false } }),
       ]);
 
-      await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'DELETE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { name: clinic.name, facilityCode: clinic.facilityCode } });
+      await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'DELETE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { name: clinic.name, facilityCode: clinic.facilityCode, ...(reason ? { reason } : {}) } });
 
-      void (async () => alertOperator({
-        subject: `Facility deleted - ${clinic.name}`,
-        heading: 'Facility deleted',
-        intro: 'The facility has been removed from Bulamu and its staff can no longer sign in. Its records are retained under the data retention policy.',
-        facts: [
-          ['Facility', clinic.name],
-          ['Facility ID', clinic.facilityCode],
-          ['Deleted by', await actorName(authUser.userId)],
-        ],
-      }))().catch((error) => fastify.log.error(error, 'Deletion alert failed'));
+      // The facility is told unless the operator chose not to (e.g. removing
+      // a test facility whose address is not a real inbox).
+      void (async () => {
+        const admin = notifyFacility === false ? null : await facilityAdmin(id);
+        const result = admin
+          ? await sendMail({
+              to: admin.email,
+              subject: `Account closed - ${clinic.name} - Bulamu`,
+              html: facilityRemovedEmail(clinic.name, { adminName: admin.name, facilityCode: clinic.facilityCode, reason }),
+            })
+          : null;
+        await alertOperator({
+          subject: `Facility deleted - ${clinic.name}`,
+          heading: 'Facility deleted',
+          intro: 'The facility has been removed from Bulamu and its staff can no longer sign in. Its records are retained under the data retention policy.',
+          facts: [
+            ['Facility', clinic.name],
+            ['Facility ID', clinic.facilityCode],
+            ['Deleted by', await actorName(authUser.userId)],
+            ['Reason given', reason],
+            ['Email to the facility', notifyFacility === false ? 'Not sent (you chose not to notify the facility)' : deliveryNote(result)],
+          ],
+        });
+      })().catch((error) => fastify.log.error(error, 'Deletion emails failed'));
 
       return { success: true };
     } catch (error: any) {

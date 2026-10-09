@@ -195,7 +195,20 @@ export default function SuperAdminPage() {
     }
   };
 
+  // Suspending or reactivating emails the facility's administrator, so it is
+  // confirmed first, and a suspension can carry a reason that goes into that email.
   const updateFacilityStatus = async (facility: Facility) => {
+    let reason: string | undefined;
+    if (facility.isActive) {
+      const typed = window.prompt(
+        `Suspend ${facility.name}? Its staff will not be able to sign in until it is reactivated, and its administrator will be emailed.\n\nReason to include in the email (optional - e.g. "Subscription payment overdue"):`
+      );
+      if (typed === null) return;
+      reason = typed.trim() || undefined;
+    } else if (!window.confirm(`Reactivate ${facility.name}? Its staff will be able to sign in again, and its administrator will be emailed.`)) {
+      return;
+    }
+
     const token = localStorage.getItem('token');
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/${facility.id}/status`, {
       method: 'PATCH',
@@ -203,7 +216,7 @@ export default function SuperAdminPage() {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ isActive: !facility.isActive }),
+      body: JSON.stringify({ isActive: !facility.isActive, reason }),
     });
     const data = await response.json();
     if (data.success) await fetchOverview();
@@ -211,9 +224,14 @@ export default function SuperAdminPage() {
   };
 
   const deleteFacility = async (facility: Facility) => {
-    const typed = window.prompt(
-      `This permanently removes ${facility.name} from Bulamu and deactivates its staff. This cannot be undone from this screen.\n\nType the facility name to confirm: ${facility.name}`
+    const reasonInput = window.prompt(
+      `Delete ${facility.name}? This removes it from Bulamu and deactivates all its staff. Its records are kept under the data retention policy.\n\nReason to include in the email to the facility (optional):`
     );
+    if (reasonInput === null) return;
+    const notifyFacility = window.confirm(
+      `Email ${facility.admin?.email || "the facility's administrator"} to let them know their facility has been removed?\n\nOK = send the email.  Cancel = don't email (for example, for a test facility).`
+    );
+    const typed = window.prompt(`Type the facility name to confirm deletion: ${facility.name}`);
     if (typed === null) return;
     if (typed !== facility.name) {
       alert('Facility name did not match. Deletion cancelled.');
@@ -224,7 +242,7 @@ export default function SuperAdminPage() {
     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/${facility.id}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ confirmName: typed }),
+      body: JSON.stringify({ confirmName: typed, reason: reasonInput.trim() || undefined, notifyFacility }),
     });
     const data = await response.json();
     if (data.success) await fetchOverview();

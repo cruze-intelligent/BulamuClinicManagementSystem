@@ -141,11 +141,20 @@ describe('operator alerts and facility emails', () => {
     const clinic = await seedClinic({ name: 'Lira Clinic' });
     await seedUser({ clinicId: clinic.id, role: 'ADMIN', email: 'admin@liraclinic.ug' });
 
-    const suspend = () => app.inject({ method: 'PATCH', url: `/clinics/${clinic.id}/status`, headers: authHeader(token), payload: { isActive: false } });
+    const suspend = () => app.inject({
+      method: 'PATCH', url: `/clinics/${clinic.id}/status`, headers: authHeader(token),
+      payload: { isActive: false, reason: 'Subscription payment overdue <since August>' },
+    });
     expect((await suspend()).statusCode).toBe(200);
     await waitForMail(OPERATOR);
-    expect(mailTo('admin@liraclinic.ug')[0].subject).toBe('Lira Clinic has been suspended on Bulamu');
+    const suspension = mailTo('admin@liraclinic.ug')[0];
+    expect(suspension.subject).toBe('Access suspended - Lira Clinic - Bulamu');
+    expect(suspension.html).toContain('Subscription payment overdue &lt;since August&gt;');
+    expect(suspension.html).toContain(clinic.facilityCode);
+    expect(suspension.html).toContain('nothing has been deleted');
+    expect(suspension.html).toContain('admin@bulamu.site');
     expect(mailTo(OPERATOR)[0].subject).toBe('[Bulamu] Facility suspended - Lira Clinic');
+    expect(mailTo(OPERATOR)[0].html).toContain('Subscription payment overdue');
 
     await suspend(); // already suspended: nothing new to say
     await new Promise((r) => setTimeout(r, 300));
@@ -153,7 +162,8 @@ describe('operator alerts and facility emails', () => {
 
     await app.inject({ method: 'PATCH', url: `/clinics/${clinic.id}/status`, headers: authHeader(token), payload: { isActive: true } });
     await waitForMail(OPERATOR, 2);
-    expect(mailTo('admin@liraclinic.ug')[1].subject).toBe('Lira Clinic has been reactivated on Bulamu');
+    expect(mailTo('admin@liraclinic.ug')[1].subject).toBe('Access restored - Lira Clinic - Bulamu');
+    expect(mailTo('admin@liraclinic.ug')[1].html).toContain('http://localhost:3000/auth/login');
 
     const audit = await prisma.auditLog.findMany({ where: { recordId: clinic.id } });
     expect(audit).toHaveLength(2);
@@ -162,13 +172,36 @@ describe('operator alerts and facility emails', () => {
     expect(missing.statusCode).toBe(404);
   });
 
-  it('tells the operator when a facility is deleted', async () => {
+  it('tells a deleted facility its account is closed, with the reason - and tells the operator', async () => {
     const token = await operator();
     const clinic = await seedClinic({ name: 'Old Clinic' });
-    const res = await app.inject({ method: 'DELETE', url: `/clinics/${clinic.id}`, headers: authHeader(token), payload: { confirmName: 'Old Clinic' } });
+    await seedUser({ clinicId: clinic.id, role: 'ADMIN', email: 'admin@oldclinic.ug', name: 'Ruth Admin' });
+
+    const res = await app.inject({
+      method: 'DELETE', url: `/clinics/${clinic.id}`, headers: authHeader(token),
+      payload: { confirmName: 'Old Clinic', reason: 'Facility closed permanently' },
+    });
     expect(res.statusCode).toBe(200);
     await waitForMail(OPERATOR);
+
+    const letter = mailTo('admin@oldclinic.ug')[0];
+    expect(letter.subject).toBe('Account closed - Old Clinic - Bulamu');
+    expect(letter.html).toContain('Dear Ruth Admin');
+    expect(letter.html).toContain('Facility closed permanently');
+    expect(letter.html).toContain('have not been erased');
     expect(mailTo(OPERATOR)[0].subject).toBe('[Bulamu] Facility deleted - Old Clinic');
+    expect(mailTo(OPERATOR)[0].html).toContain('Delivered to the mail server');
+  });
+
+  it('can delete a test facility without emailing it', async () => {
+    const token = await operator();
+    const clinic = await seedClinic({ name: 'Demo Clinic' });
+    await seedUser({ clinicId: clinic.id, role: 'ADMIN', email: 'admin@demo.example' });
+
+    await app.inject({ method: 'DELETE', url: `/clinics/${clinic.id}`, headers: authHeader(token), payload: { confirmName: 'Demo Clinic', notifyFacility: false } });
+    await waitForMail(OPERATOR);
+    expect(mailTo('admin@demo.example')).toHaveLength(0);
+    expect(mailTo(OPERATOR)[0].html).toContain('you chose not to notify the facility');
   });
 
   it('sends feedback to the feedback inbox and the operator in one email, without making the user wait', async () => {

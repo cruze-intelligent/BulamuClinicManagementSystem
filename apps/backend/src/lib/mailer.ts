@@ -387,7 +387,8 @@ export function facilityRejectedEmail(rawClinicName: string, reason: string | un
       After review, we were unable to approve this facility's registration on Bulamu${reason ? `: <strong>${escapeHtml(reason)}</strong>` : '.'}
     </p>
     <p style="margin:0;font-size:13px;color:#64748b;">
-      If you believe this is a mistake or have questions, please contact Bulamu support.
+      If you believe this is a mistake or have questions, reply to this email or write to
+      <a href="mailto:admin@bulamu.site" style="color:${BRAND_TEAL};">admin@bulamu.site</a>. You are welcome to register again once the matter is resolved.
     </p>
   `);
 }
@@ -436,26 +437,78 @@ export function operatorAlertEmail(input: { heading: string; intro?: string; fac
   `);
 }
 
+export type FacilityLetter = { adminName?: string | null; facilityCode: string; reason?: string | null };
+
+const SUPPORT_LINE = `
+    <p style="margin:16px 0 0;font-size:13px;color:#64748b;line-height:1.5;">
+      For questions, simply reply to this email or write to <a href="mailto:admin@bulamu.site" style="color:${BRAND_TEAL};">admin@bulamu.site</a>,
+      quoting your Facility ID. Bulamu Support, Cruze Intelligent Systems (U) Ltd.
+    </p>`;
+
+function letterOpening(letter: FacilityLetter, clinicName: string): string {
+  return `
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">Dear ${escapeHtml(letter.adminName || `${clinicName} administrator`)},</p>`;
+}
+
+function letterFacts(letter: FacilityLetter, clinicName: string, effective: string): string {
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px;border-collapse:collapse;font-size:13px;">
+      <tr><td style="padding:3px 12px 3px 0;color:#64748b;">Facility</td><td style="padding:3px 0;">${clinicName}</td></tr>
+      <tr><td style="padding:3px 12px 3px 0;color:#64748b;">Facility ID</td><td style="padding:3px 0;">${escapeHtml(letter.facilityCode)}</td></tr>
+      <tr><td style="padding:3px 12px 3px 0;color:#64748b;">Effective</td><td style="padding:3px 0;">${effective}</td></tr>
+      ${letter.reason ? `<tr><td style="padding:3px 12px 3px 0;color:#64748b;vertical-align:top;">Reason</td><td style="padding:3px 0;">${escapeHtml(letter.reason)}</td></tr>` : ''}
+    </table>`;
+}
+
 /** Tells a facility's admin that the facility was suspended or reactivated. */
-export function facilityStatusEmail(rawClinicName: string, active: boolean, loginUrl: string): string {
+export function facilityStatusEmail(rawClinicName: string, active: boolean, loginUrl: string, letter: FacilityLetter): string {
   const clinicName = escapeHtml(rawClinicName);
+  const effective = formatEmailDate(new Date());
   return emailShell(active ? `
-    <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} has been reactivated</h2>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      Access to Bulamu has been restored for your facility. You and your staff can sign in again.
+    <h2 style="margin:0 0 12px;font-size:18px;">Access restored: ${clinicName}</h2>
+    ${letterOpening(letter, clinicName)}
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">
+      We are pleased to let you know that your facility's access to Bulamu has been restored. You and your staff can
+      sign in again with your usual accounts, and all of your records are exactly as you left them.
     </p>
+    ${letterFacts(letter, clinicName, effective)}
     <a href="${loginUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
       Sign In
     </a>
+    ${SUPPORT_LINE}
   ` : `
-    <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} has been suspended</h2>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      Access to Bulamu has been paused for your facility, so you and your staff cannot sign in for now.
-      Your records are kept safe and nothing has been deleted.
+    <h2 style="margin:0 0 12px;font-size:18px;">Your facility's access has been suspended</h2>
+    ${letterOpening(letter, clinicName)}
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">
+      We are writing to let you know that access to Bulamu has been suspended for your facility. While the suspension
+      is in place, you and your staff will not be able to sign in.
     </p>
-    <p style="margin:0;font-size:13px;color:#64748b;">
-      If you were not expecting this, or to have access restored, please contact Bulamu support by replying to this email.
+    ${letterFacts(letter, clinicName, effective)}
+    <p style="margin:0 0 4px;font-size:14px;line-height:1.5;">
+      Your records are kept safe and nothing has been deleted. Once the matter is resolved, access can be restored and
+      everything will be as you left it.
     </p>
+    ${SUPPORT_LINE}
+  `);
+}
+
+/** Tells a facility's admin that the facility has been removed from Bulamu. */
+export function facilityRemovedEmail(rawClinicName: string, letter: FacilityLetter): string {
+  const clinicName = escapeHtml(rawClinicName);
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">Your facility has been removed from Bulamu</h2>
+    ${letterOpening(letter, clinicName)}
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">
+      We are writing to confirm that your facility's account on Bulamu has been closed. Staff accounts at the facility
+      have been deactivated and can no longer sign in.
+    </p>
+    ${letterFacts(letter, clinicName, formatEmailDate(new Date()))}
+    <p style="margin:0 0 4px;font-size:14px;line-height:1.5;">
+      Your facility's records have not been erased. They are retained securely for the period set out in our data
+      retention policy, as health records must be. If you need a copy of your records, or believe this was done in
+      error, please contact us.
+    </p>
+    ${SUPPORT_LINE}
   `);
 }
 
