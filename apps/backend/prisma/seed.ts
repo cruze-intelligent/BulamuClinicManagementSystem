@@ -81,7 +81,25 @@ async function ensureUser(input: {
   });
 }
 
+// Demo accounts with well-known passwords must never reach a hosted database:
+// that is how a demo facility once ended up on the live system. Only a
+// database on this machine is seeded.
+function assertLocalDatabase() {
+  let host = '';
+  try {
+    host = new URL(process.env.DATABASE_URL || '').hostname;
+  } catch {
+    // fall through to the refusal below
+  }
+  if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)) {
+    console.error(`Refusing to seed demo accounts into a non-local database (${host || 'no DATABASE_URL'}). The seed is for local development only.`);
+    process.exit(1);
+  }
+}
+
 async function main() {
+  assertLocalDatabase();
+
   const hq = await ensureClinic({
     name: 'Bulamu HQ',
     facilityType: 'HOSPITAL',

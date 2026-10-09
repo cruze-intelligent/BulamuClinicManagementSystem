@@ -13,24 +13,22 @@ The evaluation should prove four things:
 - The PWA keeps working during poor connectivity.
 - Reports align with Uganda health-system needs and interoperability direction.
 
-## 2. Seeded Access Credentials
+## 2. Access for the Evaluation
 
-Seed account:
+| Role | How they get access | Notes |
+| --- | --- | --- |
+| Super Admin | Provisioned by Cruze Intelligent Systems; never shared in documents | Approves and governs facilities |
+| Facility Admin | Created when the facility registers at bulamu.site (or is added by a Super Admin) | Runs facility dashboard, staff, reports, invoices |
+| Doctor, Nurse, Pharmacist, Front Desk | Added by the Facility Admin from the Staff page | Each person signs in with their own account |
 
-| Role | Email | Password | Notes |
-| --- | --- | --- | --- |
-| Super Admin | `superadmin@bulamu.ug` | `BulamuSuperAdmin2025!` | Creates and authorizes facilities |
-| Facility Admin | `admin@kawempe.bulamu.ug` | `BulamuAccess2026!` | Runs facility dashboard, staff, reports, invoices |
-| Doctor | `doctor@kawempe.bulamu.ug` | `BulamuAccess2026!` | Records consultations |
-| Nurse | `nurse@kawempe.bulamu.ug` | `BulamuAccess2026!` | Supports patients, appointments, and lab flow |
-| Pharmacist | `pharmacist@kawempe.bulamu.ug` | `BulamuAccess2026!` | Manages inventory and medicines |
-| Front Desk Staff | `staff@kawempe.bulamu.ug` | `BulamuAccess2026!` | Registers patients and appointments |
+For a walkthrough on a local machine, `npm run seed` creates a demo facility with one account per role and prints
+the sign-in details (it refuses to run against a hosted database).
 
-Facility admin credentials are generated during God Mode authorization. Document each evaluation facility here:
+Track each evaluation facility here - never record passwords in this document:
 
-| Facility | Type | Admin Email | Temporary Password | Start | End |
+| Facility | Type | Facility ID | Admin Email | Start | End |
 | --- | --- | --- | --- | --- | --- |
-| Example Medical Facility | Health Centre III | `admin@example.ug` | `ChangeMe123!` | Day 1 | Day 14 |
+| Example Medical Facility | Health Centre III | `BLM-XXXXXX` | `admin@example.ug` | Day 1 | Day 14 |
 
 ## 3. Walkthrough Script
 

@@ -25,6 +25,26 @@ describe('clinic (super-admin) routes', () => {
     expect(response.statusCode).toBe(200);
   });
 
+  it('never lists or counts the platform operator\'s own account (Bulamu HQ) as a facility', async () => {
+    const hq = await seedClinic({ name: 'Bulamu HQ' });
+    const { user, password } = await seedUser({ clinicId: hq.id, role: 'SUPER_ADMIN' });
+    const { token } = await loginAs(app, user.email, password);
+
+    const real = await seedClinic({ name: 'Real Clinic', phone: '0711222333' });
+    const { user: nurse, password: nursePassword } = await seedUser({ clinicId: real.id, role: 'NURSE' });
+
+    const { overview } = (await app.inject({ method: 'GET', url: '/super-admin/overview', headers: authHeader(token) })).json();
+    expect(overview.clinics.map((c: any) => c.name)).toEqual(['Real Clinic']);
+    expect(overview.clinicCount).toBe(1);
+    expect(overview.activeClinicCount).toBe(1);
+    expect(overview.userCount).toBe(1); // the nurse, not the operator
+
+    // Nor is it offered as a referral destination to facility staff.
+    const { token: nurseToken } = await loginAs(app, nurse.email, nursePassword);
+    const directory = (await app.inject({ method: 'GET', url: '/clinics', headers: authHeader(nurseToken) })).json();
+    expect(directory.clinics.map((c: any) => c.name)).toEqual(['Real Clinic']);
+  });
+
   it('rejects a non-super-admin from God Mode routes', async () => {
     const clinic = await seedClinic();
     const { user, password } = await seedUser({ clinicId: clinic.id, role: 'ADMIN' });

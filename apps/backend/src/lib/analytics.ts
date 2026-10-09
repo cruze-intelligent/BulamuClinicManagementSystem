@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
 import { eastAfricaDay } from './usage-tracking';
+import { REAL_FACILITY } from './facility';
 
 /**
  * Platform analytics for the super admin.
@@ -158,8 +159,8 @@ const sum = (points: Point[]) => points.reduce((a, p) => a + p.value, 0);
 // The report
 // ---------------------------------------------------------------------------
 
-/** Facilities that count in the analytics: real, approved ones - not the operator's own account. */
-const realFacility = { deletedAt: null, users: { none: { role: 'SUPER_ADMIN' as const } } };
+/** Facilities that count in the analytics: real ones - not the operator's own account. */
+const realFacility = REAL_FACILITY;
 
 export async function buildAnalytics(days: number, now: Date = new Date()) {
   const range = periodRange(days, now);

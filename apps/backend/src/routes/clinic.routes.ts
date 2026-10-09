@@ -6,7 +6,7 @@ import { recordAudit } from '../lib/audit';
 import { sendMail, facilityApprovedEmail, facilityRejectedEmail, facilityStatusEmail, formatEmailDate, MailResult } from '../lib/mailer';
 import { alertOperator, deliveryNote, frontendUrl } from '../lib/operator-alerts';
 import { generateReceiptPdf } from '../lib/pdf';
-import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage, facilityTypeLabel } from '../lib/facility';
+import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage, facilityTypeLabel, REAL_FACILITY } from '../lib/facility';
 import { buildCsv, sendCsv } from '../lib/csv';
 import bcrypt from 'bcrypt';
 
@@ -187,7 +187,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
   fastify.get('/clinics', { preHandler: [authenticate] }, async (_request, reply) => {
     try {
       const clinics = await prisma.clinic.findMany({
-        where: { isActive: true, deletedAt: null },
+        where: { ...REAL_FACILITY, isActive: true },
         select: { id: true, name: true, facilityType: true, district: true, subCounty: true, parish: true },
         orderBy: { name: 'asc' },
       });
@@ -298,15 +298,15 @@ export async function clinicRoutes(fastify: FastifyInstance) {
     try {
       const [clinicCount, activeClinicCount, userCount, patientCount, appointmentCount, consultationCount, revenue, clinics] =
         await Promise.all([
-          prisma.clinic.count({ where: { deletedAt: null } }),
-          prisma.clinic.count({ where: { isActive: true, deletedAt: null } }),
-          prisma.user.count({ where: { isActive: true } }),
+          prisma.clinic.count({ where: REAL_FACILITY }),
+          prisma.clinic.count({ where: { ...REAL_FACILITY, isActive: true } }),
+          prisma.user.count({ where: { isActive: true, role: { not: 'SUPER_ADMIN' } } }),
           prisma.patient.count(),
           prisma.appointment.count(),
           prisma.consultation.count(),
           prisma.invoice.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }),
           prisma.clinic.findMany({
-            where: { deletedAt: null },
+            where: REAL_FACILITY,
             orderBy: { createdAt: 'desc' },
             include: {
               _count: {
