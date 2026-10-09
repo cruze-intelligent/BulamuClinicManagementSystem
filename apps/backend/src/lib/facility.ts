@@ -35,6 +35,15 @@ export async function findDuplicateFacility(phone: string) {
   });
 }
 
+// "HEALTH_CENTRE_III" -> "Health centre III", for emails to the operator.
+export function facilityTypeLabel(type: string | null | undefined): string {
+  if (!type) return '';
+  return type
+    .split('_')
+    .map((word, i) => (/^(I|II|III|IV|V)$/.test(word) ? word : i === 0 ? word[0] + word.slice(1).toLowerCase() : word.toLowerCase()))
+    .join(' ');
+}
+
 export function duplicateFacilityMessage(match: { name: string; facilityCode: string; registrationStatus: string }): string {
   const statusText = match.registrationStatus === 'PENDING' ? 'awaiting review' : 'already active';
   return `A facility with this phone number is already registered on Bulamu (Facility ID: ${match.facilityCode}, ${statusText}). Each facility may only claim one free trial. If this is your facility, sign in instead or contact support.`;

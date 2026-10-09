@@ -3,14 +3,22 @@ import { prisma, isUniqueConstraintError } from '../lib/prisma';
 import { requireRole } from '../middleware/rbac.middleware';
 import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
-import { sendMail, facilityApprovedEmail, facilityRejectedEmail } from '../lib/mailer';
+import { sendMail, facilityApprovedEmail, facilityRejectedEmail, facilityStatusEmail, formatEmailDate, MailResult } from '../lib/mailer';
+import { alertOperator, deliveryNote, frontendUrl } from '../lib/operator-alerts';
 import { generateReceiptPdf } from '../lib/pdf';
-import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
+import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage, facilityTypeLabel } from '../lib/facility';
 import { buildCsv, sendCsv } from '../lib/csv';
 import bcrypt from 'bcrypt';
 
 const TRIAL_LENGTH_MS = 14 * 24 * 60 * 60 * 1000; // 2-week free trial
 const DEFAULT_SUBSCRIPTION_AMOUNT = 100000; // UGX/month
+
+// The facility's administrator - the person facility emails go to.
+const facilityAdmin = (clinicId: string) =>
+  prisma.user.findFirst({ where: { clinicId, role: 'ADMIN' }, orderBy: { createdAt: 'asc' }, select: { email: true, name: true } });
+
+const actorName = async (userId: string) =>
+  (await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }))?.name ?? 'A platform administrator';
 
 export async function clinicRoutes(fastify: FastifyInstance) {
   // Facilities awaiting approval (SUPER_ADMIN only - this is the private
@@ -81,26 +89,42 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
       // Approval is already committed - the email (and the PDF it carries) is
       // a best-effort side channel, so don't make the super admin wait on it.
+      // The operator is then told whether the facility's email went out.
       void (async () => {
-        const admin = await prisma.user.findFirst({ where: { clinicId: id, role: 'ADMIN' } });
-        if (!admin) return;
-        const receiptPdf = await generateReceiptPdf({
-          paymentId: trialReceipt.id,
-          clinicName: clinic.name,
-          facilityCode: clinic.facilityCode,
-          amount: 0,
-          currency: subscription.currency,
-          paidAt: trialReceipt.createdAt,
-          periodEnd: subscription.trialEndsAt,
+        const admin = await facilityAdmin(id);
+        let result: MailResult | null = null;
+        if (admin) {
+          const receiptPdf = await generateReceiptPdf({
+            paymentId: trialReceipt.id,
+            clinicName: clinic.name,
+            facilityCode: clinic.facilityCode,
+            amount: 0,
+            currency: subscription.currency,
+            paidAt: trialReceipt.createdAt,
+            periodEnd: subscription.trialEndsAt,
+          });
+          result = await sendMail({
+            to: admin.email,
+            subject: `${clinic.name} is approved on Bulamu`,
+            html: facilityApprovedEmail(clinic.name, frontendUrl('/auth/login'), subscription.trialEndsAt, { facilityCode: clinic.facilityCode, adminEmail: admin.email }),
+            attachments: [{ filename: `free-trial-receipt-${trialReceipt.id}.pdf`, content: receiptPdf, contentType: 'application/pdf' }],
+          });
+          if (!result.sent) fastify.log.warn(`Approval email to ${admin.email} not sent: ${result.reason}`);
+        }
+        await alertOperator({
+          subject: `Facility approved - ${clinic.name}`,
+          heading: 'Facility approved',
+          facts: [
+            ['Facility', clinic.name],
+            ['Facility ID', clinic.facilityCode],
+            ['Approved by', await actorName(authUser.userId)],
+            ['Free trial ends', subscription.trialEndsAt ? formatEmailDate(subscription.trialEndsAt) : null],
+            ['Administrator', admin ? `${admin.name} <${admin.email}>` : null],
+            ['Approval email to the facility', deliveryNote(result)],
+          ],
+          ctaPath: '/super-admin',
+          ctaLabel: 'Open Facility Management',
         });
-        const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/login`;
-        const result = await sendMail({
-          to: admin.email,
-          subject: `${clinic.name} is approved on Bulamu`,
-          html: facilityApprovedEmail(clinic.name, loginUrl, subscription.trialEndsAt),
-          attachments: [{ filename: `free-trial-receipt-${trialReceipt.id}.pdf`, content: receiptPdf, contentType: 'application/pdf' }],
-        });
-        if (!result.sent) fastify.log.warn(`Approval email to ${admin.email} not sent: ${result.reason}`);
       })().catch((error) => fastify.log.error(error, 'Approval email failed'));
 
       return { success: true, clinic };
@@ -129,14 +153,27 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { registrationStatus: 'REJECTED', reason } });
 
       void (async () => {
-        const admin = await prisma.user.findFirst({ where: { clinicId: id, role: 'ADMIN' } });
-        if (!admin) return;
-        const result = await sendMail({
-          to: admin.email,
-          subject: `${clinic.name} registration update - Bulamu`,
-          html: facilityRejectedEmail(clinic.name, reason || undefined),
+        const admin = await facilityAdmin(id);
+        let result: MailResult | null = null;
+        if (admin) {
+          result = await sendMail({
+            to: admin.email,
+            subject: `${clinic.name} registration update - Bulamu`,
+            html: facilityRejectedEmail(clinic.name, reason || undefined),
+          });
+          if (!result.sent) fastify.log.warn(`Rejection email to ${admin.email} not sent: ${result.reason}`);
+        }
+        await alertOperator({
+          subject: `Facility rejected - ${clinic.name}`,
+          heading: 'Facility registration rejected',
+          facts: [
+            ['Facility', clinic.name],
+            ['Facility ID', clinic.facilityCode],
+            ['Rejected by', await actorName(authUser.userId)],
+            ['Reason given', reason || 'None'],
+            ['Email to the facility', deliveryNote(result)],
+          ],
         });
-        if (!result.sent) fastify.log.warn(`Rejection email to ${admin.email} not sent: ${result.reason}`);
       })().catch((error) => fastify.log.error(error, 'Rejection email failed'));
 
       return { success: true, clinic };
@@ -375,11 +412,42 @@ export async function clinicRoutes(fastify: FastifyInstance) {
           },
         },
         include: {
-          users: true
+          users: true,
+          subscription: true,
         }
       });
 
-      return { success: true, clinic };
+      // Created already approved, so the new administrator is told straight
+      // away (their password is never emailed - the operator shares it), and
+      // the operator gets a record of it.
+      const authUser = getAuthUser(request);
+      void (async () => {
+        const result = await sendMail({
+          to: adminEmail,
+          subject: `${clinic.name} is approved on Bulamu`,
+          html: facilityApprovedEmail(clinic.name, frontendUrl('/auth/login'), clinic.subscription?.trialEndsAt, {
+            facilityCode: clinic.facilityCode, adminEmail, receiptAttached: false,
+          }),
+        });
+        await alertOperator({
+          subject: `Facility added - ${clinic.name}`,
+          heading: 'Facility added by an administrator',
+          facts: [
+            ['Facility', clinic.name],
+            ['Facility ID', clinic.facilityCode],
+            ['Type', facilityTypeLabel(clinic.facilityType)],
+            ['Added by', await actorName(authUser.userId)],
+            ['Administrator', `${adminName} <${adminEmail}>`],
+            ['Welcome email to the facility', deliveryNote(result)],
+          ],
+          ctaPath: '/super-admin',
+          ctaLabel: 'Open Facility Management',
+        });
+      })().catch((error) => fastify.log.error(error, 'New facility emails failed'));
+
+      // Never send password hashes back, even to the operator.
+      const { users, ...rest } = clinic;
+      return { success: true, clinic: { ...rest, users: users.map(({ password: _password, ...user }) => user) } };
     } catch (error: any) {
       if (isUniqueConstraintError(error)) {
         return reply.status(409).send({ error: 'An account with this email already exists' });
@@ -393,12 +461,16 @@ export async function clinicRoutes(fastify: FastifyInstance) {
     const { isActive } = request.body as any;
 
     try {
+      const existing = await prisma.clinic.findUnique({ where: { id }, select: { isActive: true, deletedAt: true } });
+      if (!existing || existing.deletedAt) return reply.status(404).send({ error: 'Facility not found' });
+
       const clinic = await prisma.clinic.update({
         where: { id },
         data: { isActive: Boolean(isActive) },
         select: {
           id: true,
           name: true,
+          facilityCode: true,
           isActive: true
         }
       });
@@ -407,6 +479,32 @@ export async function clinicRoutes(fastify: FastifyInstance) {
         where: { clinicId: id, role: { not: 'SUPER_ADMIN' } },
         data: { isActive: Boolean(isActive) }
       });
+
+      // Only an actual change is announced (pressing "suspend" twice sends nothing new).
+      if (existing.isActive !== clinic.isActive) {
+        const authUser = getAuthUser(request);
+        await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { isActive: clinic.isActive } });
+        void (async () => {
+          const admin = await facilityAdmin(id);
+          const result = admin
+            ? await sendMail({
+                to: admin.email,
+                subject: clinic.isActive ? `${clinic.name} has been reactivated on Bulamu` : `${clinic.name} has been suspended on Bulamu`,
+                html: facilityStatusEmail(clinic.name, clinic.isActive, frontendUrl('/auth/login')),
+              })
+            : null;
+          await alertOperator({
+            subject: `Facility ${clinic.isActive ? 'reactivated' : 'suspended'} - ${clinic.name}`,
+            heading: clinic.isActive ? 'Facility reactivated' : 'Facility suspended',
+            facts: [
+              ['Facility', clinic.name],
+              ['Facility ID', clinic.facilityCode],
+              [clinic.isActive ? 'Reactivated by' : 'Suspended by', await actorName(authUser.userId)],
+              ['Email to the facility', deliveryNote(result)],
+            ],
+          });
+        })().catch((error) => fastify.log.error(error, 'Facility status emails failed'));
+      }
 
       return { success: true, clinic };
     } catch (error: any) {
@@ -446,6 +544,17 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       ]);
 
       await recordAudit({ entity: 'Clinic', recordId: id, clinicId: id, action: 'DELETE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { name: clinic.name, facilityCode: clinic.facilityCode } });
+
+      void (async () => alertOperator({
+        subject: `Facility deleted - ${clinic.name}`,
+        heading: 'Facility deleted',
+        intro: 'The facility has been removed from Bulamu and its staff can no longer sign in. Its records are retained under the data retention policy.',
+        facts: [
+          ['Facility', clinic.name],
+          ['Facility ID', clinic.facilityCode],
+          ['Deleted by', await actorName(authUser.userId)],
+        ],
+      }))().catch((error) => fastify.log.error(error, 'Deletion alert failed'));
 
       return { success: true };
     } catch (error: any) {

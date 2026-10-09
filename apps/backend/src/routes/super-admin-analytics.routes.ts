@@ -4,6 +4,10 @@ import { buildAnalytics, buildSystemReport, listStaff, parseDays } from '../lib/
 import { snapshotRuntimeMetrics } from '../lib/runtime-metrics';
 import { purgeOldUsageRecords } from '../lib/usage-tracking';
 import { buildCsv, sendCsv } from '../lib/csv';
+import { mailStatus } from '../lib/mailer';
+import { alertOperator } from '../lib/operator-alerts';
+import { prisma } from '../lib/prisma';
+import { getAuthUser } from '../middleware/auth.middleware';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -25,10 +29,27 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
 
   fastify.get('/super-admin/system', { preHandler: [requireRole('SUPER_ADMIN')] }, async (_request, reply) => {
     try {
-      return { success: true, system: { ...(await buildSystemReport()), runtime: snapshotRuntimeMetrics() } };
+      return { success: true, system: { ...(await buildSystemReport()), runtime: snapshotRuntimeMetrics(), mail: mailStatus() } };
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });
     }
+  });
+
+  // Sends a test email to the operator inbox (never to an address the caller
+  // chooses) and reports exactly what happened, so delivery can be checked
+  // from the console instead of the server logs.
+  fastify.post('/super-admin/system/test-email', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request) => {
+    const actor = await prisma.user.findUnique({ where: { id: getAuthUser(request).userId }, select: { name: true } });
+    const result = await alertOperator({
+      subject: 'Test email',
+      heading: 'Bulamu email is working',
+      intro: 'This is a test email sent from the System page of Platform analytics. Registrations, approvals, payments and other platform events will arrive at this inbox the same way.',
+      facts: [
+        ['Requested by', actor?.name],
+        ['Sent at', new Date().toLocaleString('en-GB', { timeZone: 'Africa/Kampala' }) + ' (EAT)'],
+      ],
+    });
+    return { success: true, result, mail: mailStatus() };
   });
 
   // The staff directory with usage: who they are, where they work, when they were

@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
-import { sendMail, feedbackSubmittedEmail, FEEDBACK_EMAIL } from '../lib/mailer';
+import { sendMail, feedbackSubmittedEmail, FEEDBACK_EMAIL, ADMIN_NOTIFY_EMAIL } from '../lib/mailer';
 import { notifyStaff } from '../lib/notifications';
 
 const ENTITY_TYPES = ['FEEDBACK', 'PATIENT'] as const;
@@ -50,9 +50,12 @@ export async function commentRoutes(fastify: FastifyInstance) {
       });
 
       if (entityType === 'FEEDBACK') {
-        await sendMail({
-          to: FEEDBACK_EMAIL,
-          subject: `New Bulamu feedback - ${author.clinic.name}`,
+        // To the feedback mailbox and the operator (once if they are the same
+        // inbox) - in the background, so saving feedback never waits on email.
+        const inboxes = [...new Set([FEEDBACK_EMAIL, ADMIN_NOTIFY_EMAIL].map((address) => address.trim().toLowerCase()))];
+        void sendMail({
+          to: inboxes.join(', '),
+          subject: `[Bulamu] New feedback - ${author.clinic.name}`,
           html: feedbackSubmittedEmail(author.name, author.role, author.clinic.name, comment.body),
         });
       } else {

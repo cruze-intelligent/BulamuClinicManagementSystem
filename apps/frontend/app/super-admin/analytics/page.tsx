@@ -13,6 +13,7 @@ import { facilityTypeLabel } from '@/lib/facility-types';
 import { roleLabel } from '@/lib/role-labels';
 import { BarList, ShareRow, StatTile, TimeSeriesChart } from '@/components/analytics-charts';
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
+import { EmailDeliveryCard, MailStatus } from '@/components/email-delivery-card';
 import {
   ENGAGEMENT_LABELS, Point, compactNumber, engagementRank, formatBytes, formatNumber, formatPercent, formatUptime, humanize, timeAgo,
 } from '@/lib/analytics-format';
@@ -78,6 +79,7 @@ type SystemReport = {
   storage: { documents: number; documentBytes: number; persistent: boolean };
   configuration: Array<{ key: string; label: string; ok: boolean; hint: string }>;
   runtime: Runtime;
+  mail?: MailStatus;
 };
 
 const TABS = ['Overview', 'Facilities', 'Users', 'System'] as const;
@@ -473,6 +475,8 @@ export default function SuperAdminAnalyticsPage() {
                       <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden />Uploaded documents are on temporary storage and can be lost when the server restarts.</p>
                     )}
                   </Card>
+
+                  {system.mail && <EmailDeliveryCard initial={system.mail} />}
 
                   <Card className="p-4 gap-3">
                     <div>

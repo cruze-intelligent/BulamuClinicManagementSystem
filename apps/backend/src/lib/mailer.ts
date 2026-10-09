@@ -1,17 +1,35 @@
-import nodemailer, { Transporter } from 'nodemailer';
+import nodemailer, { SendMailOptions, Transporter } from 'nodemailer';
 
 const BRAND_TEAL = '#0f766e';
 
-// Where Bulamu-operations notifications (new registrations, new access
-// requests) are sent. Overridable via env; defaults to the standing admin
-// inbox so this keeps working even if the env var is never set.
+// Where Bulamu-operations notifications (new registrations, approvals,
+// payments, access requests...) are sent. Overridable via env (comma-separated
+// for several inboxes); defaults to the standing operator inbox so this keeps
+// working even if the env var is never set.
 export const ADMIN_NOTIFY_EMAIL = process.env.SUPER_ADMIN_NOTIFY_EMAIL || 'starplay.stargames@gmail.com';
 
 // Inbox for user-submitted feedback specifically - the standing Bulamu
 // operations mailbox rather than a personal one.
 export const FEEDBACK_EMAIL = process.env.FEEDBACK_NOTIFY_EMAIL || 'admin@bulamu.site';
 
+/**
+ * The HTTPS mail bridge on the Bulamu website (apps/frontend/public/mail-relay.php).
+ *
+ * Render's free plan blocks outbound SMTP (ports 25, 465 and 587) since
+ * September 2025, so from there a direct SMTP connection just times out and
+ * no email is ever delivered. The bridge runs on the Hostinger site, receives
+ * the fully built message over HTTPS and hands it to the same Hostinger mailbox
+ * over SMTP. It holds no secrets of its own: the mailbox login travels with each
+ * request (over TLS) and it only accepts this domain's mailboxes.
+ */
+const MAIL_RELAY_URL = process.env.MAIL_RELAY_URL || 'https://bulamu.site/mail-relay.php';
+
+// 'auto' (default): try SMTP, and if the connection itself cannot be made,
+// use the bridge for the rest of this process. 'smtp' or 'relay' force one.
+const MAIL_TRANSPORT = (process.env.MAIL_TRANSPORT || 'auto').toLowerCase();
+
 let transporter: Transporter | null | undefined;
+let directSmtpBlocked = false;
 
 /**
  * Generic SMTP sender - works with any provider (Hostinger email hosting,
@@ -61,29 +79,126 @@ export type MailAttachment = {
  * failure) must never fail that primary action. Catches internally and
  * reports failure through the return value instead of throwing.
  */
+export type MailResult = { sent: boolean; reason?: string; via?: 'smtp' | 'relay' };
+
 export async function sendMail(input: {
   to: string;
   subject: string;
   html: string;
   attachments?: MailAttachment[];
-}): Promise<{ sent: boolean; reason?: string }> {
+}): Promise<MailResult> {
   const client = getTransporter();
   if (!client) {
-    return { sent: false, reason: 'SMTP not configured' };
+    const result: MailResult = { sent: false, reason: 'SMTP not configured' };
+    logDelivery(input, result);
+    return result;
   }
 
-  try {
-    await client.sendMail({
-      from: process.env.SMTP_FROM || 'Bulamu <no-reply@bulamu.ug>',
-      to: input.to,
-      subject: input.subject,
-      html: input.html,
-      attachments: input.attachments,
-    });
-    return { sent: true };
-  } catch (error: any) {
-    return { sent: false, reason: error.message };
+  const message = {
+    from: process.env.SMTP_FROM || 'Bulamu <no-reply@bulamu.ug>',
+    to: input.to,
+    subject: input.subject,
+    html: input.html,
+    attachments: input.attachments,
+  };
+
+  let result: MailResult;
+  if (MAIL_TRANSPORT === 'relay' || (MAIL_TRANSPORT === 'auto' && directSmtpBlocked)) {
+    result = await sendViaRelay(message);
+  } else {
+    try {
+      await client.sendMail(message);
+      result = { sent: true, via: 'smtp' };
+    } catch (error: any) {
+      if (MAIL_TRANSPORT === 'auto' && isConnectionFailure(error)) {
+        // The mail server could not even be reached (no SMTP conversation
+        // happened, so nothing can have been sent twice): use the bridge now
+        // and for every later email from this process.
+        directSmtpBlocked = true;
+        result = await sendViaRelay(message);
+      } else {
+        result = { sent: false, via: 'smtp', reason: error.message };
+      }
+    }
   }
+  logDelivery(input, result);
+  return result;
+}
+
+// Only failures to open the connection - never one that happened mid-conversation.
+function isConnectionFailure(error: any): boolean {
+  return ['ETIMEDOUT', 'ECONNECTION', 'ESOCKET', 'EDNS'].includes(error?.code) && (!error.command || error.command === 'CONN');
+}
+
+// Builds the complete message (headers, HTML, attachments) exactly as SMTP
+// would send it, and posts it to the bridge.
+async function sendViaRelay(message: SendMailOptions): Promise<MailResult> {
+  try {
+    const built = await nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'windows' }).sendMail(message);
+    const response = await fetch(MAIL_RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'User-Agent': 'Bulamu-API/1.0' },
+      body: JSON.stringify({
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASSWORD,
+        from: built.envelope.from,
+        to: built.envelope.to,
+        message: (built.message as Buffer).toString('base64'),
+      }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(45_000),
+    });
+    const body = (await response.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+    if (response.ok && body?.ok) return { sent: true, via: 'relay' };
+    return { sent: false, via: 'relay', reason: body?.error || `Mail bridge answered HTTP ${response.status}` };
+  } catch (error: any) {
+    return { sent: false, via: 'relay', reason: `Mail bridge unreachable: ${error?.message}` };
+  }
+}
+
+// --- Delivery log -----------------------------------------------------------
+// The last few deliveries, in memory, so the operator can see on the System
+// page whether emails are actually going out (and why not). Resets on restart.
+
+export type DeliveryRecord = { at: string; to: string; subject: string; sent: boolean; via?: string; reason?: string };
+const DELIVERY_LOG_SIZE = 50;
+const deliveryLog: DeliveryRecord[] = [];
+
+function logDelivery(input: { to: string; subject: string }, result: MailResult) {
+  deliveryLog.unshift({ at: new Date().toISOString(), to: input.to, subject: input.subject, sent: result.sent, via: result.via, reason: result.reason });
+  deliveryLog.length = Math.min(deliveryLog.length, DELIVERY_LOG_SIZE);
+  if (!result.sent) console.warn(`Email "${input.subject}" to ${input.to} not sent: ${result.reason}`);
+}
+
+export function mailStatus() {
+  const sent = deliveryLog.filter((d) => d.sent).length;
+  return {
+    configured: isMailConfigured(),
+    mode: MAIL_TRANSPORT,
+    route: MAIL_TRANSPORT === 'relay' || directSmtpBlocked ? 'relay' : MAIL_TRANSPORT === 'smtp' ? 'smtp' : 'smtp, falling back to the bridge',
+    relayUrl: MAIL_RELAY_URL,
+    operatorInbox: ADMIN_NOTIFY_EMAIL,
+    recent: deliveryLog.slice(0, 20),
+    recentSent: sent,
+    recentFailed: deliveryLog.length - sent,
+  };
+}
+
+/** For tests only. */
+export function resetMailState() {
+  transporter = undefined;
+  directSmtpBlocked = false;
+  deliveryLog.length = 0;
+}
+
+/** Escape anything typed by a user before it goes into an email's HTML. */
+export function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function emailShell(bodyHtml: string): string {
@@ -123,7 +238,14 @@ export function passwordResetEmail(resetUrl: string): string {
   `);
 }
 
-export function registrationReceivedEmail(adminName: string, clinicName: string, facilityCode: string): string {
+// "23 October 2026" - unambiguous, unlike 10/23/2026 vs 23/10/2026.
+export function formatEmailDate(date: Date): string {
+  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' });
+}
+
+export function registrationReceivedEmail(rawAdminName: string, rawClinicName: string, facilityCode: string): string {
+  const adminName = escapeHtml(rawAdminName);
+  const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">We have received your registration</h2>
     <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
@@ -142,21 +264,34 @@ export function registrationReceivedEmail(adminName: string, clinicName: string,
   `);
 }
 
-export function facilityApprovedEmail(clinicName: string, loginUrl: string, trialEndsAt?: Date): string {
+export function facilityApprovedEmail(
+  rawClinicName: string,
+  loginUrl: string,
+  trialEndsAt?: Date | null,
+  extra: { facilityCode?: string; adminEmail?: string; receiptAttached?: boolean } = {}
+): string {
+  const clinicName = escapeHtml(rawClinicName);
+  const { facilityCode, adminEmail, receiptAttached = true } = extra;
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} is approved</h2>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      Your facility has been reviewed and approved on Bulamu. Your 2-week free trial has started${trialEndsAt ? ` and runs through <strong>${trialEndsAt.toLocaleDateString()}</strong>` : ''} -
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      Your facility has been reviewed and approved on Bulamu. Your 2-week free trial has started${trialEndsAt ? ` and runs through <strong>${formatEmailDate(trialEndsAt)}</strong>` : ''} -
       sign in to start registering patients, booking appointments, and recording consultations.
-      A receipt for your free trial is attached for your records.
+      ${receiptAttached ? 'A receipt for your free trial is attached for your records.' : ''}
     </p>
+    ${facilityCode || adminEmail ? `<p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
+      ${facilityCode ? `Facility ID: <strong>${escapeHtml(facilityCode)}</strong><br/>` : ''}
+      ${adminEmail ? `Sign in with: <strong>${escapeHtml(adminEmail)}</strong>` : ''}
+    </p>` : ''}
     <a href="${loginUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
       Sign In
     </a>
   `);
 }
 
-export function patientPortalAccountCreatedEmail(patientName: string, portableId: string, clinicName: string, setPasswordUrl: string): string {
+export function patientPortalAccountCreatedEmail(rawPatientName: string, portableId: string, rawClinicName: string, setPasswordUrl: string): string {
+  const patientName = escapeHtml(rawPatientName);
+  const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">Your Bulamu patient account</h2>
     <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
@@ -213,7 +348,8 @@ export function patientPasswordResetEmail(setPasswordUrl: string): string {
   `);
 }
 
-export function patientAccessOtpEmail(clinicName: string, code: string): string {
+export function patientAccessOtpEmail(rawClinicName: string, code: string): string {
+  const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">Confirm your identity at ${clinicName}</h2>
     <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
@@ -243,11 +379,12 @@ export function notificationEmail(input: { heading: string; message: string; cta
   `);
 }
 
-export function facilityRejectedEmail(clinicName: string, reason: string | undefined): string {
+export function facilityRejectedEmail(rawClinicName: string, reason: string | undefined): string {
+  const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} was not approved</h2>
     <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      After review, we were unable to approve this facility's registration on Bulamu${reason ? `: <strong>${reason}</strong>` : '.'}
+      After review, we were unable to approve this facility's registration on Bulamu${reason ? `: <strong>${escapeHtml(reason)}</strong>` : '.'}
     </p>
     <p style="margin:0;font-size:13px;color:#64748b;">
       If you believe this is a mistake or have questions, please contact Bulamu support.
@@ -255,25 +392,12 @@ export function facilityRejectedEmail(clinicName: string, reason: string | undef
   `);
 }
 
-export function facilityPendingApprovalEmail(clinicName: string, facilityCode: string, consoleUrl: string): string {
-  return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">New facility awaiting approval</h2>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      <strong>${clinicName}</strong> (Facility ID: ${facilityCode}) just submitted a registration and is
-      waiting for review in Facility Management.
-    </p>
-    <a href="${consoleUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
-      Review facility
-    </a>
-  `);
-}
-
 export function newAccessRequestEmail(facilityName: string, contactPerson: string, phone: string, email: string): string {
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">New evaluation access request</h2>
     <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      <strong>${facilityName}</strong> requested evaluation access.<br/>
-      Contact: ${contactPerson} - ${phone} - ${email}
+      <strong>${escapeHtml(facilityName)}</strong> requested evaluation access.<br/>
+      Contact: ${escapeHtml(contactPerson)} - ${escapeHtml(phone)} - ${escapeHtml(email)}
     </p>
   `);
 }
@@ -282,18 +406,66 @@ export function feedbackSubmittedEmail(authorName: string, authorRole: string, c
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">New feedback submitted</h2>
     <p style="margin:0 0 8px;font-size:13px;color:#64748b;">
-      ${authorName} (${authorRole}) - ${clinicName}
+      ${escapeHtml(authorName)} (${escapeHtml(authorRole)}) - ${escapeHtml(clinicName)}
     </p>
-    <p style="margin:0;font-size:14px;line-height:1.5;white-space:pre-wrap;">${body}</p>
+    <p style="margin:0;font-size:14px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(body)}</p>
   `);
 }
 
-export function subscriptionReceiptEmail(clinicName: string, amount: number, currency: string, periodEnd: Date): string {
+/**
+ * An alert to the platform operator: what happened, as a short table of facts,
+ * and a link to the console. Operator alerts carry facility and account details
+ * only - never patient or clinical information.
+ */
+export function operatorAlertEmail(input: { heading: string; intro?: string; facts: Array<[string, string | number | null | undefined]>; ctaUrl?: string; ctaLabel?: string }): string {
+  const rows = input.facts
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .map(([label, value]) => `
+      <tr>
+        <td style="padding:6px 12px 6px 0;font-size:13px;color:#64748b;vertical-align:top;white-space:nowrap;">${escapeHtml(label)}</td>
+        <td style="padding:6px 0;font-size:13px;color:#1e293b;">${escapeHtml(value)}</td>
+      </tr>`)
+    .join('');
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">${escapeHtml(input.heading)}</h2>
+    ${input.intro ? `<p style="margin:0 0 16px;font-size:14px;line-height:1.5;">${escapeHtml(input.intro)}</p>` : ''}
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px;border-collapse:collapse;">${rows}</table>
+    ${input.ctaUrl ? `<a href="${input.ctaUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
+      ${escapeHtml(input.ctaLabel || 'Open Bulamu')}
+    </a>` : ''}
+  `);
+}
+
+/** Tells a facility's admin that the facility was suspended or reactivated. */
+export function facilityStatusEmail(rawClinicName: string, active: boolean, loginUrl: string): string {
+  const clinicName = escapeHtml(rawClinicName);
+  return emailShell(active ? `
+    <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} has been reactivated</h2>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
+      Access to Bulamu has been restored for your facility. You and your staff can sign in again.
+    </p>
+    <a href="${loginUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
+      Sign In
+    </a>
+  ` : `
+    <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} has been suspended</h2>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      Access to Bulamu has been paused for your facility, so you and your staff cannot sign in for now.
+      Your records are kept safe and nothing has been deleted.
+    </p>
+    <p style="margin:0;font-size:13px;color:#64748b;">
+      If you were not expecting this, or to have access restored, please contact Bulamu support by replying to this email.
+    </p>
+  `);
+}
+
+export function subscriptionReceiptEmail(rawClinicName: string, amount: number, currency: string, periodEnd: Date): string {
+  const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
     <h2 style="margin:0 0 12px;font-size:18px;">Payment received</h2>
     <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
       Thank you - we've received <strong>${currency} ${amount.toLocaleString()}</strong> for ${clinicName}'s
-      Bulamu subscription. Your subscription is active through <strong>${periodEnd.toLocaleDateString()}</strong>.
+      Bulamu subscription. Your subscription is active through <strong>${formatEmailDate(periodEnd)}</strong>.
     </p>
     <p style="margin:0;font-size:13px;color:#64748b;">
       A PDF receipt is attached for your records.

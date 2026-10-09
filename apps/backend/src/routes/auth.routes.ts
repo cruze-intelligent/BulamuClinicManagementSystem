@@ -2,7 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcrypt';
 import { generateToken, hashToken } from '../lib/crypto';
-import { sendMail, passwordResetEmail, facilityPendingApprovalEmail, registrationReceivedEmail, ADMIN_NOTIFY_EMAIL } from '../lib/mailer';
+import { sendMail, passwordResetEmail, registrationReceivedEmail } from '../lib/mailer';
+import { alertOperator } from '../lib/operator-alerts';
+import { facilityTypeLabel } from '../lib/facility';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import { isUniqueConstraintError } from '../lib/prisma';
 import { recordLoginEvent } from '../lib/usage-tracking';
@@ -68,12 +70,22 @@ export async function authRoutes(fastify: FastifyInstance) {
       // Email is a best-effort side channel: the registration is already
       // saved, so never make the registrant wait on (or fail because of) an
       // SMTP round trip. sendMail never throws; failures are only logged.
-      const consoleUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/super-admin`;
       void Promise.all([
-        sendMail({
-          to: ADMIN_NOTIFY_EMAIL,
+        alertOperator({
           subject: `New facility awaiting approval - ${clinic.name}`,
-          html: facilityPendingApprovalEmail(clinic.name, clinic.facilityCode, consoleUrl),
+          heading: 'New facility awaiting approval',
+          intro: 'A facility has registered on Bulamu and is waiting for your review in Facility Management.',
+          facts: [
+            ['Facility', clinic.name],
+            ['Facility ID', clinic.facilityCode],
+            ['Type', facilityTypeLabel(clinic.facilityType)],
+            ['Phone', clinic.phone],
+            ['Address', clinic.address],
+            ['Location', [parish, subCounty, district].filter(Boolean).join(', ')],
+            ['Administrator', `${adminName} <${adminEmail}>`],
+          ],
+          ctaPath: '/super-admin',
+          ctaLabel: 'Review facility',
         }),
         sendMail({
           to: adminEmail,

@@ -4,7 +4,8 @@ import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { invalidateSubscriptionCache } from '../lib/subscription';
-import { sendMail, subscriptionReceiptEmail } from '../lib/mailer';
+import { sendMail, subscriptionReceiptEmail, formatEmailDate, MailResult } from '../lib/mailer';
+import { alertOperator, deliveryNote } from '../lib/operator-alerts';
 import { generateReceiptPdf } from '../lib/pdf';
 import {
   getAccessToken, registerIpnUrl, submitOrderRequest, getTransactionStatus, describePesapalError, PESAPAL_STATUS_COMPLETED,
@@ -136,22 +137,43 @@ export async function billingRoutes(fastify: FastifyInstance) {
                 prisma.clinic.findUnique({ where: { id: payment.clinicId } }),
                 prisma.user.findFirst({ where: { clinicId: payment.clinicId, role: 'ADMIN' } }),
               ]);
-              if (clinic && admin) {
-                const receiptPdf = await generateReceiptPdf({
-                  paymentId: payment.id,
-                  clinicName: clinic.name,
-                  facilityCode: clinic.facilityCode,
-                  amount: payment.amount,
-                  currency: payment.currency,
-                  paidAt: new Date(),
-                  periodEnd,
-                });
-                await sendMail({
-                  to: admin.email,
-                  subject: `Bulamu payment receipt - ${clinic.name}`,
-                  html: subscriptionReceiptEmail(clinic.name, payment.amount, payment.currency, periodEnd),
-                  attachments: [{ filename: `receipt-${payment.id}.pdf`, content: receiptPdf, contentType: 'application/pdf' }],
-                });
+              // Pesapal is waiting on this response - the receipt and the
+              // operator alert go out in the background.
+              if (clinic) {
+                void (async () => {
+                  let receipt: MailResult | null = null;
+                  if (admin) {
+                    const receiptPdf = await generateReceiptPdf({
+                      paymentId: payment.id,
+                      clinicName: clinic.name,
+                      facilityCode: clinic.facilityCode,
+                      amount: payment.amount,
+                      currency: payment.currency,
+                      paidAt: new Date(),
+                      periodEnd,
+                    });
+                    receipt = await sendMail({
+                      to: admin.email,
+                      subject: `Bulamu payment receipt - ${clinic.name}`,
+                      html: subscriptionReceiptEmail(clinic.name, payment.amount, payment.currency, periodEnd),
+                      attachments: [{ filename: `receipt-${payment.id}.pdf`, content: receiptPdf, contentType: 'application/pdf' }],
+                    });
+                  }
+                  await alertOperator({
+                    subject: `Payment received - ${clinic.name} - ${payment.currency} ${payment.amount.toLocaleString()}`,
+                    heading: 'Subscription payment received',
+                    facts: [
+                      ['Facility', clinic.name],
+                      ['Facility ID', clinic.facilityCode],
+                      ['Amount', `${payment.currency} ${payment.amount.toLocaleString()}`],
+                      ['Active through', formatEmailDate(periodEnd)],
+                      ['Pesapal reference', OrderTrackingId],
+                      ['Receipt to the facility', deliveryNote(receipt)],
+                    ],
+                    ctaPath: '/super-admin',
+                    ctaLabel: 'Open Facility Management',
+                  });
+                })().catch((error) => fastify.log.error(error, 'Payment emails failed'));
               }
             }
           }
