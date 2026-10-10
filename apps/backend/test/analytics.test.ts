@@ -1,4 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 import { FastifyInstance } from 'fastify';
 import { buildTestApp, seedClinic, seedUser, loginAs, authHeader } from './helpers';
 import { resetDb } from './db';
@@ -402,7 +404,9 @@ describe('super admin analytics', () => {
       expect(s.database.pingMs).toBeGreaterThan(0);
       expect(s.database.sizeBytes).toBeGreaterThan(0);
       expect(s.database.migrationsApplied).toBeGreaterThan(20);
-      expect(s.database.latestMigration).toMatch(/usage_analytics/);
+      // The most recent migration folder in the repo is the one reported as applied last.
+      const newest = fs.readdirSync(path.join(__dirname, '../prisma/migrations')).filter((name) => /^\d{14}_/.test(name)).sort().at(-1);
+      expect(s.database.latestMigration).toBe(newest);
       expect(s.database.largestTables.length).toBeGreaterThan(0);
       expect(s.database.totals.facilities).toBe(2);
       expect(s.storage).toMatchObject({ documents: 0, documentBytes: 0 });

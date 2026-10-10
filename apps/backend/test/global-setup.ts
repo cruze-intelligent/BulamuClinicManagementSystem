@@ -13,9 +13,11 @@ export default async function globalSetup() {
   // embedded-postgres installs async-exit-hook, which calls process.exit(0) on
   // 'beforeExit'. That runs after vitest has set a failing exit code, and
   // replaces it with 0 - so a run with failing tests used to pass in CI. The
-  // database is stopped explicitly below, so the hook is not needed for that
-  // event (its signal handlers stay, for Ctrl+C).
+  // database is stopped explicitly below, so the hook is not needed on a normal
+  // exit (its 'exit' handler also throws "done is not a function"). Its signal
+  // handlers stay, so Ctrl+C still shuts the database down.
   asyncExitHook.unhookEvent('beforeExit');
+  asyncExitHook.unhookEvent('exit');
 
   fs.writeFileSync(envHandoffPath, `DATABASE_URL=${db.connectionString}\n`, 'utf-8');
 
