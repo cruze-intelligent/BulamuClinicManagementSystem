@@ -6,6 +6,9 @@ import { recordAudit } from '../lib/audit';
 import { notifyStaff } from '../lib/notifications';
 import { buildPrescriptionPdf } from '../lib/consultation-records';
 import { detectDocumentFormat, normalizeFileName, setDownloadHeaders, withFormat, SUPPORTED_FORMATS_MESSAGE } from '../lib/document-format';
+import { generateDischargeSummaryPdf, generateReferralLetterPdf } from '../lib/pdf';
+import { referralLetterInput } from './referral.routes';
+import { dischargeSummaryInput } from './admission.routes';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -106,6 +109,17 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
             orderBy: { createdAt: 'desc' },
             select: { id: true, category: true, fileName: true, mimeType: true, fileSize: true, createdAt: true, uploadedByPatientAccountId: true },
           },
+          referrals: {
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, reason: true, urgency: true, status: true, responseNote: true, createdAt: true, toClinic: { select: { name: true } } },
+          },
+          admissions: {
+            orderBy: { admittedAt: 'desc' },
+            select: {
+              id: true, status: true, admittedAt: true, dischargedAt: true, reason: true, outcome: true,
+              dischargeDiagnosis: true, dischargeSummary: true, followUpInstructions: true, ward: { select: { name: true } },
+            },
+          },
         },
       });
 
@@ -192,6 +206,44 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `inline; filename="prescription-${id}.pdf"`);
     return reply.send(built.pdf);
+  });
+
+  // The patient's own referral letter, to carry to the facility they were referred to.
+  fastify.get('/patient-portal/referrals/:id/letter', { preHandler: [authenticatePatient] }, async (request, reply) => {
+    const authUser = getPatientAuthUser(request);
+    const { id } = request.params as any;
+    const referral = await prisma.referral.findUnique({
+      where: { id },
+      include: { patient: true, fromClinic: true, toClinic: { select: { name: true } }, referredBy: { select: { name: true } } },
+    });
+    if (!referral || !(await findOwnRecord(authUser.patientAccountId, referral.patientId))) {
+      return reply.status(404).send({ error: 'Referral not found' });
+    }
+    const pdf = await generateReferralLetterPdf(referralLetterInput(referral));
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `inline; filename="referral-${id.slice(0, 8)}.pdf"`);
+    return reply.send(pdf);
+  });
+
+  // The patient's own discharge summary.
+  fastify.get('/patient-portal/admissions/:id/discharge-summary', { preHandler: [authenticatePatient] }, async (request, reply) => {
+    const authUser = getPatientAuthUser(request);
+    const { id } = request.params as any;
+    const admission = await prisma.admission.findUnique({
+      where: { id },
+      include: {
+        patient: true, ward: { select: { name: true } }, clinic: { select: { name: true, facilityCode: true } },
+        attendingDoctor: { select: { name: true } }, dischargedBy: { select: { name: true } },
+        referral: { select: { toClinic: { select: { name: true } } } },
+      },
+    });
+    if (!admission || admission.status !== 'DISCHARGED' || !(await findOwnRecord(authUser.patientAccountId, admission.patientId))) {
+      return reply.status(404).send({ error: 'Discharge summary not found' });
+    }
+    const pdf = await generateDischargeSummaryPdf(dischargeSummaryInput(admission));
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `inline; filename="discharge-summary-${id.slice(0, 8)}.pdf"`);
+    return reply.send(pdf);
   });
 
   // Download any document attached to one of the patient's own linked
@@ -319,6 +371,13 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     const updated = await prisma.patientAccessGrant.update({
       where: { id: grantId },
       data: { revokedAt: new Date(), revokedByUserId: authUser.patientAccountId },
+    });
+
+    // A facility that can no longer see the patient's records can no longer see
+    // their history from other facilities either.
+    await prisma.historyShare.updateMany({
+      where: { patientAccountId: authUser.patientAccountId, clinicId: grant.clinicId, status: { in: ['REQUESTED', 'APPROVED'] } },
+      data: { status: 'WITHDRAWN', endedAt: new Date() },
     });
 
     await recordAudit({

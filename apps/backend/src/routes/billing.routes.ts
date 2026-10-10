@@ -6,6 +6,7 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { invalidateSubscriptionCache } from '../lib/subscription';
 import { sendMail, subscriptionReceiptEmail, formatEmailDate, MailResult } from '../lib/mailer';
 import { alertOperator, deliveryNote } from '../lib/operator-alerts';
+import { notifyStaff } from '../lib/notifications';
 import { generateReceiptPdf } from '../lib/pdf';
 import {
   getAccessToken, registerIpnUrl, submitOrderRequest, getTransactionStatus, describePesapalError, PESAPAL_STATUS_COMPLETED,
@@ -132,6 +133,16 @@ export async function billingRoutes(fastify: FastifyInstance) {
                 data: { status: 'ACTIVE', lastPaymentAt: new Date(), currentPeriodEnd: periodEnd },
               });
               invalidateSubscriptionCache(payment.clinicId);
+
+              await notifyStaff({
+                type: 'PAYMENT_RECEIVED',
+                clinicId: payment.clinicId,
+                title: 'Subscription payment received',
+                body: `${payment.currency} ${payment.amount.toLocaleString()} was received. Your subscription is active through ${formatEmailDate(periodEnd)}. The receipt has been emailed and is on the Billing page.`,
+                link: '/billing',
+                emailSummary: 'A subscription payment was received.',
+                log: (message) => fastify.log.warn(message),
+              });
 
               const [clinic, admin] = await Promise.all([
                 prisma.clinic.findUnique({ where: { id: payment.clinicId } }),

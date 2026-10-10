@@ -44,6 +44,10 @@ export async function closePatientAccount(patientAccountId: string, log: Logger 
       where: { patientAccountId, revokedAt: null },
       data: { revokedAt: now, revokedByUserId: patientAccountId },
     }),
+    prisma.historyShare.updateMany({
+      where: { patientAccountId, status: { in: ['REQUESTED', 'APPROVED'] } },
+      data: { status: 'WITHDRAWN', endedAt: now },
+    }),
     prisma.notification.deleteMany({ where: { patientAccountId } }),
     prisma.patientAccessOtp.deleteMany({ where: { patientAccountId } }),
     prisma.patientPasswordResetToken.deleteMany({ where: { patientAccountId } }),

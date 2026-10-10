@@ -8,6 +8,8 @@ import { authRoutes } from './routes/auth.routes';
 import { clinicRoutes } from './routes/clinic.routes';
 import { consultationRoutes } from './routes/consultation.routes';
 import { dispensingRoutes } from './routes/dispensing.routes';
+import { admissionRoutes } from './routes/admission.routes';
+import { sharedHistoryRoutes } from './routes/shared-history.routes';
 import { superAdminAnalyticsRoutes } from './routes/super-admin-analytics.routes';
 import { recordRequest } from './lib/runtime-metrics';
 import { dashboardRoutes } from './routes/dashboard.routes';
@@ -112,6 +114,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(appointmentRoutes);
   await server.register(consultationRoutes);
   await server.register(dispensingRoutes);
+  await server.register(admissionRoutes);
+  await server.register(sharedHistoryRoutes);
   await server.register(superAdminAnalyticsRoutes);
   await server.register(dashboardRoutes);
   await server.register(invoiceRoutes);

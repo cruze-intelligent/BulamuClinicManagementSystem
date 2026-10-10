@@ -7,7 +7,10 @@ import { sendMail, notificationEmail } from './mailer';
  * notifications each role receives and which of them also arrive by email.
  *
  * - `roles`: staff roles that get the in-app notification (a facility's own
- *   staff only - never another facility's).
+ *   staff only - never another facility's). For a `personal` rule these are
+ *   the roles the notification can reach, but it goes only to the specific
+ *   people involved (the clinician who ordered the test, the doctor the
+ *   appointment is with, the clinician who made the referral...).
  * - `emailRoles`: the subset of those roles that also get an email. Anything
  *   high-volume stays in-app only, so email is reserved for things that
  *   genuinely need attention. Recipients can switch each email type off.
@@ -23,6 +26,7 @@ type StaffRule = {
   description: string;
   roles: Role[];
   emailRoles: Role[];
+  personal?: boolean;
 };
 type PatientRule = {
   audience: 'PATIENT';
@@ -34,11 +38,12 @@ type PatientRule = {
 export type NotificationRule = StaffRule | PatientRule;
 
 export const NOTIFICATION_RULES: Record<NotificationType, NotificationRule> = {
-  LAB_RESULT_READY: {
-    audience: 'PATIENT', email: true,
-    emailSubject: 'Your lab results are ready',
-    label: 'Lab results ready',
-    description: 'When a lab result for you has been recorded.',
+  // --- Pharmacy and stock ---------------------------------------------------
+  NEW_PRESCRIPTION: {
+    audience: 'STAFF', roles: ['PHARMACIST'], emailRoles: [],
+    emailSubject: 'New prescription to dispense',
+    label: 'New prescriptions',
+    description: 'When a consultation includes prescriptions to dispense. In-app only.',
   },
   LOW_STOCK: {
     audience: 'STAFF', roles: ['PHARMACIST', 'ADMIN'], emailRoles: ['PHARMACIST', 'ADMIN'],
@@ -46,17 +51,115 @@ export const NOTIFICATION_RULES: Record<NotificationType, NotificationRule> = {
     label: 'Low stock (restock needed)',
     description: 'When a medicine falls to or below its reorder level.',
   },
-  NEW_PRESCRIPTION: {
-    audience: 'STAFF', roles: ['PHARMACIST'], emailRoles: [],
-    emailSubject: 'New prescription to dispense',
-    label: 'New prescriptions',
-    description: 'When a consultation includes prescriptions to dispense. In-app only.',
+  OUT_OF_STOCK: {
+    audience: 'STAFF', roles: ['PHARMACIST', 'ADMIN'], emailRoles: ['PHARMACIST', 'ADMIN'],
+    emailSubject: 'A medicine is out of stock',
+    label: 'Out of stock',
+    description: 'When a medicine runs out completely.',
   },
+  STOCK_EXPIRING: {
+    audience: 'STAFF', roles: ['PHARMACIST', 'ADMIN'], emailRoles: ['PHARMACIST', 'ADMIN'],
+    emailSubject: 'Stock expiring soon',
+    label: 'Expiring or expired stock',
+    description: 'When a medicine in stock expires within 60 days, and again once it has expired.',
+  },
+
+  // --- Laboratory -------------------------------------------------------------
+  LAB_TEST_ORDERED: {
+    audience: 'STAFF', roles: ['NURSE'], emailRoles: [],
+    emailSubject: 'New lab test ordered',
+    label: 'Lab tests ordered',
+    description: 'When a clinician orders a lab test for a patient. In-app only.',
+  },
+  LAB_RESULT_AVAILABLE: {
+    audience: 'STAFF', roles: ['DOCTOR', 'NURSE', 'ADMIN'], emailRoles: ['DOCTOR'], personal: true,
+    emailSubject: 'A lab result you ordered is ready',
+    label: 'Results of tests I ordered',
+    description: 'When the result of a lab test you ordered has been recorded.',
+  },
+
+  // --- Appointments -----------------------------------------------------------
   APPOINTMENT_REQUESTED: {
     audience: 'STAFF', roles: ['STAFF', 'NURSE', 'ADMIN'], emailRoles: ['STAFF', 'ADMIN'],
     emailSubject: 'New appointment request',
     label: 'Appointment requests',
     description: 'When a patient requests an appointment through the Patient Portal.',
+  },
+  APPOINTMENT_BOOKED: {
+    audience: 'STAFF', roles: ['DOCTOR'], emailRoles: [], personal: true,
+    emailSubject: 'New appointment booked with you',
+    label: 'Appointments booked with me',
+    description: 'When a colleague books a patient into your list. In-app only.',
+  },
+  APPOINTMENT_CANCELLED: {
+    audience: 'STAFF', roles: ['DOCTOR'], emailRoles: [], personal: true,
+    emailSubject: 'An appointment with you was cancelled',
+    label: 'My appointments cancelled',
+    description: 'When an appointment in your list is cancelled. In-app only.',
+  },
+
+  // --- Referrals ----------------------------------------------------------------
+  REFERRAL_RECEIVED: {
+    audience: 'STAFF', roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'], emailRoles: ['ADMIN', 'DOCTOR'],
+    emailSubject: 'New referral received',
+    label: 'Referrals received',
+    description: 'When another facility refers a patient to yours, or cancels a referral it sent.',
+  },
+  REFERRAL_UPDATED: {
+    audience: 'STAFF', roles: ['ADMIN', 'DOCTOR', 'NURSE'], emailRoles: ['ADMIN', 'DOCTOR', 'NURSE'], personal: true,
+    emailSubject: 'Update on a referral you sent',
+    label: 'Replies to referrals we sent',
+    description: 'When the receiving facility accepts, declines or completes a referral (to the clinician who made it, and the facility admin).',
+  },
+
+  // --- Inpatients ---------------------------------------------------------------
+  PATIENT_ADMITTED: {
+    audience: 'STAFF', roles: ['NURSE', 'DOCTOR'], emailRoles: [],
+    emailSubject: 'Patient admitted',
+    label: 'Admissions',
+    description: 'When a patient is admitted (nurses, and the attending doctor). In-app only.',
+  },
+  PATIENT_DISCHARGED: {
+    audience: 'STAFF', roles: ['NURSE', 'ADMIN'], emailRoles: [],
+    emailSubject: 'Patient discharged',
+    label: 'Discharges',
+    description: 'When a patient is discharged - a bed is free and the stay can be billed. In-app only.',
+  },
+
+  // --- Records and access ---------------------------------------------------------
+  NEW_NOTE: {
+    audience: 'STAFF', roles: ['ADMIN', 'DOCTOR', 'NURSE'], emailRoles: ['ADMIN'],
+    emailSubject: 'New note on a record',
+    label: 'New notes on records',
+    description: 'When a colleague leaves a note on a patient record.',
+  },
+  HISTORY_ACCESS_APPROVED: {
+    audience: 'STAFF', roles: ['DOCTOR', 'NURSE', 'ADMIN'], emailRoles: [], personal: true,
+    emailSubject: 'A patient approved sharing their history',
+    label: 'Patients approving history I requested',
+    description: 'When a patient approves your request to see their records from other facilities. In-app only.',
+  },
+
+  // --- The facility's own account -----------------------------------------------
+  SUBSCRIPTION_REMINDER: {
+    audience: 'STAFF', roles: ['ADMIN'], emailRoles: ['ADMIN'],
+    emailSubject: 'Your Bulamu subscription needs attention',
+    label: 'Subscription reminders',
+    description: 'Before the free trial or a paid period ends, and when it has ended.',
+  },
+  PAYMENT_RECEIVED: {
+    audience: 'STAFF', roles: ['ADMIN'], emailRoles: [],
+    emailSubject: 'Payment received',
+    label: 'Payments received',
+    description: 'When a subscription payment is confirmed (the receipt is emailed separately). In-app only.',
+  },
+
+  // --- Patients (their own portal account) ---------------------------------------
+  LAB_RESULT_READY: {
+    audience: 'PATIENT', email: true,
+    emailSubject: 'Your lab results are ready',
+    label: 'Lab results ready',
+    description: 'When a lab result for you has been recorded.',
   },
   APPOINTMENT_CONFIRMED: {
     audience: 'PATIENT', email: true,
@@ -70,11 +173,17 @@ export const NOTIFICATION_RULES: Record<NotificationType, NotificationRule> = {
     label: 'Appointment declined',
     description: 'When the facility is unable to accept an appointment you requested.',
   },
-  REFERRAL_RECEIVED: {
-    audience: 'STAFF', roles: ['ADMIN', 'DOCTOR'], emailRoles: ['ADMIN', 'DOCTOR'],
-    emailSubject: 'New referral received',
-    label: 'Referrals received',
-    description: 'When another facility refers a patient to yours.',
+  REFERRAL_ISSUED: {
+    audience: 'PATIENT', email: true,
+    emailSubject: 'You have been referred to another facility',
+    label: 'Referrals',
+    description: 'When you are referred to another facility. Your referral letter is in the Patient Portal.',
+  },
+  DISCHARGE_SUMMARY_READY: {
+    audience: 'PATIENT', email: true,
+    emailSubject: 'Your discharge summary is ready',
+    label: 'Discharge summaries',
+    description: 'When you are discharged after a stay, with your discharge summary and follow-up instructions.',
   },
   RECORD_ACCESS_GRANTED: {
     audience: 'PATIENT', email: true,
@@ -82,11 +191,17 @@ export const NOTIFICATION_RULES: Record<NotificationType, NotificationRule> = {
     label: 'Record access granted',
     description: 'When a new facility is given access to your records. This is a security notice.',
   },
-  NEW_NOTE: {
-    audience: 'STAFF', roles: ['ADMIN'], emailRoles: ['ADMIN'],
-    emailSubject: 'New note on a record',
-    label: 'New notes on records',
-    description: 'When a colleague leaves a note on a patient record.',
+  HISTORY_ACCESS_REQUESTED: {
+    audience: 'PATIENT', email: true,
+    emailSubject: 'A facility is asking to see your health history',
+    label: 'Requests to see my history',
+    description: 'When a facility asks to see your records from other facilities. Nothing is shared unless you approve.',
+  },
+  HISTORY_SHARING_APPROVED: {
+    audience: 'PATIENT', email: true,
+    emailSubject: 'You approved sharing your history with a facility',
+    label: 'History sharing approved',
+    description: 'When you approve a facility seeing your records from other facilities. This is a security notice.',
   },
 };
 
@@ -103,9 +218,14 @@ function appUrl(path: string) {
 
 /**
  * Tell the relevant staff of one facility. Creates the in-app notification for
- * every recipient whose role the rule includes, and emails only those in
- * `emailRoles` who haven't opted out. Never throws: a notification problem
- * must not fail the action that triggered it.
+ * every recipient, and emails only those whose role is in `emailRoles` and who
+ * haven't opted out. Never throws: a notification problem must not fail the
+ * action that triggered it.
+ *
+ * Recipients are, by default, every active user of the rule's roles. For a
+ * `personal` rule pass `userIds` - only those people are told. `alsoUserIds`
+ * adds specific people to a role-based notification (e.g. the attending doctor
+ * of an admission, on top of the nurses). Always the facility's own staff only.
  */
 export async function notifyStaff(input: {
   type: NotificationType;
@@ -115,6 +235,10 @@ export async function notifyStaff(input: {
   link: string;
   emailSummary: string;
   excludeUserId?: string;
+  userIds?: Array<string | null | undefined>;
+  alsoUserIds?: Array<string | null | undefined>;
+  /** A reminder with this key is created at most once per facility. */
+  dedupeKey?: string;
   log?: Logger;
 }): Promise<void> {
   const log = input.log ?? defaultLog;
@@ -122,12 +246,23 @@ export async function notifyStaff(input: {
     const rule = NOTIFICATION_RULES[input.type];
     if (rule.audience !== 'STAFF') return;
 
+    if (input.dedupeKey && (await prisma.notification.findFirst({ where: { clinicId: input.clinicId, dedupeKey: input.dedupeKey }, select: { id: true } }))) {
+      return;
+    }
+
+    const named = (ids?: Array<string | null | undefined>) => [...new Set((ids ?? []).filter((id): id is string => !!id))];
+    const targeted = named(input.userIds);
+    const extra = named(input.alsoUserIds);
+    if (rule.personal && targeted.length === 0) return;
+
     const recipients = await prisma.user.findMany({
       where: {
         clinicId: input.clinicId,
         isActive: true,
-        role: { in: rule.roles },
-        ...(input.excludeUserId ? { id: { not: input.excludeUserId } } : {}),
+        ...(rule.personal
+          ? { id: { in: targeted } }
+          : { OR: [{ role: { in: rule.roles } }, ...(extra.length ? [{ id: { in: extra } }] : [])] }),
+        ...(input.excludeUserId ? { NOT: { id: input.excludeUserId } } : {}),
       },
       select: { id: true, email: true, role: true, emailOptOuts: true },
     });
@@ -136,7 +271,7 @@ export async function notifyStaff(input: {
     await prisma.notification.createMany({
       data: recipients.map((recipient) => ({
         userId: recipient.id, clinicId: input.clinicId, type: input.type,
-        title: input.title, body: input.body, link: input.link,
+        title: input.title, body: input.body, link: input.link, dedupeKey: input.dedupeKey ?? null,
       })),
     });
 
@@ -204,19 +339,34 @@ export async function notifyPatient(input: {
 }
 
 /**
- * A restock alert fires when stock *crosses* down to its reorder level, not
- * on every change while it stays low, so a pharmacist gets one alert per
- * shortage instead of one per dispense. `previousQuantity` is null for a
- * newly added medicine (alert only if it starts out already low).
+ * Stock alerts fire when stock *crosses* a line, not on every change while it
+ * stays below it, so a pharmacist gets one alert per shortage instead of one
+ * per dispense: once when it falls to the reorder level, and again if it runs
+ * out completely. `previousQuantity` is null for a newly added medicine.
  */
 export async function notifyIfLowStock(
   medicine: { clinicId: string; name: string; quantity: number; unit: string; reorderLevel: number },
   previousQuantity: number | null,
   log?: Logger
 ): Promise<void> {
+  const isOut = medicine.quantity <= 0;
+  const wasOut = previousQuantity !== null && previousQuantity <= 0;
+  if (isOut && !wasOut) {
+    await notifyStaff({
+      type: 'OUT_OF_STOCK',
+      clinicId: medicine.clinicId,
+      title: `Out of stock: ${medicine.name}`,
+      body: `${medicine.name} has run out. Prescriptions for it cannot be dispensed until it is restocked.`,
+      link: '/inventory',
+      emailSummary: 'A medicine has run out completely and needs restocking. Open the Inventory page to see which.',
+      log,
+    });
+    return;
+  }
+
   const isLow = medicine.quantity <= medicine.reorderLevel;
   const wasLow = previousQuantity !== null && previousQuantity <= medicine.reorderLevel;
-  if (!isLow || wasLow) return;
+  if (!isLow || wasLow || isOut) return;
 
   await notifyStaff({
     type: 'LOW_STOCK',
@@ -248,6 +398,153 @@ export async function notifyLabResultReady(
     emailSummary: 'New results are available in your Bulamu Patient Portal. Sign in to view them.',
     log,
   });
+}
+
+/** A new lab order goes to the nurses who run the lab workflow (not to whoever ordered it). */
+export async function notifyLabOrdered(
+  input: { clinicId: string; patientName: string; testName: string; orderedByUserId: string },
+  log?: Logger
+): Promise<void> {
+  await notifyStaff({
+    type: 'LAB_TEST_ORDERED',
+    clinicId: input.clinicId,
+    title: `Lab test ordered: ${input.testName}`,
+    body: `${input.testName} was ordered for ${input.patientName}.`,
+    link: '/lab',
+    emailSummary: 'A new lab test has been ordered.',
+    excludeUserId: input.orderedByUserId,
+    log,
+  });
+}
+
+/** A completed result goes back to the clinician who ordered it - unless they recorded it themselves. */
+export async function notifyLabResultToOrderer(
+  input: { clinicId: string; patientName: string; testName: string; orderedByUserId: string | null; recordedByUserId: string },
+  log?: Logger
+): Promise<void> {
+  await notifyStaff({
+    type: 'LAB_RESULT_AVAILABLE',
+    clinicId: input.clinicId,
+    title: `Result ready: ${input.testName}`,
+    body: `The ${input.testName} result for ${input.patientName} has been recorded.`,
+    link: '/lab',
+    emailSummary: 'The result of a lab test you ordered has been recorded. Sign in to Bulamu to see it.',
+    userIds: [input.orderedByUserId],
+    excludeUserId: input.recordedByUserId,
+    log,
+  });
+}
+
+/** Tells a doctor when a colleague books a patient into their list, or cancels one. */
+export async function notifyDoctorOfAppointment(
+  input: { clinicId: string; doctorId: string | null; actorUserId: string; patientName: string; date: Date; time: string; cancelled?: boolean },
+  log?: Logger
+): Promise<void> {
+  const when = `${input.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' })} at ${input.time}`;
+  await notifyStaff({
+    type: input.cancelled ? 'APPOINTMENT_CANCELLED' : 'APPOINTMENT_BOOKED',
+    clinicId: input.clinicId,
+    title: input.cancelled ? `Appointment cancelled: ${input.patientName}` : `New appointment: ${input.patientName}`,
+    body: input.cancelled
+      ? `The appointment with ${input.patientName} on ${when} was cancelled.`
+      : `${input.patientName} has been booked to see you on ${when}.`,
+    link: '/appointments',
+    emailSummary: input.cancelled ? 'An appointment in your list was cancelled.' : 'A patient has been booked to see you.',
+    userIds: [input.doctorId],
+    excludeUserId: input.actorUserId,
+    log,
+  });
+}
+
+// --- Periodic reminders --------------------------------------------------------
+// Expiring stock and subscription deadlines depend on the date, not on any one
+// action, and there is no background scheduler on the hosting plan. So they are
+// checked when a facility's staff use the app - at most every few hours per
+// facility - and each reminder carries a dedupeKey so it is raised only once.
+
+const EXPIRY_WARNING_DAYS = 60;
+const SUBSCRIPTION_WARNING_DAYS = 3;
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const lastChecked = new Map<string, number>();
+// Off in the test suite (a background write could land between one test's
+// reset and the next); tests of the checks call runPeriodicChecks directly.
+let periodicChecksEnabled = process.env.NODE_ENV !== 'test';
+
+const isoDay = (date: Date) => date.toISOString().slice(0, 10);
+const shortDate = (date: Date) => date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' });
+
+/** Runs the date-based checks for one facility, unless they ran recently. Never throws. */
+export function runPeriodicChecksSoon(clinicId: string, log?: Logger): void {
+  if (!periodicChecksEnabled) return;
+  const now = Date.now();
+  if (now - (lastChecked.get(clinicId) ?? 0) < CHECK_INTERVAL_MS) return;
+  lastChecked.set(clinicId, now);
+  void runPeriodicChecks(clinicId, new Date(now), log).catch(() => lastChecked.delete(clinicId));
+}
+
+export async function runPeriodicChecks(clinicId: string, now: Date = new Date(), log?: Logger): Promise<void> {
+  await checkExpiringStock(clinicId, now, log);
+  await checkSubscription(clinicId, now, log);
+}
+
+async function checkExpiringStock(clinicId: string, now: Date, log?: Logger) {
+  const medicines = await prisma.medicine.findMany({
+    where: { clinicId, deletedAt: null, quantity: { gt: 0 }, expiryDate: { not: null, lte: new Date(now.getTime() + EXPIRY_WARNING_DAYS * DAY_MS) } },
+    select: { id: true, name: true, quantity: true, unit: true, expiryDate: true },
+  });
+  for (const medicine of medicines) {
+    const expiry = medicine.expiryDate!;
+    const expired = expiry.getTime() <= now.getTime();
+    await notifyStaff({
+      type: 'STOCK_EXPIRING',
+      clinicId,
+      title: expired ? `Expired stock: ${medicine.name}` : `Expiring soon: ${medicine.name}`,
+      body: expired
+        ? `${medicine.quantity} ${medicine.unit} of ${medicine.name} expired on ${shortDate(expiry)}. Remove it from stock so it is not dispensed.`
+        : `${medicine.quantity} ${medicine.unit} of ${medicine.name} expire on ${shortDate(expiry)}.`,
+      link: '/inventory',
+      emailSummary: expired
+        ? 'Some medicines in stock have expired and should be removed so they are not dispensed. Open the Inventory page to see which.'
+        : 'Some medicines in stock expire within the next two months. Open the Inventory page to see which.',
+      // Once when it comes within 60 days, once more when it has expired.
+      dedupeKey: `stock-${expired ? 'expired' : 'expiring'}:${medicine.id}:${isoDay(expiry)}`,
+      log,
+    });
+  }
+}
+
+async function checkSubscription(clinicId: string, now: Date, log?: Logger) {
+  const subscription = await prisma.subscription.findUnique({ where: { clinicId } });
+  if (!subscription || subscription.status === 'CANCELLED') return;
+
+  const deadline = subscription.status === 'TRIALING' ? subscription.trialEndsAt : subscription.currentPeriodEnd;
+  if (!deadline) return;
+  const daysLeft = (deadline.getTime() - now.getTime()) / DAY_MS;
+  if (daysLeft > SUBSCRIPTION_WARNING_DAYS) return;
+
+  const ended = daysLeft <= 0;
+  const what = subscription.status === 'TRIALING' ? 'free trial' : 'subscription';
+  await notifyStaff({
+    type: 'SUBSCRIPTION_REMINDER',
+    clinicId,
+    title: ended ? `Your ${what} has ended` : `Your ${what} ends on ${shortDate(deadline)}`,
+    body: ended
+      ? `Your Bulamu ${what} ended on ${shortDate(deadline)}. Subscribe from the Billing page to keep recording new patients and visits.`
+      : `Your Bulamu ${what} ends on ${shortDate(deadline)}. Subscribe from the Billing page so your facility's work is not interrupted.`,
+    link: '/billing',
+    emailSummary: ended
+      ? `Your facility's Bulamu ${what} has ended. Sign in and open the Billing page to subscribe.`
+      : `Your facility's Bulamu ${what} ends on ${shortDate(deadline)}. Sign in and open the Billing page to subscribe.`,
+    dedupeKey: `subscription-${ended ? 'ended' : 'ending'}:${subscription.id}:${isoDay(deadline)}`,
+    log,
+  });
+}
+
+/** For tests. */
+export function setPeriodicChecksEnabled(value: boolean) {
+  periodicChecksEnabled = value;
+  lastChecked.clear();
 }
 
 export async function notifyNewPrescription(

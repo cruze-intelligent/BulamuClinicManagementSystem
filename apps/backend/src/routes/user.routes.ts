@@ -36,6 +36,14 @@ export async function userRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // The signed-in user finished or skipped the walkthrough: it will not open by
+  // itself again, on any device (it can still be replayed from Help & FAQ).
+  fastify.post('/users/me/tour-completed', { preHandler: [authenticate] }, async (request) => {
+    const { userId } = getAuthUser(request);
+    const user = await prisma.user.update({ where: { id: userId }, data: { tourCompletedAt: new Date() }, select: { tourCompletedAt: true } });
+    return { success: true, tourCompletedAt: user.tourCompletedAt };
+  });
+
   // Add user to clinic (ADMIN only)
   fastify.post('/users', { preHandler: [requireRole('ADMIN')] }, async (request, reply) => {
     const { email, password, name, role, clinicId: requestedClinicId } = request.body as any;

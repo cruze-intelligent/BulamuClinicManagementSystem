@@ -3,21 +3,32 @@ import { prisma } from '../lib/prisma';
 import { authenticate, getAuthUser } from '../middleware/auth.middleware';
 import { authenticatePatient, getPatientAuthUser } from '../middleware/patient-auth.middleware';
 import {
-  describePreferences, listNotifications, markAllRead, markRead, sanitizeOptOuts, unreadCount, Recipient,
+  describePreferences, listNotifications, markAllRead, markRead, sanitizeOptOuts, unreadCount, Recipient, runPeriodicChecksSoon,
 } from '../lib/notifications';
 
 export async function notificationRoutes(fastify: FastifyInstance) {
   // ---- Staff -----------------------------------------------------------------
   const staffRecipient = (request: any): Recipient => ({ userId: getAuthUser(request).userId });
 
+  // Date-based reminders (expiring stock, subscription deadlines) are raised
+  // while a facility's staff are using the app - there is no background
+  // scheduler. Throttled per facility and run after the response, so these
+  // endpoints stay as cheap as before.
+  const checkFacility = (request: any) => {
+    const { clinicId, role } = getAuthUser(request);
+    if (role !== 'SUPER_ADMIN') runPeriodicChecksSoon(clinicId, (message) => fastify.log.warn(message));
+  };
+
   fastify.get('/notifications', { preHandler: [authenticate] }, async (request) => {
     const { limit } = request.query as any;
+    checkFacility(request);
     const result = await listNotifications(staffRecipient(request), Number(limit) || 50);
     return { success: true, ...result };
   });
 
   // Polled by the sidebar badge, so kept to a single cheap count query.
   fastify.get('/notifications/unread-count', { preHandler: [authenticate] }, async (request) => {
+    checkFacility(request);
     return { success: true, count: await unreadCount(staffRecipient(request)) };
   });
 

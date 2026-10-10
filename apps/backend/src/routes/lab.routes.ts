@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { authenticate, assertClinicMatch } from '../middleware/auth.middleware';
-import { notifyLabResultReady } from '../lib/notifications';
+import { authenticate, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
+import { notifyLabOrdered, notifyLabResultReady, notifyLabResultToOrderer } from '../lib/notifications';
 
 export async function labRoutes(fastify: FastifyInstance) {
 
@@ -38,9 +38,15 @@ export async function labRoutes(fastify: FastifyInstance) {
       }
       if (!assertClinicMatch(request, reply, patient.clinicId)) return;
 
+      const authUser = getAuthUser(request);
       const test = await prisma.labTest.create({
-        data: { patientId, consultationId, testName, orderedBy, results: '' }
+        data: { patientId, consultationId, testName, orderedBy, orderedByUserId: authUser.userId, results: '' }
       });
+
+      await notifyLabOrdered(
+        { clinicId: patient.clinicId, patientName: patient.name, testName: test.testName, orderedByUserId: authUser.userId },
+        (message) => fastify.log.warn(message)
+      );
 
       return { success: true, test };
     } catch (error: any) {
@@ -69,9 +75,15 @@ export async function labRoutes(fastify: FastifyInstance) {
         }
       });
 
-      // Tell the patient once, when the result first becomes available
+      // Tell the patient and the clinician who ordered it - once, when the
+      // result first becomes available.
       if (status === 'COMPLETED' && existing.status !== 'COMPLETED') {
-        await notifyLabResultReady({ patient: existing.patient, testName: test.testName }, (message) => fastify.log.warn(message));
+        const log = (message: string) => fastify.log.warn(message);
+        await notifyLabResultReady({ patient: existing.patient, testName: test.testName }, log);
+        await notifyLabResultToOrderer({
+          clinicId: existing.patient.clinicId, patientName: existing.patient.name, testName: test.testName,
+          orderedByUserId: existing.orderedByUserId, recordedByUserId: getAuthUser(request).userId,
+        }, log);
       }
 
       return { success: true, test };

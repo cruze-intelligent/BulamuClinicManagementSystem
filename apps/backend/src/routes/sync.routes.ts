@@ -5,7 +5,7 @@ import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/aut
 import { recordConflictIfStale } from '../lib/conflict';
 import { recordAudit } from '../lib/audit';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
-import { notifyIfLowStock, notifyLabResultReady, notifyNewPrescription } from '../lib/notifications';
+import { notifyDoctorOfAppointment, notifyIfLowStock, notifyLabOrdered, notifyLabResultReady, notifyLabResultToOrderer, notifyNewPrescription } from '../lib/notifications';
 import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
 import { consultationChildren, linkStockItems } from '../lib/consultation-records';
 
@@ -162,6 +162,17 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 updatedAt: incomingUpdatedAt,
               },
             });
+
+            // The doctor hears about a new booking, and about a cancellation.
+            const booked = !existing && record.status !== 'CANCELLED';
+            const cancelled = !!existing && existing.status !== 'CANCELLED' && record.status === 'CANCELLED';
+            if (booked || cancelled) {
+              const bookedPatient = await prisma.patient.findUnique({ where: { id: record.patientId }, select: { name: true } });
+              await notifyDoctorOfAppointment({
+                clinicId: record.clinicId, doctorId: record.doctorId, actorUserId: authUser.userId,
+                patientName: bookedPatient?.name ?? 'A patient', date: record.date, time: record.time, cancelled,
+              }, (message) => fastify.log.warn(message));
+            }
           }
         } else if (entity === 'consultation') {
           const appointment = await prisma.appointment.findUnique({ where: { id: payload.appointmentId } });
@@ -326,15 +337,25 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 results: payload.results || '',
                 status: payload.status || 'PENDING',
                 orderedBy: payload.orderedBy,
+                orderedByUserId: authUser.userId,
                 completedAt: payload.completedAt ? new Date(payload.completedAt) : null,
                 createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
                 updatedAt: incomingUpdatedAt,
               },
             });
 
-            // Tell the patient once, when the result first becomes available
+            const log = (message: string) => fastify.log.warn(message);
+            // A new order reaches the lab; a result reaches the patient and the
+            // clinician who ordered it - each once.
+            if (!existing) {
+              await notifyLabOrdered({ clinicId: patient.clinicId, patientName: patient.name, testName: record.testName, orderedByUserId: authUser.userId }, log);
+            }
             if (record.status === 'COMPLETED' && existing?.status !== 'COMPLETED') {
-              await notifyLabResultReady({ patient, testName: record.testName }, (message) => fastify.log.warn(message));
+              await notifyLabResultReady({ patient, testName: record.testName }, log);
+              await notifyLabResultToOrderer({
+                clinicId: patient.clinicId, patientName: patient.name, testName: record.testName,
+                orderedByUserId: record.orderedByUserId, recordedByUserId: authUser.userId,
+              }, log);
             }
           }
         } else if (entity === 'reproductiveHealth') {

@@ -278,22 +278,23 @@ describe('notifications', () => {
     expect(mailsTo('jane@example.com')).toHaveLength(1);
   });
 
-  it('tells a facility\'s admins and doctors - not other roles or facilities - about a referral', async () => {
+  it('tells a facility\'s admins, doctors, nurses and front desk - not the pharmacist or other facilities - about a referral', async () => {
     const a = await facility('Clinic A');
     const b = await facility('Clinic B');
     const registered = await app.inject({ method: 'POST', url: '/patients', headers: authHeader(a.users.NURSE.token), payload: { name: 'Referred Patient', phone: '0700555666' } });
 
     const referral = await app.inject({
       method: 'POST', url: '/referrals', headers: authHeader(a.users.NURSE.token),
-      payload: { patientId: registered.json().patient.id, toClinicId: b.clinic.id, reason: 'Needs surgery' },
+      payload: { patientId: registered.json().patient.id, toClinicId: b.clinic.id, reason: 'Needs surgery', consentConfirmed: true },
     });
     expect(referral.statusCode).toBe(200);
 
-    expect((await inboxOf(b.users.ADMIN.id)).map((n) => n.type)).toEqual(['REFERRAL_RECEIVED']);
-    expect((await inboxOf(b.users.DOCTOR.id)).map((n) => n.type)).toEqual(['REFERRAL_RECEIVED']);
-    for (const role of ['NURSE', 'PHARMACIST', 'STAFF'] as Role[]) {
-      expect(await inboxOf(b.users[role].id)).toHaveLength(0);
+    for (const role of ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] as Role[]) {
+      expect((await inboxOf(b.users[role].id)).map((n) => n.type)).toEqual(['REFERRAL_RECEIVED']);
     }
+    expect(await inboxOf(b.users.PHARMACIST.id)).toHaveLength(0);
+    // Emailed to admins and doctors only
+    expect(emailedTo().sort()).toEqual([b.users.ADMIN.email, b.users.DOCTOR.email].sort());
     expect(await prisma.notification.count({ where: { userId: { in: Object.values(a.users).map((u) => u.id) } } })).toBe(0);
   });
 
@@ -316,7 +317,7 @@ describe('notifications', () => {
     expect(sendMailMock).not.toHaveBeenCalled();
   });
 
-  it('tells admins - but not the author - about a note on a record, without putting the note in the email', async () => {
+  it('tells admins, doctors and nurses - but not the author - about a note on a record, without putting the note in the email', async () => {
     const { users } = await facility();
     const registered = await app.inject({ method: 'POST', url: '/patients', headers: authHeader(users.NURSE.token), payload: { name: 'Noted Patient', phone: '0700999000' } });
 
@@ -326,7 +327,10 @@ describe('notifications', () => {
     });
 
     expect((await inboxOf(users.ADMIN.id)).map((n) => n.type)).toEqual(['NEW_NOTE']);
+    expect((await inboxOf(users.DOCTOR.id)).map((n) => n.type)).toEqual(['NEW_NOTE']);
     expect(await inboxOf(users.NURSE.id)).toHaveLength(0);
+    expect(await inboxOf(users.PHARMACIST.id)).toHaveLength(0);
+    expect(emailedTo()).toEqual([users.ADMIN.email]);
     expect(mailsTo(users.ADMIN.email)[0].html).not.toContain('sensitive complaint');
   });
 
@@ -371,9 +375,9 @@ describe('notifications', () => {
 
       const prefs = await app.inject({ method: 'GET', url: '/notifications/preferences', headers: authHeader(users.PHARMACIST.token) });
       const types = prefs.json().preferences.map((p: any) => p.type).sort();
-      expect(types).toEqual(['LOW_STOCK', 'NEW_PRESCRIPTION']);
-      const emailable = prefs.json().preferences.filter((p: any) => p.emailAvailable).map((p: any) => p.type);
-      expect(emailable).toEqual(['LOW_STOCK']);
+      expect(types).toEqual(['LOW_STOCK', 'NEW_PRESCRIPTION', 'OUT_OF_STOCK', 'STOCK_EXPIRING']);
+      const emailable = prefs.json().preferences.filter((p: any) => p.emailAvailable).map((p: any) => p.type).sort();
+      expect(emailable).toEqual(['LOW_STOCK', 'OUT_OF_STOCK', 'STOCK_EXPIRING']);
 
       // NEW_PRESCRIPTION is never emailed and REFERRAL_RECEIVED isn't theirs - both ignored
       const update = await app.inject({
@@ -384,7 +388,10 @@ describe('notifications', () => {
       expect((await prisma.user.findUniqueOrThrow({ where: { id: users.PHARMACIST.id } })).emailOptOuts).toEqual(['LOW_STOCK']);
 
       const nurse = await app.inject({ method: 'GET', url: '/notifications/preferences', headers: authHeader(users.NURSE.token) });
-      expect(nurse.json().preferences.map((p: any) => p.type)).toEqual(['APPOINTMENT_REQUESTED']);
+      expect(nurse.json().preferences.map((p: any) => p.type).sort()).toEqual([
+        'APPOINTMENT_REQUESTED', 'HISTORY_ACCESS_APPROVED', 'LAB_RESULT_AVAILABLE', 'LAB_TEST_ORDERED', 'NEW_NOTE',
+        'PATIENT_ADMITTED', 'PATIENT_DISCHARGED', 'REFERRAL_RECEIVED', 'REFERRAL_UPDATED',
+      ]);
     });
 
     it('removes notifications older than the retention period when the list is opened', async () => {

@@ -31,7 +31,16 @@ model User {
   // when they were last seen using the app (updated at most every few minutes).
   lastLoginAt DateTime?
   lastSeenAt  DateTime?
+  // When the user finished (or skipped) the guided walkthrough. It opens by
+  // itself only while this is empty - i.e. on their first sign-in, on any
+  // device - and can be replayed from Help & FAQ.
+  tourCompletedAt DateTime?
   activityDays UserActivityDay[]
+  referralsMade        Referral[]      @relation("ReferralReferredBy")
+  admissionsAdmitted   Admission[]     @relation("AdmissionAdmittedBy")
+  admissionsAttending  Admission[]     @relation("AdmissionAttendingDoctor")
+  admissionsDischarged Admission[]     @relation("AdmissionDischargedBy")
+  admissionNotes       AdmissionNote[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -115,6 +124,9 @@ model Clinic {
   patientAccessGrants    PatientAccessGrant[]
   appointmentRequests    AppointmentRequest[]
   patientAccessOtps      PatientAccessOtp[]
+  wards                  Ward[]
+  admissions             Admission[]
+  historyShares          HistoryShare[]
   isActive  Boolean  @default(true)
   registrationStatus RegistrationStatus @default(PENDING)
   approvedAt    DateTime?
@@ -250,6 +262,7 @@ model Patient {
   referrals    Referral[]
   documents    Document[]
   appointmentRequests AppointmentRequest[]
+  admissions   Admission[]
   deletedAt    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -264,6 +277,10 @@ enum AllergyStatus {
   KNOWN
 }
 
+// A patient referred (or transferred on discharge) to another facility. The
+// referral itself is the referral letter: the reason, the urgency and the
+// clinical summary the referring clinician chose to send, shared with the
+// receiving facility only after the clinician records that the patient agreed.
 model Referral {
   id           String   @id @default(uuid())
   patientId    String
@@ -273,7 +290,23 @@ model Referral {
   toClinicId   String
   toClinic     Clinic   @relation("ReferralTo", fields: [toClinicId], references: [id])
   reason       String
+  urgency      ReferralUrgency @default(ROUTINE)
+  // What the receiving clinician needs: findings, treatment given, why referred.
+  clinicalSummary String?
   status       ReferralStatus @default(PENDING)
+  referredByUserId String?
+  referredBy       User?    @relation("ReferralReferredBy", fields: [referredByUserId], references: [id], onDelete: SetNull)
+  // The referring clinician's record that the patient agreed to the referral
+  // and to this summary being sent.
+  consentRecordedAt DateTime?
+  // The receiving facility's reply.
+  respondedAt       DateTime?
+  respondedByUserId String?
+  responseNote      String?
+  // The patient's record at the receiving facility, once registered there.
+  receivingPatientId String?
+  // Set when the referral was made as the outcome of an inpatient discharge.
+  admission    Admission?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -285,8 +318,126 @@ model Referral {
 enum ReferralStatus {
   PENDING
   ACCEPTED
+  DECLINED
   COMPLETED
   CANCELLED
+}
+
+enum ReferralUrgency {
+  ROUTINE
+  URGENT
+  EMERGENCY
+}
+
+// --- Inpatients ------------------------------------------------------------
+
+// A ward at a facility, with its bed capacity.
+model Ward {
+  id         String      @id @default(uuid())
+  clinicId   String
+  clinic     Clinic      @relation(fields: [clinicId], references: [id])
+  name       String
+  type       WardType    @default(GENERAL)
+  beds       Int
+  isActive   Boolean     @default(true)
+  admissions Admission[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@unique([clinicId, name])
+}
+
+enum WardType {
+  GENERAL
+  MALE
+  FEMALE
+  MATERNITY
+  PAEDIATRIC
+  SURGICAL
+  ICU
+  ISOLATION
+  PRIVATE
+  OTHER
+}
+
+// One inpatient stay, from admission to discharge.
+model Admission {
+  id                 String           @id @default(uuid())
+  clinicId           String
+  clinic             Clinic           @relation(fields: [clinicId], references: [id])
+  patientId          String
+  patient            Patient          @relation(fields: [patientId], references: [id])
+  wardId             String
+  ward               Ward             @relation(fields: [wardId], references: [id])
+  bed                String?
+  status             AdmissionStatus  @default(ADMITTED)
+  // Why the patient was admitted / the admitting (provisional) diagnosis.
+  reason             String
+  admissionIcd10Code String?
+  attendingDoctorId  String?
+  attendingDoctor    User?            @relation("AdmissionAttendingDoctor", fields: [attendingDoctorId], references: [id], onDelete: SetNull)
+  admittedByUserId   String
+  admittedBy         User             @relation("AdmissionAdmittedBy", fields: [admittedByUserId], references: [id])
+  admittedAt         DateTime         @default(now())
+  // Discharge
+  dischargedAt         DateTime?
+  dischargedByUserId   String?
+  dischargedBy         User?          @relation("AdmissionDischargedBy", fields: [dischargedByUserId], references: [id], onDelete: SetNull)
+  outcome              DischargeOutcome?
+  dischargeDiagnosis   String?
+  dischargeIcd10Code   String?
+  dischargeSummary     String?
+  followUpInstructions String?
+  // A discharge by referral/transfer creates the referral that goes with the patient.
+  referralId           String?        @unique
+  referral             Referral?      @relation(fields: [referralId], references: [id])
+  notes                AdmissionNote[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([clinicId, status])
+  @@index([wardId, status])
+  @@index([patientId])
+}
+
+enum AdmissionStatus {
+  ADMITTED
+  DISCHARGED
+}
+
+// How the stay ended - the categories used in inpatient (HMIS 108) reporting.
+enum DischargeOutcome {
+  RECOVERED
+  IMPROVED
+  REFERRED
+  LEFT_AGAINST_ADVICE
+  ABSCONDED
+  DIED
+}
+
+// Nursing notes, doctor's ward-round notes, observations (vitals) and ward
+// transfers during a stay. Never edited - a correction is a new note.
+model AdmissionNote {
+  id           String            @id @default(uuid())
+  admissionId  String
+  admission    Admission         @relation(fields: [admissionId], references: [id])
+  authorUserId String
+  author       User              @relation(fields: [authorUserId], references: [id])
+  authorRole   Role
+  kind         AdmissionNoteKind
+  note         String?
+  // { temperatureC, pulse, respiratoryRate, systolic, diastolic, spo2, weightKg }
+  vitals       Json?
+  createdAt    DateTime          @default(now())
+
+  @@index([admissionId, createdAt])
+}
+
+enum AdmissionNoteKind {
+  NURSING_NOTE
+  WARD_ROUND
+  OBSERVATION
+  TRANSFER
 }
 
 enum Sex {
@@ -512,6 +663,9 @@ model LabTest {
   results         String
   status          LabStatus @default(PENDING)
   orderedBy       String
+  // The account that placed the order (set by the server, never trusted from
+  // the client) - who is told when the result is ready.
+  orderedByUserId String?
   completedAt     DateTime?
   deletedAt       DateTime?
   createdAt       DateTime @default(now())
@@ -595,6 +749,7 @@ enum AuditAction {
   UPDATE
   DEACTIVATE
   DELETE
+  VIEW
 }
 
 // General product feedback (FEEDBACK, no linked record) and per-record notes
@@ -645,6 +800,7 @@ model PatientAccount {
   appointmentRequests AppointmentRequest[]
   accessOtps        PatientAccessOtp[]
   notifications     Notification[]
+  historyShares     HistoryShare[]
   emailOptOuts      NotificationType[]          @default([])
   // Set when the patient closes their account: the row is kept as an
   // anonymised tombstone because audit entries, grants and appointment
@@ -680,6 +836,42 @@ model PatientAccessGrant {
 
   @@index([patientAccountId])
   @@index([clinicId])
+}
+
+// Being linked to a patient does NOT let a facility read that patient's history
+// from other facilities. That needs the patient's own, explicit approval - with
+// their password or a code sent to them at the facility, or from their Patient
+// Portal - recorded here, and withdrawable by the patient at any time.
+model HistoryShare {
+  id                String               @id @default(uuid())
+  patientAccountId  String
+  patientAccount    PatientAccount       @relation(fields: [patientAccountId], references: [id])
+  // The facility allowed to read.
+  clinicId          String
+  clinic            Clinic               @relation(fields: [clinicId], references: [id])
+  status            HistoryShareStatus   @default(REQUESTED)
+  requestedByUserId String
+  requestedAt       DateTime             @default(now())
+  approvedAt        DateTime?
+  approvalMethod    HistoryConsentMethod?
+  // Withdrawn by the patient, or declined by them while still a request.
+  endedAt           DateTime?
+
+  @@index([patientAccountId, status])
+  @@index([clinicId, status])
+}
+
+enum HistoryShareStatus {
+  REQUESTED
+  APPROVED
+  DECLINED
+  WITHDRAWN
+}
+
+enum HistoryConsentMethod {
+  PIN
+  OTP
+  PORTAL
 }
 
 enum PatientAccessGrantMethod {
@@ -748,6 +940,10 @@ model PatientAccessOtp {
   clinicId         String
   clinic           Clinic         @relation(fields: [clinicId], references: [id])
   codeHash         String
+  // What the code approves: LINK (link the account at this facility) or
+  // HISTORY (let this facility read history from other facilities). A code
+  // issued for one can never be used for the other.
+  purpose          String         @default("LINK")
   expiresAt        DateTime
   usedAt           DateTime?
   createdAt        DateTime       @default(now())
@@ -768,6 +964,22 @@ enum NotificationType {
   REFERRAL_RECEIVED
   RECORD_ACCESS_GRANTED
   NEW_NOTE
+  OUT_OF_STOCK
+  STOCK_EXPIRING
+  LAB_TEST_ORDERED
+  LAB_RESULT_AVAILABLE
+  APPOINTMENT_BOOKED
+  APPOINTMENT_CANCELLED
+  REFERRAL_UPDATED
+  PATIENT_ADMITTED
+  PATIENT_DISCHARGED
+  HISTORY_ACCESS_APPROVED
+  SUBSCRIPTION_REMINDER
+  PAYMENT_RECEIVED
+  REFERRAL_ISSUED
+  DISCHARGE_SUMMARY_READY
+  HISTORY_SHARING_APPROVED
+  HISTORY_ACCESS_REQUESTED
 }
 
 // An in-app notification for exactly one recipient: either a staff user or a
@@ -785,9 +997,13 @@ model Notification {
   title            String
   body             String
   link             String?
+  // For reminders raised by a periodic check (stock expiring, trial ending):
+  // the same key is never notified twice, however often the check runs.
+  dedupeKey        String?
   readAt           DateTime?
   createdAt        DateTime         @default(now())
 
   @@index([userId, createdAt])
   @@index([patientAccountId, createdAt])
+  @@index([clinicId, dedupeKey])
 }

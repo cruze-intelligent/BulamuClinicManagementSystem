@@ -264,6 +264,191 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
   return done;
 }
 
+// --- Clinical letters (referral letter, discharge summary) ---------------------
+
+type LetterSection = { heading: string; body: string | null | undefined };
+
+function newDocument(): { doc: PDFKit.PDFDocument; done: Promise<Buffer> } {
+  const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
+  const chunks: Buffer[] = [];
+  doc.on('data', (chunk) => chunks.push(chunk));
+  const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+  return { doc, done };
+}
+
+// Title, a details table, then free-text sections - each kept off the footer and
+// with a "continued" header naming the patient if it runs onto another page.
+async function drawClinicalLetter(input: {
+  clinicName: string;
+  title: string;
+  reference: string;
+  banner?: { text: string; color: string } | null;
+  details: Array<[string, string | null | undefined]>;
+  sections: LetterSection[];
+  patientName: string;
+  signatures: [string, string];
+}): Promise<Buffer> {
+  const { doc, done } = newDocument();
+  drawLetterhead(doc, input.clinicName);
+
+  doc.moveDown(1.5);
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text(input.title);
+  doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(`#${input.reference}`);
+  if (input.banner) {
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(input.banner.color).text(input.banner.text);
+  }
+  doc.moveDown(1);
+
+  const labelX = 50;
+  const valueX = 185;
+  doc.fontSize(10);
+  for (const [label, value] of input.details) {
+    if (!value) continue;
+    const y = doc.y;
+    doc.fillColor(MUTED).font('Helvetica').text(label, labelX, y, { width: 130 });
+    doc.fillColor(INK).font('Helvetica-Bold').text(value, valueX, y, { width: 360 });
+    doc.moveDown(0.45);
+  }
+
+  const continuePage = () => {
+    doc.addPage();
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED)
+      .text(`${input.title} for ${input.patientName} (continued) - #${input.reference.slice(0, 8)}`, labelX, 50, { width: 495 });
+    doc.y = 80;
+  };
+
+  for (const section of input.sections) {
+    if (!section.body) continue;
+    if (doc.y > doc.page.maxY() - 120) continuePage();
+    doc.moveDown(0.6);
+    doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.6);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text(section.heading, labelX, doc.y);
+    doc.moveDown(0.3);
+    for (const paragraph of section.body.split(/\n+/)) {
+      if (doc.y > doc.page.maxY() - 90) continuePage();
+      doc.font('Helvetica').fontSize(10).fillColor(INK).text(paragraph, labelX, doc.y, { width: 495 });
+    }
+  }
+
+  if (doc.y > doc.page.maxY() - 150) continuePage();
+  doc.moveDown(2);
+  const sigY = doc.y;
+  doc.strokeColor(MUTED).lineWidth(0.5);
+  doc.moveTo(50, sigY + 20).lineTo(250, sigY + 20).stroke();
+  doc.moveTo(310, sigY + 20).lineTo(545, sigY + 20).stroke();
+  doc.font('Helvetica').fontSize(8).fillColor(MUTED)
+    .text(input.signatures[0], 50, sigY + 24)
+    .text(input.signatures[1], 310, sigY + 24);
+
+  await drawFooter(doc);
+  doc.end();
+  return done;
+}
+
+const dateText = (date: Date | null | undefined) =>
+  date ? date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' }) : null;
+
+export type ReferralLetterInput = {
+  referralId: string;
+  fromClinicName: string;
+  fromClinicPhone: string | null;
+  fromFacilityCode: string;
+  toClinicName: string;
+  urgency: string;
+  createdAt: Date;
+  referredByName: string | null;
+  patient: { name: string; sexAge: string | null; phone: string | null; address: string | null; nextOfKin: string | null };
+  allergies: string;
+  reason: string;
+  clinicalSummary: string | null;
+  status: string;
+  responseNote: string | null;
+};
+
+/** The letter the patient carries to the receiving facility. */
+export async function generateReferralLetterPdf(input: ReferralLetterInput): Promise<Buffer> {
+  const urgent = input.urgency !== 'ROUTINE';
+  return drawClinicalLetter({
+    clinicName: input.fromClinicName,
+    title: 'REFERRAL LETTER',
+    reference: input.referralId,
+    banner: urgent ? { text: `${input.urgency === 'EMERGENCY' ? 'EMERGENCY' : 'URGENT'} REFERRAL`, color: '#b91c1c' } : null,
+    patientName: input.patient.name,
+    details: [
+      ['To', input.toClinicName],
+      ['From', `${input.fromClinicName} (${input.fromFacilityCode})${input.fromClinicPhone ? ` - ${input.fromClinicPhone}` : ''}`],
+      ['Date', dateText(input.createdAt)],
+      ['Referred by', input.referredByName],
+      ['Patient', input.patient.name],
+      ['Age / sex', input.patient.sexAge],
+      ['Phone', input.patient.phone],
+      ['Address', input.patient.address],
+      ['Next of kin', input.patient.nextOfKin],
+      ['Allergies', input.allergies],
+      ['Status', input.status === 'PENDING' ? null : input.status.charAt(0) + input.status.slice(1).toLowerCase()],
+    ],
+    sections: [
+      { heading: 'Reason for referral', body: input.reason },
+      { heading: 'Clinical summary', body: input.clinicalSummary },
+      { heading: 'Reply from the receiving facility', body: input.responseNote },
+    ],
+    signatures: ['Referring clinician - signature and stamp', 'Received by / date'],
+  });
+}
+
+export type DischargeSummaryInput = {
+  admissionId: string;
+  clinicName: string;
+  facilityCode: string;
+  patient: { name: string; sexAge: string | null; phone: string | null };
+  ward: string;
+  admittedAt: Date;
+  dischargedAt: Date;
+  attendingDoctor: string | null;
+  dischargedBy: string | null;
+  admissionReason: string;
+  outcome: string;
+  dischargeDiagnosis: string | null;
+  dischargeSummary: string | null;
+  followUpInstructions: string | null;
+  referredTo: string | null;
+  allergies: string;
+};
+
+/** The summary the patient takes home (and the next clinician reads). */
+export async function generateDischargeSummaryPdf(input: DischargeSummaryInput): Promise<Buffer> {
+  const days = Math.max(1, Math.round((input.dischargedAt.getTime() - input.admittedAt.getTime()) / 86400000));
+  return drawClinicalLetter({
+    clinicName: input.clinicName,
+    title: 'DISCHARGE SUMMARY',
+    reference: input.admissionId,
+    patientName: input.patient.name,
+    details: [
+      ['Patient', input.patient.name],
+      ['Age / sex', input.patient.sexAge],
+      ['Phone', input.patient.phone],
+      ['Facility ID', input.facilityCode],
+      ['Ward', input.ward],
+      ['Admitted', dateText(input.admittedAt)],
+      ['Discharged', `${dateText(input.dischargedAt)} (${days} day${days === 1 ? '' : 's'})`],
+      ['Outcome', input.outcome],
+      ['Referred to', input.referredTo],
+      ['Attending clinician', input.attendingDoctor],
+      ['Discharged by', input.dischargedBy],
+      ['Allergies', input.allergies],
+    ],
+    sections: [
+      { heading: 'Reason for admission', body: input.admissionReason },
+      { heading: 'Final diagnosis', body: input.dischargeDiagnosis },
+      { heading: 'Summary of the stay and treatment', body: input.dischargeSummary },
+      { heading: 'Follow-up and medicines to continue at home', body: input.followUpInstructions },
+    ],
+    signatures: ['Clinician - signature and stamp', 'Patient / caregiver'],
+  });
+}
+
 export type ReceiptPdfInput = {
   paymentId: string;
   clinicName: string;

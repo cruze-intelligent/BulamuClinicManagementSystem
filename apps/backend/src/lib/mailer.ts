@@ -348,6 +348,26 @@ export function patientPasswordResetEmail(setPasswordUrl: string): string {
   `);
 }
 
+/** The code a patient gives a facility to approve it seeing their history from other facilities. */
+export function historyShareOtpEmail(rawClinicName: string, code: string): string {
+  const clinicName = escapeHtml(rawClinicName);
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} is asking to see your health history</h2>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      ${clinicName} would like to see your records from the other facilities you have visited - your allergies,
+      diagnoses, medicines, lab results and hospital stays - so they can treat you safely. Nothing is shared unless you agree.
+    </p>
+    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+      If you agree, give this code to the staff member helping you. It expires in 10 minutes.
+    </p>
+    <p style="margin:0 0 20px;font-size:28px;font-weight:bold;letter-spacing:4px;color:${BRAND_TEAL};">${code}</p>
+    <p style="margin:0;font-size:13px;color:#64748b;">
+      If you do not agree, or did not expect this, do nothing - no records will be shared. You can stop sharing at any
+      time from the Access page of your Patient Portal.
+    </p>
+  `);
+}
+
 export function patientAccessOtpEmail(rawClinicName: string, code: string): string {
   const clinicName = escapeHtml(rawClinicName);
   return emailShell(`

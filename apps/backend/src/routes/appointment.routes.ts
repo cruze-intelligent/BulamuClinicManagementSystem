@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
-import { notifyPatient } from '../lib/notifications';
+import { notifyDoctorOfAppointment, notifyPatient } from '../lib/notifications';
 
 export async function appointmentRoutes(fastify: FastifyInstance) {
 
@@ -28,6 +28,11 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
         data: { patientId, doctorId, clinicId, date: new Date(date), time, notes },
         include: { patient: true, doctor: { select: { id: true, name: true } } }
       });
+
+      await notifyDoctorOfAppointment({
+        clinicId, doctorId: appointment.doctorId, actorUserId: getAuthUser(request).userId,
+        patientName: appointment.patient.name, date: appointment.date, time: appointment.time,
+      }, (message) => fastify.log.warn(message));
 
       return { success: true, appointment };
     } catch (error: any) {
@@ -76,8 +81,16 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
 
       const appointment = await prisma.appointment.update({
         where: { id },
-        data: { status }
+        data: { status },
+        include: { patient: { select: { name: true } } },
       });
+
+      if (status === 'CANCELLED' && existing.status !== 'CANCELLED') {
+        await notifyDoctorOfAppointment({
+          clinicId: existing.clinicId, doctorId: existing.doctorId, actorUserId: getAuthUser(request).userId,
+          patientName: appointment.patient.name, date: existing.date, time: existing.time, cancelled: true,
+        }, (message) => fastify.log.warn(message));
+      }
 
       return { success: true, appointment };
     } catch (error: any) {
@@ -155,6 +168,12 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
         action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
         metadata: { status: 'ACCEPTED', appointmentId: appointment.id },
       });
+
+      const requested = await prisma.patient.findUnique({ where: { id: existing.patientId }, select: { name: true } });
+      await notifyDoctorOfAppointment({
+        clinicId: existing.clinicId, doctorId, actorUserId: authUser.userId,
+        patientName: requested?.name ?? 'A patient', date: appointment.date, time: appointment.time,
+      }, (message) => fastify.log.warn(message));
 
       const clinic = await prisma.clinic.findUnique({ where: { id: existing.clinicId }, select: { name: true } });
       await notifyPatient({

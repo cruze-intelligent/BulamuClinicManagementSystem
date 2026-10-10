@@ -82,6 +82,7 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
         where: {
           patientAccountId: account.id,
           clinicId: authUser.clinicId,
+          purpose: 'LINK',
           OR: [{ expiresAt: { lt: new Date() } }, { usedAt: { not: null } }],
         },
       });
@@ -145,7 +146,7 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
       } else {
         if (!otp) return reply.status(400).send({ error: 'otp is required for the OTP method' });
         const otpRow = await prisma.patientAccessOtp.findFirst({
-          where: { patientAccountId: account.id, clinicId: authUser.clinicId, usedAt: null },
+          where: { patientAccountId: account.id, clinicId: authUser.clinicId, purpose: 'LINK', usedAt: null },
           orderBy: { createdAt: 'desc' },
         });
         if (!otpRow || otpRow.expiresAt < new Date() || otpRow.codeHash !== hashToken(otp)) {
