@@ -17,6 +17,8 @@ import { CommentsSection } from '@/components/comments-section';
 import { Select } from '@/components/ui/select';
 import { ConsultationDetails } from '@/components/consultation-details';
 import { AllergyPanel } from '@/components/allergy-panel';
+import { PatientAdmissions } from '@/components/patient-admissions';
+import { SharedHistoryPanel } from '@/components/shared-history-panel';
 
 const DOCUMENT_CATEGORIES = [
   { value: 'LAB_RESULT', label: 'Lab Result' },
@@ -449,7 +451,18 @@ function PatientHistoryContent() {
               </>
             ) : null}
           </div>
+
+          {canEditClinicalData && (
+            <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
+              <Link href={`/wards?admit=${patient.id}`}><Button size="sm" variant="outline">Admit to a ward</Button></Link>
+              <Link href={`/referrals?patientId=${patient.id}`}><Button size="sm" variant="outline">Refer to another facility</Button></Link>
+            </div>
+          )}
         </Card>
+
+        {canEditClinicalData && <PatientAdmissions patientId={patient.id} />}
+
+        {hasRole('DOCTOR', 'NURSE') && <SharedHistoryPanel patientId={patient.id} />}
 
         {patient.sex === 'FEMALE' && (
           <Card className="p-6 mb-6">

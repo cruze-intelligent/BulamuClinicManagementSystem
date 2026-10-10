@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Building2, ShieldCheck } from 'lucide-react';
 import { ClosePatientAccount } from '@/components/close-patient-account';
+import { HistorySharing } from '@/components/history-sharing-portal';
 
 type Grant = {
   id: string;
@@ -120,6 +121,8 @@ export default function PatientPortalAccessPage() {
           </Card>
         ))
       )}
+
+      <HistorySharing />
 
       <ClosePatientAccount />
     </div>

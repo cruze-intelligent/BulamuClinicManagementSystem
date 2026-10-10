@@ -11,6 +11,7 @@ import { ConsultationDetails } from '@/components/consultation-details';
 import type { DiagnosisView } from '@/lib/diagnosis';
 import type { PrescriptionView } from '@/lib/prescription';
 import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, openDocumentPreview } from '@/lib/document-preview';
+import { PortalStaysAndReferrals, type PortalReferral, type PortalStay } from '@/components/portal-stays-referrals';
 
 const DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
   LAB_RESULT: 'Lab Result',
@@ -58,6 +59,8 @@ type PatientRecord = {
   labTests: Array<{ id: string; testName: string; results: string; status: string; createdAt: string }>;
   appointmentRequests: AppointmentRequest[];
   documents: Document[];
+  referrals?: PortalReferral[];
+  admissions?: PortalStay[];
 };
 
 type MeResponse = {
@@ -379,6 +382,8 @@ export default function PatientPortalDashboardPage() {
               </ul>
             )}
           </div>
+
+          <PortalStaysAndReferrals referrals={record.referrals ?? []} stays={record.admissions ?? []} />
 
           <div className="mt-4">
             <div className="flex items-center justify-between">

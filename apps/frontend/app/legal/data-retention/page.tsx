@@ -5,8 +5,14 @@ export const metadata = { title: 'Data Retention and Deletion Policy | Bulamu' }
 const SCHEDULE: Array<{ category: string; includes: string; kept: string; after: string }> = [
   {
     category: 'Clinical records',
-    includes: 'Patient details, appointments, consultations, prescriptions, lab tests, reproductive health records, referrals and invoices entered by a facility.',
+    includes: 'Patient details, appointments, consultations, prescriptions, lab tests, reproductive health records, referrals and referral letters, hospital admissions, ward notes and observations, discharge summaries and invoices entered by a facility.',
     kept: 'While the facility account is active, and afterwards for 5 years from the last entry on the record.*',
+    after: 'Permanently erased.',
+  },
+  {
+    category: 'Your approvals to share your history',
+    includes: 'Which facilities asked to see your records from other facilities, and when you approved, declined or stopped sharing. Each time a facility looks at shared history is also recorded, and you can see it in your Patient Portal.',
+    kept: 'As long as the clinical records they concern.',
     after: 'Permanently erased.',
   },
   {

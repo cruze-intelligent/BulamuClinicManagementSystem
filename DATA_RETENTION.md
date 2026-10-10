@@ -22,7 +22,8 @@ it in the other.
 
 | Category | Kept | At the end |
 | --- | --- | --- |
-| Clinical records (patients, appointments, consultations, prescriptions, lab tests, reproductive health, referrals, invoices) | While the facility is active, then 5 years from the last entry | Erase |
+| Clinical records (patients, appointments, consultations, prescriptions, lab tests, reproductive health, referrals and referral letters, inpatient admissions, ward notes and observations, discharge summaries, invoices) | While the facility is active, then 5 years from the last entry | Erase |
+| A patient's approvals to share their history between facilities (who asked, when and how the patient approved, declined or stopped sharing) | As long as the clinical records they concern; every viewing of shared history is in the audit trail | Erase |
 | Documents | With the clinical record; deleting a document erases it at once | Erase |
 | Facility and staff account details | While the facility is active; after facility deletion, 5 years (same as clinical) | Erase |
 | Subscription, payment and receipt records | 7 years | Erase |
