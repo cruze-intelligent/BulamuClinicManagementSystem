@@ -3,57 +3,15 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import {
-  BarChart3,
-  Bell,
-  CalendarDays,
-  ClipboardList,
-  CreditCard,
-  Crown,
-  FlaskConical,
-  HelpCircle,
-  Home,
-  LogOut,
-  Package,
-  Pill,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Receipt,
-  Search,
-  ShieldCheck,
-  Stethoscope,
-  Users,
-  ArrowRightLeft,
-  MapPinned,
-  History,
-  X,
-} from 'lucide-react';
+import { LogOut, PanelLeftClose, PanelLeftOpen, Search, ShieldCheck, X } from 'lucide-react';
 import { useAuth, getHomePath } from '@/lib/useAuth';
 import { useSidebar } from '@/lib/sidebar-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { roleLabel } from '@/lib/role-labels';
 import { useUnreadNotifications } from '@/lib/useUnreadNotifications';
+import { NAV_ITEMS } from '@/lib/nav-items';
 
-const navItems = [
-  { name: 'Facility Management', path: '/super-admin', icon: Crown, roles: ['SUPER_ADMIN'] },
-  { name: 'Analytics', path: '/super-admin/analytics', icon: BarChart3, roles: ['SUPER_ADMIN'] },
-  { name: 'Dashboard', path: '/dashboard', icon: Home, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
-  { name: 'Patients', path: '/patients', icon: Users, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
-  { name: 'Appointments', path: '/appointments', icon: CalendarDays, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
-  { name: 'Consultations', path: '/consultations', icon: Stethoscope, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST'] },
-  { name: 'Lab Tests', path: '/lab', icon: FlaskConical, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
-  { name: 'Referrals', path: '/referrals', icon: ArrowRightLeft, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
-  { name: 'Household Visit', path: '/chw-visit', icon: MapPinned, roles: ['NURSE', 'STAFF'] },
-  { name: 'Inventory', path: '/inventory', icon: Package, roles: ['ADMIN', 'PHARMACIST'] },
-  { name: 'Dispensing', path: '/dispensing', icon: Pill, roles: ['ADMIN', 'PHARMACIST'] },
-  { name: 'Invoices', path: '/invoices', icon: Receipt, roles: ['ADMIN'] },
-  { name: 'Reports', path: '/reports', icon: BarChart3, roles: ['ADMIN', 'SUPER_ADMIN'] },
-  { name: 'Notifications', path: '/notifications', icon: Bell, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
-  { name: 'Activity', path: '/sync-activity', icon: History, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
-  { name: 'Staff', path: '/users', icon: ClipboardList, roles: ['ADMIN'] },
-  { name: 'Billing', path: '/billing', icon: CreditCard, roles: ['ADMIN'] },
-  { name: 'Help & FAQ', path: '/help', icon: HelpCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
-];
+const navItems = NAV_ITEMS;
 
 function NavLinks({
   items,
@@ -77,6 +35,7 @@ function NavLinks({
           <Link
             key={item.path}
             href={item.path}
+            data-tour={`nav-${item.path}`}
             title={compact ? item.name : undefined}
             onClick={onNavigate}
             className={`relative flex min-h-10 items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors ${compact ? 'justify-center' : ''} ${

@@ -1,227 +1,227 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import {
-  ArrowLeft,
-  ArrowRight,
-  BarChart3,
-  CalendarClock,
-  CheckCircle2,
-  ClipboardList,
-  CreditCard,
-  DatabaseZap,
-  FlaskConical,
-  HelpCircle,
-  Package,
-  ShieldCheck,
-  Stethoscope,
-  Users,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { ArrowLeft, ArrowRight, CheckCircle2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/useAuth';
+import { useSidebar } from '@/lib/sidebar-provider';
+import { TOUR_STEPS, TourStep } from '@/lib/tour-steps';
 
-const TOUR_KEY_PREFIX = 'bulamu_onboarding_completed';
-
-type Step = { title: string; body: string; icon: LucideIcon };
-
-const welcomeStep: Step = {
-  title: 'Welcome to Bulamu',
-  body: 'Bulamu is a management system for clinics, health centres, hospitals, laboratories, imaging centres, pharmacies, mobile units, and community outreach teams.',
-  icon: ShieldCheck,
-};
-
-const offlineStep: Step = {
-  title: 'Work offline first',
-  body: 'The PWA installs to device home screens, caches the app shell, stores records in IndexedDB, queues mutations while offline, and syncs when connectivity returns.',
-  icon: DatabaseZap,
-};
-
-const helpStep: Step = {
-  title: 'Get help anytime',
-  body: 'Answers to common questions are in Help & FAQ from the sidebar. If something looks wrong, reach out to your facility administrator.',
-  icon: HelpCircle,
-};
-
-const roleSteps: Record<string, Step[]> = {
-  SUPER_ADMIN: [
-    {
-      title: 'Authorize facilities',
-      body: 'Review self-registered facilities in Facility Management, approve or reject them, and each approved facility is issued its own Facility ID and 2-week free trial.',
-      icon: ClipboardList,
-    },
-    {
-      title: 'Manage the network',
-      body: 'Suspend, reactivate, or permanently delete a facility from Facility Management, and monitor national activity, revenue, and subscriptions from the overview dashboard.',
-      icon: BarChart3,
-    },
-  ],
-  ADMIN: [
-    {
-      title: 'Set up your team',
-      body: 'Create staff accounts and assign roles - Doctor, Nurse, Pharmacist, or Front Desk - from Staff.',
-      icon: Users,
-    },
-    {
-      title: 'Track billing',
-      body: 'Watch your free trial countdown, subscribe through Pesapal when it ends, and download subscription receipts from Billing.',
-      icon: CreditCard,
-    },
-    {
-      title: 'Review reports',
-      body: 'HMIS 105 outpatient reporting, essential medicine alerts, and FHIR patient bundle export are available from Reports.',
-      icon: BarChart3,
-    },
-  ],
-  DOCTOR: [
-    {
-      title: 'Run consultations',
-      body: 'Open a patient from Patients or an appointment from Appointments to record diagnoses, prescriptions, and lab requests tied to their history.',
-      icon: Stethoscope,
-    },
-    {
-      title: 'Order lab tests',
-      body: 'Request and review lab results from Lab Tests, linked directly to the patient record.',
-      icon: FlaskConical,
-    },
-  ],
-  NURSE: [
-    {
-      title: 'Coordinate patient care',
-      body: 'Register patients, manage the day\'s schedule from Appointments, and support consultations and lab workflow.',
-      icon: CalendarClock,
-    },
-    {
-      title: 'Capture household visits',
-      body: 'For community outreach and mobile unit work, log household visits from Household Visit - it works fully offline.',
-      icon: ClipboardList,
-    },
-  ],
-  PHARMACIST: [
-    {
-      title: 'Manage the pharmacy',
-      body: 'Track medicine stock, set reorder levels, and dispense prescriptions written during consultations from the Dispensing page, where stock comes off the shelf as you go.',
-      icon: Package,
-    },
-  ],
-  STAFF: [
-    {
-      title: 'Register and book patients',
-      body: 'Register new patients and schedule appointments from the front desk using Patients and Appointments.',
-      icon: Users,
-    },
-  ],
-};
-
-function stepsForRole(role: string | undefined): Step[] {
-  const middle = (role && roleSteps[role]) || roleSteps.STAFF;
-  const closing = role === 'ADMIN' || role === 'SUPER_ADMIN' ? offlineStep : helpStep;
-  return [welcomeStep, ...middle, closing];
-}
+/**
+ * The guided walkthrough. It opens by itself only on a user's very first
+ * sign-in (the server remembers when they finished or skipped it, so signing
+ * out or using another device does not bring it back), and can be replayed at
+ * any time from Help & FAQ.
+ *
+ * Each step points at the real control it describes - the menu item, the bell,
+ * the theme switch - by highlighting the element tagged data-tour="...". On a
+ * phone the menu drawer is opened so the highlighted item is visible.
+ */
 
 export function openOnboardingTour() {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new Event('bulamu-open-onboarding'));
 }
 
+type Rect = { top: number; left: number; width: number; height: number };
+
+function findTarget(target: string | undefined): HTMLElement | null {
+  if (!target) return null;
+  const candidates = Array.from(document.querySelectorAll<HTMLElement>(`[data-tour="${target}"]`));
+  return candidates.find((el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && r.right > 0 && r.left < window.innerWidth;
+  }) ?? null;
+}
+
+async function markCompleted() {
+  try {
+    const raw = localStorage.getItem('user');
+    if (raw) {
+      const user = JSON.parse(raw);
+      user.tourCompletedAt = new Date().toISOString();
+      localStorage.setItem('user', JSON.stringify(user));
+    }
+    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/users/me/tour-completed`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    });
+  } catch {
+    // Offline: the local flag keeps it closed on this device; the server is told next time.
+  }
+}
+
 export function OnboardingTour() {
   const { user } = useAuth();
+  const { openMobile, closeMobile } = useSidebar();
   const [open, setOpen] = useState(false);
-  const [step, setStep] = useState(0);
+  const [index, setIndex] = useState(0);
+  const [rect, setRect] = useState<Rect | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   const role = user?.role as string | undefined;
-  const tourKey = `${TOUR_KEY_PREFIX}_${role || 'guest'}`;
-  const steps = stepsForRole(role);
+  const steps: TourStep[] = useMemo(() => (role ? TOUR_STEPS[role] ?? TOUR_STEPS.STAFF : []), [role]);
+  // Only an explicit null from the server means "never done it". A profile
+  // saved before this existed has no field at all - that is not a first sign-in.
+  const firstSignIn = !!user && user.tourCompletedAt === null;
 
+  // First sign-in only; replay on request from Help & FAQ.
   useEffect(() => {
-    const completed = localStorage.getItem(tourKey);
-    if (!completed) setOpen(true);
-
+    if (firstSignIn) {
+      setIndex(0);
+      setOpen(true);
+    }
     const reopen = () => {
-      setStep(0);
+      setIndex(0);
       setOpen(true);
     };
     window.addEventListener('bulamu-open-onboarding', reopen);
     return () => window.removeEventListener('bulamu-open-onboarding', reopen);
-  }, [tourKey]);
+  }, [firstSignIn]);
 
-  if (!open || !role) return null;
+  const step = steps[index];
 
-  const current = steps[step];
-  const Icon = current.icon;
-  const isLast = step === steps.length - 1;
+  // Find and track the highlighted element (it moves when the drawer slides in, on scroll and resize).
+  useLayoutEffect(() => {
+    if (!open || !step) return;
+    const mobile = window.innerWidth < 1024;
+    setIsMobile(mobile);
+    // Everything the tour points at lives in the menu, which is a drawer on a phone.
+    if (mobile && step.target) openMobile();
+    else if (mobile) closeMobile();
 
-  const close = () => {
-    localStorage.setItem(tourKey, 'true');
+    let frame = 0;
+    const measure = () => {
+      const el = findTarget(step.target);
+      if (!el) return setRect(null);
+      const r = el.getBoundingClientRect();
+      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+    };
+    const settle = window.setTimeout(() => {
+      findTarget(step.target)?.scrollIntoView({ block: 'nearest' });
+      measure();
+    }, mobile ? 260 : 30);
+    const onMove = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    window.addEventListener('resize', onMove);
+    window.addEventListener('scroll', onMove, true);
+    return () => {
+      window.clearTimeout(settle);
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', onMove);
+      window.removeEventListener('scroll', onMove, true);
+    };
+  }, [open, step, openMobile, closeMobile]);
+
+  const close = useCallback(() => {
     setOpen(false);
-  };
+    setRect(null);
+    if (window.innerWidth < 1024) closeMobile();
+    void markCompleted();
+  }, [closeMobile]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+      if (e.key === 'ArrowRight') setIndex((i) => Math.min(steps.length - 1, i + 1));
+      if (e.key === 'ArrowLeft') setIndex((i) => Math.max(0, i - 1));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, close, steps.length]);
+
+  if (!open || !step || !role) return null;
+
+  const isLast = index === steps.length - 1;
+  const Icon = step.icon;
+  const pad = 6;
+
+  // Card placement: beside the highlighted item on a wide screen, docked at the
+  // bottom on a phone, centred when the step points at nothing in particular.
+  let cardStyle: React.CSSProperties;
+  if (rect && !isMobile) {
+    const width = 380;
+    const right = rect.left + rect.width + pad + 16;
+    const fitsRight = right + width < window.innerWidth - 16;
+    const top = Math.min(Math.max(16, rect.top - 24), window.innerHeight - 320);
+    cardStyle = fitsRight
+      ? { position: 'fixed', top, left: right, width }
+      : { position: 'fixed', top: Math.min(rect.top + rect.height + pad + 12, window.innerHeight - 320), left: Math.max(16, Math.min(rect.left, window.innerWidth - width - 16)), width };
+  } else if (rect && isMobile) {
+    cardStyle = { position: 'fixed', left: 12, right: 12, bottom: 12 };
+  } else {
+    cardStyle = { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: 'min(560px, calc(100vw - 24px))' };
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm">
-      <section className="w-full max-w-2xl rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 p-6">
-          <div className="flex items-center gap-4">
-            <div className="flex size-11 items-center justify-center rounded-md bg-emerald-700 text-white">
-              <Icon className="size-5" aria-hidden="true" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                Step {step + 1} of {steps.length}
-              </p>
-              <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">{current.title}</h2>
-            </div>
+    <div className="fixed inset-0 z-[70]" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+      {rect ? (
+        // The spotlight: everything outside the highlighted control is dimmed.
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed rounded-lg ring-2 ring-emerald-400 transition-all duration-200"
+          style={{
+            top: rect.top - pad, left: rect.left - pad, width: rect.width + pad * 2, height: rect.height + pad * 2,
+            boxShadow: '0 0 0 9999px rgba(2, 6, 23, 0.6)',
+          }}
+        />
+      ) : (
+        <div aria-hidden="true" className="fixed inset-0 bg-slate-950/60 backdrop-blur-[1px]" />
+      )}
+
+      <section
+        style={cardStyle}
+        className="z-[71] rounded-lg border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+      >
+        <div className="flex items-start gap-3 p-4 pb-2">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
+            <Icon className="size-4" aria-hidden="true" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+              Step {index + 1} of {steps.length}{step.where ? ` - ${step.where}` : ''}
+            </p>
+            <h2 id="tour-title" className="mt-0.5 text-lg font-semibold leading-snug text-slate-950 dark:text-slate-50">{step.title}</h2>
           </div>
           <button
             type="button"
             onClick={close}
-            className="rounded-md p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 hover:dark:bg-slate-800 hover:text-slate-900 hover:dark:text-slate-100"
+            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
             aria-label="Close walkthrough"
           >
-            <X className="size-5" aria-hidden="true" />
+            <X className="size-4" aria-hidden="true" />
           </button>
         </div>
 
-        <div className="p-6">
-          <p className="text-base leading-7 text-slate-600 dark:text-slate-400">{current.body}</p>
-          <div className="mt-6 grid gap-2" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>
-            {steps.map((item, index) => (
-              <div
-                key={item.title}
-                className={`h-1.5 rounded-full ${index <= step ? 'bg-emerald-700' : 'bg-slate-200 dark:bg-slate-700'}`}
-              />
+        <div className="px-4 pb-3">
+          <p className="text-sm leading-6 text-slate-700 dark:text-slate-300">{step.body}</p>
+          {step.tips && (
+            <ul className="mt-2 space-y-1 text-sm leading-6 text-slate-600 dark:text-slate-400">
+              {step.tips.map((tip) => (
+                <li key={tip} className="flex gap-2"><span aria-hidden="true" className="mt-2.5 size-1.5 shrink-0 rounded-full bg-emerald-600" />{tip}</li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3 flex gap-1" aria-hidden="true">
+            {steps.map((s, i) => (
+              <span key={s.title} className={`h-1 flex-1 rounded-full ${i <= index ? 'bg-emerald-600' : 'bg-slate-200 dark:bg-slate-700'}`} />
             ))}
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 p-6">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={step === 0}
-            onClick={() => setStep((value) => Math.max(0, value - 1))}
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Back
-          </Button>
-          <Button
-            type="button"
-            onClick={() => {
-              if (isLast) close();
-              else setStep((value) => value + 1);
-            }}
-          >
-            {isLast ? (
-              <>
-                <CheckCircle2 className="size-4" aria-hidden="true" />
-                Start using Bulamu
-              </>
-            ) : (
-              <>
-                Next
-                <ArrowRight className="size-4" aria-hidden="true" />
-              </>
-            )}
+        <div className="flex items-center justify-between gap-2 border-t border-slate-200 p-3 dark:border-slate-800">
+          {index === 0 ? (
+            <Button type="button" variant="ghost" size="sm" onClick={close}>Skip tour</Button>
+          ) : (
+            <Button type="button" variant="outline" size="sm" onClick={() => setIndex((i) => Math.max(0, i - 1))}>
+              <ArrowLeft className="size-4" aria-hidden="true" /> Back
+            </Button>
+          )}
+          <Button type="button" size="sm" onClick={() => (isLast ? close() : setIndex((i) => i + 1))}>
+            {isLast ? (<><CheckCircle2 className="size-4" aria-hidden="true" /> Start using Bulamu</>) : (<>Next <ArrowRight className="size-4" aria-hidden="true" /></>)}
           </Button>
         </div>
       </section>

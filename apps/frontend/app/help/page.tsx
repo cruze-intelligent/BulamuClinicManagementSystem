@@ -86,7 +86,17 @@ const faqCategories: FaqCategory[] = [
       {
         question: 'How do I refer a patient to another facility?',
         answer:
-          'From Referrals, send a patient to another facility in the network with a reason and supporting notes. The receiving facility sees the referral in its own queue.',
+          'From Referrals, choose the patient and the receiving facility, give the reason, the urgency (routine, urgent or emergency) and a clinical summary, and confirm that the patient agreed. Print the referral letter for the patient to carry. The receiving facility is notified at once, and you are told when they accept, decline or complete it. A patient referred to you can be registered at your facility in one step from the referral.',
+      },
+      {
+        question: 'How do admissions and wards work?',
+        answer:
+          'An admin sets up the wards and their beds under Wards. Clinicians admit a patient to a bed, nurses record observations (temperature, pulse, BP, respiratory rate, SpO2, weight) and notes, and patients can be moved between wards. A doctor or clinical officer discharges the patient - home, or by referral - with a final diagnosis, a summary and follow-up instructions, and prints the discharge summary.',
+      },
+      {
+        question: 'Can I see a patient\'s records from another facility?',
+        answer:
+          'Only if the patient approves. If they have a Bulamu Patient Portal account linked to your facility, ask from their record: they approve with their own password or a code sent to them, or later from their portal. You then see their allergies, diagnoses, medicines, lab results and hospital stays from other facilities - never reproductive-health records, private clinical notes, documents or bills. Every view is logged, and the patient can stop sharing at any time.',
       },
       {
         question: 'Can I upload documents to a patient\'s record?',
@@ -102,12 +112,12 @@ const faqCategories: FaqCategory[] = [
       {
         question: 'How do I manage medicine stock?',
         answer:
-          'From Inventory, track medicine quantities and set reorder levels. Items at or below their reorder level are flagged automatically so restocking isn\'t missed.',
+          'From Inventory, track medicine quantities, reorder levels and expiry dates. Pharmacists and admins are notified when a medicine falls to its reorder level, when it runs out, when it is within two months of expiry, and when it has expired.',
       },
       {
         question: 'How do I request and record lab tests?',
         answer:
-          'From Lab Tests, request a test for a patient and record results once they\'re available. Completed results appear in the patient\'s consultation history.',
+          'From Lab Tests, request a test for a patient - the nurses running the lab are notified. When the result is recorded, the clinician who ordered it is notified straight away, and the patient too if they use the Patient Portal.',
       },
     ],
   },
@@ -160,7 +170,12 @@ const faqCategories: FaqCategory[] = [
       {
         question: 'Who can see patient records?',
         answer:
-          'Only signed-in staff at the same facility, scoped by role. Clinical roles see clinical data; front desk and billing roles see only what their workflow needs.',
+          'Only signed-in staff at the same facility, scoped by role. Clinical roles see clinical data; front desk and billing roles see only what their workflow needs. Another facility sees nothing unless the patient approves sharing, and even then only clinicians can read it.',
+      },
+      {
+        question: 'Which notifications will I get?',
+        answer:
+          'Each role is told about what concerns it: pharmacists about prescriptions and stock; nurses about lab orders, admissions and appointment requests; doctors about their own appointments, results of tests they ordered, referrals and admissions; front desk about appointment requests and arriving referrals; admins about stock, referrals, discharges, notes and the subscription. The Notifications page lists everything that applies to you, and lets you switch individual emails off.',
       },
       {
         question: 'Is patient data encrypted and audited?',
@@ -187,11 +202,25 @@ export default function HelpPage() {
             Answers for day-to-day use, staff onboarding, and facility administration.
           </p>
         </div>
-        <Button type="button" onClick={openOnboardingTour}>
-          <GraduationCap className="size-4" aria-hidden="true" />
-          Replay walkthrough
-        </Button>
       </header>
+
+      <Card className="flex flex-col gap-4 rounded-lg border-emerald-200 bg-emerald-50/60 p-5 sm:flex-row sm:items-center sm:justify-between dark:border-emerald-900 dark:bg-emerald-950/30">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
+            <GraduationCap className="size-5" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Guided tour</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-400">
+              A one-minute tour that points at each tool you use, for your role. It opened by itself the first time you signed in;
+              take it again here whenever you like.
+            </p>
+          </div>
+        </div>
+        <Button type="button" onClick={openOnboardingTour} className="shrink-0">
+          Take the guided tour
+        </Button>
+      </Card>
 
       <section className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         {[

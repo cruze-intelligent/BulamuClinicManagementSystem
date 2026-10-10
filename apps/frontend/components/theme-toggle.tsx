@@ -10,6 +10,7 @@ export function ThemeToggle({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <button
       type="button"
+      data-tour="theme-toggle"
       onClick={toggleTheme}
       title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
       aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
