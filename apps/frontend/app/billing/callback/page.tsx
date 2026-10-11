@@ -4,22 +4,21 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, CheckCircle2, Clock } from 'lucide-react';
+import { fetchSubscription } from '@/lib/subscription-state';
 
 export default function BillingCallbackPage() {
   const [status, setStatus] = useState<'checking' | 'active' | 'pending'>('checking');
 
   useEffect(() => {
     let attempts = 0;
-    const token = localStorage.getItem('token');
 
     const poll = async () => {
       attempts += 1;
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/billing/status`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await response.json();
-        if (data.success && data.subscription?.status === 'ACTIVE') {
+        // Also tells the rest of the app - saving reopens and anything
+        // waiting on this device is sent.
+        const subscription = await fetchSubscription();
+        if (subscription?.status === 'ACTIVE') {
           setStatus('active');
           return;
         }

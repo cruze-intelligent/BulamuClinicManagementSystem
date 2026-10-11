@@ -26,6 +26,7 @@ export default function SyncActivityPage() {
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [actorFilter, setActorFilter] = useState('');
   const [exporting, setExporting] = useState<'all' | 'actor' | null>(null);
 
@@ -69,7 +70,11 @@ export default function SyncActivityPage() {
       .then(([auditData, conflictData]) => {
         if (auditData.success) setAuditEntries(auditData.entries);
         if (conflictData?.success) setConflicts(conflictData.conflicts);
+        setLoadError('');
       })
+      .catch(() => setLoadError(navigator.onLine
+        ? 'Could not load the activity log - please try again.'
+        : 'You are offline. The activity log loads from the server when the connection returns; work saved on this device is still shown in the sync badge.'))
       .finally(() => setLoading(false));
   };
 
@@ -149,6 +154,7 @@ export default function SyncActivityPage() {
           </div>
         )}
 
+        {loadError && <p role="status" className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{loadError}</p>}
         {loading ? (
           <p>Loading...</p>
         ) : (

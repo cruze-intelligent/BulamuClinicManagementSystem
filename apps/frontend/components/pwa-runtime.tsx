@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, Download, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { CheckCircle2, CircleAlert, Download, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import {
   countPendingMutations,
   flushSyncQueue,
@@ -9,23 +9,34 @@ import {
   pullSyncUpdates,
   subscribeToLocalChanges,
 } from '@/lib/local-first';
+import { isLapsed, readSubscription, SUBSCRIPTION_CHANGE_EVENT } from '@/lib/subscription-state';
+import { getInstallPrompt, INSTALL_PROMPT_EVENT, promptInstall, setInstallPrompt, type BeforeInstallPromptEvent } from '@/lib/install-prompt';
 
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-};
+
+// The platform administrator records nothing on the device, so there is
+// nothing to send or download - syncing only slowed their pages down.
+function isPlatformAdmin() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || '{}').role === 'SUPER_ADMIN';
+  } catch {
+    return false;
+  }
+}
 
 export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installPrompt, setInstallPromptState] = useState<BeforeInstallPromptEvent | null>(null);
+  // The facility's subscription has ended: queued saves can't go up until it renews.
+  const [lapsed, setLapsed] = useState(false);
 
   const refreshPending = useCallback(() => {
     countPendingMutations().then(setPending).catch(console.error);
   }, []);
 
   const syncData = useCallback(async () => {
+    if (isPlatformAdmin()) return;
     setSyncing(true);
     try {
       await flushSyncQueue();
@@ -45,17 +56,15 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
   };
 
   const handleInstall = async () => {
-    if (!installPrompt) return;
-    await installPrompt.prompt();
-    await installPrompt.userChoice;
-    setInstallPrompt(null);
+    await promptInstall();
   };
 
   useEffect(() => {
     setOnline(navigator.onLine);
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(console.error);
+      // Always check for a new worker, so a fix to offline behaviour reaches devices.
+      navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(console.error);
     }
 
     const sync = async () => {
@@ -66,12 +75,27 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
       await syncData();
     };
 
+    // Kept in lib/install-prompt so the install guide on the Help page can use it too.
     const beforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
     };
+    const installPromptChanged = () => setInstallPromptState(getInstallPrompt());
+    installPromptChanged();
+    window.addEventListener(INSTALL_PROMPT_EVENT, installPromptChanged);
+
+    // Found to have ended - say so; renewed - send anything that was waiting.
+    let wasLapsed = isLapsed(readSubscription());
+    setLapsed(wasLapsed);
+    const subscriptionChanged = () => {
+      const nowLapsed = isLapsed(readSubscription());
+      setLapsed(nowLapsed);
+      if (wasLapsed && !nowLapsed && navigator.onLine) void syncData();
+      wasLapsed = nowLapsed;
+    };
 
     const unsubscribe = subscribeToLocalChanges(refreshPending);
+    window.addEventListener(SUBSCRIPTION_CHANGE_EVENT, subscriptionChanged);
     window.addEventListener('online', sync);
     window.addEventListener('offline', sync);
     window.addEventListener('beforeinstallprompt', beforeInstallPrompt);
@@ -80,9 +104,11 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
 
     return () => {
       unsubscribe();
+      window.removeEventListener(SUBSCRIPTION_CHANGE_EVENT, subscriptionChanged);
       window.removeEventListener('online', sync);
       window.removeEventListener('offline', sync);
       window.removeEventListener('beforeinstallprompt', beforeInstallPrompt);
+      window.removeEventListener(INSTALL_PROMPT_EVENT, installPromptChanged);
     };
   }, [refreshPending, syncData]);
 
@@ -91,8 +117,9 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
     : syncing
       ? 'Syncing'
       : pending > 0
-        ? `${pending} pending`
+        ? lapsed ? `${pending} not sent` : `${pending} pending`
         : 'Synced';
+  const blockedTitle = `${pending} saved change${pending === 1 ? '' : 's'} on this device can't be sent because your facility's subscription has ended. They are kept here and sent as soon as it is renewed - don't clear this browser's data.`;
 
   // Service worker registration and the install prompt listener above always
   // run so offline caching and installability work from a visitor's first
@@ -100,6 +127,8 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
   // (marketing, legal, auth) where sync status isn't meaningful and would
   // otherwise sit on top of page content like the footer contact icons.
   if (!showWidget) return null;
+  const hideSyncStatus = isPlatformAdmin();
+  if (hideSyncStatus && !installPrompt) return null;
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-wrap items-center justify-end gap-2">
@@ -113,13 +142,15 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
           Install app
         </button>
       )}
-      <button
+      {!hideSyncStatus && (<button
         type="button"
         onClick={handleManualSync}
-        title={online ? 'Click to trigger manual sync' : 'Working offline with local queue'}
+        title={lapsed && pending > 0 ? blockedTitle : online ? 'Click to trigger manual sync' : 'Working offline with local queue'}
         className={`flex min-h-10 items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium shadow-md transition-colors ${
           !online
             ? 'border-amber-300 bg-amber-50 text-amber-900'
+            : lapsed && pending > 0
+              ? 'border-red-300 bg-red-50 text-red-900'
             : pending > 0
               ? 'border-blue-300 bg-blue-50 text-blue-900'
               : 'border-emerald-300 bg-emerald-50 text-emerald-900'
@@ -127,6 +158,8 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
       >
         {!online ? (
           <WifiOff className="size-4 text-amber-600" aria-hidden="true" />
+        ) : lapsed && pending > 0 ? (
+          <CircleAlert className="size-4 text-red-600" aria-hidden="true" />
         ) : syncing ? (
           <RefreshCw className="size-4 animate-spin text-blue-600" aria-hidden="true" />
         ) : pending > 0 ? (
@@ -135,7 +168,7 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
           <CheckCircle2 className="size-4 text-emerald-600" aria-hidden="true" />
         )}
         <span>{label}</span>
-      </button>
+      </button>)}
     </div>
   );
 }

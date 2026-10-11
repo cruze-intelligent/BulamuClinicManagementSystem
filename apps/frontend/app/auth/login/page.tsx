@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { CompanyName } from '@/components/company-credit';
 import { SLOW_REQUEST_MESSAGE, useSlowNotice, useWarmUpBackend } from '@/lib/backend-warmup';
+import { liveSessionUser, REMEMBERED_EMAIL_KEY, sessionEndMessage } from '@/lib/staff-session';
 
 const REQUEST_TIMEOUT_MS = 90_000;
 
@@ -34,7 +35,24 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [remember, setRemember] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    // Still signed in (e.g. "Keep me signed in") - no need for the form.
+    const signedIn = liveSessionUser();
+    if (signedIn) {
+      router.replace(signedIn.role === 'SUPER_ADMIN' ? '/super-admin' : '/dashboard');
+      return;
+    }
+    const remembered = localStorage.getItem(REMEMBERED_EMAIL_KEY);
+    if (remembered) {
+      setEmail(remembered);
+      setRemember(true);
+    }
+    setNotice(sessionEndMessage(new URLSearchParams(window.location.search).get('session')));
+  }, [router]);
 
   useWarmUpBackend();
   const slow = useSlowNotice(loading);
@@ -52,7 +70,7 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, remember }),
       });
 
       const data = await response.json();
@@ -60,6 +78,8 @@ export default function LoginPage() {
       if (data.success) {
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
+        if (remember) localStorage.setItem(REMEMBERED_EMAIL_KEY, email.trim());
+        else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
         router.push(data.user.role === 'SUPER_ADMIN' ? '/super-admin' : '/dashboard');
       } else {
         setError(loginErrorMessage(data.reason, data.rejectionReason) || 'Invalid email or password');
@@ -98,7 +118,7 @@ export default function LoginPage() {
           </p>
           <div className="mt-8 grid max-w-2xl gap-3 sm:grid-cols-3">
             {['Role based', 'PWA enabled', 'FHIR ready'].map((item) => (
-              <div key={item} className="rounded-md border border-white/10 bg-white dark:bg-slate-900/5 px-4 py-3 text-sm text-slate-200">
+              <div key={item} className="rounded-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
                 {item}
               </div>
             ))}
@@ -116,13 +136,29 @@ export default function LoginPage() {
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
+            {notice && !error && (
+              <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{notice}</p>
+            )}
             <div>
               <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <Input id="email" name="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div>
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <Input id="password" name="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            </div>
+            <div className="flex items-start gap-2">
+              <input
+                id="remember"
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="mt-0.5 size-4 rounded border-slate-300 accent-emerald-600"
+              />
+              <Label htmlFor="remember" className="block font-normal leading-snug">
+                Keep me signed in for 30 days
+                <span className="block text-xs text-slate-500 dark:text-slate-400">Only on a device that is yours - not a shared computer.</span>
+              </Label>
             </div>
             {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
             {loading && slow && <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{SLOW_REQUEST_MESSAGE}</p>}
@@ -141,6 +177,11 @@ export default function LoginPage() {
               Register your facility
             </a>
           </div>
+          <p className="mt-3 text-center">
+            <a href="/install" className="text-sm text-emerald-700 hover:underline">
+              Install Bulamu on this device
+            </a>
+          </p>
 
           <div className="mt-6 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 p-4 text-sm text-slate-600 dark:text-slate-400">
             Access is controlled by your facility administrator or the Bulamu administration team.

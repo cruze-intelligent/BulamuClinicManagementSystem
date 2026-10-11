@@ -6,15 +6,24 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { PatientSearch } from '@/components/patient-search';
 import { useAuth } from '@/lib/useAuth';
+import { useRouter } from 'next/navigation';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const { hasRole } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
+    // The installed app opens here; the platform administrator's start page is
+    // Facility Management (a facility dashboard would only load HQ's figures).
+    if (hasRole('SUPER_ADMIN')) {
+      router.replace('/super-admin');
+      return;
+    }
     fetchDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDashboard = async () => {

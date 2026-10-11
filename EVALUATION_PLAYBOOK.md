@@ -70,11 +70,12 @@ Before step 3, verify that PostgreSQL is reachable, migrations have been applied
 
 - Manifest served at `/manifest.webmanifest`
 - Service worker registered from `/sw.js`
-- Install prompt visible in supported browsers
-- Offline fallback page available at `/offline`
-- Core routes cached after first visit
+- Install prompt visible in supported browsers; install guide on the Help page and at `/install` (Android, iPhone/iPad, computer)
+- Offline fallback page available at `/offline/`
+- Every page and its scripts cached when the app is installed (trailing-slash addresses, never a cached redirect)
+- The installed app opens on the right start page per role, and skips sign-in while a session is still valid ("Keep me signed in" = 30 days)
 - IndexedDB stores local patient, appointment, consultation, lab, inventory, and reproductive-health data
-- Sync badge shows offline, pending, syncing, and synced states
+- Sync badge shows offline, pending, syncing, and synced states - and "N not sent" in red if the facility's subscription has ended
 - Household visits recorded offline at `/chw-visit` sync through the same mutation queue
 
 ## 6. Research Alignment Checklist

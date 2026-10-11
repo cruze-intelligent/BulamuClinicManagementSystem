@@ -10,6 +10,7 @@ import { OnboardingTour } from '@/components/onboarding-tour';
 import { TrialBanner } from '@/components/trial-banner';
 import { useSidebar } from '@/lib/sidebar-provider';
 import { useAuth, getHomePath } from '@/lib/useAuth';
+import { clearStaffSession, loginPathFor, tokenExpiry, watchForEndedSession, type SessionEndReason } from '@/lib/staff-session';
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -25,20 +26,48 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   const normalizedPathname = pathname !== '/' && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
 
   // Pages without sidebar
-  const noSidebarPages = ['/', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
+  const noSidebarPages = ['/', '/install', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
   const noSidebarPrefixes = ['/legal/', '/patient-portal/'];
   const showSidebar = !noSidebarPages.includes(normalizedPathname) && !noSidebarPrefixes.some((prefix) => normalizedPathname.startsWith(prefix));
 
+  // Checked on every navigation: a session that is missing or has run out goes
+  // straight to sign-in rather than leaving pages that can't load anything.
   useEffect(() => {
-    setAuthChecked(false);
     if (!showSidebar) return;
+    const endSession = (reason: SessionEndReason) => {
+      clearStaffSession();
+      setAuthChecked(false);
+      router.replace(loginPathFor(reason));
+    };
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
     if (!token || !user) {
+      setAuthChecked(false);
       router.replace('/auth/login');
       return;
     }
+    // A session that has run out ends once the device is online - offline,
+    // signing in again is impossible, so work recorded on the device carries
+    // on and is sent after the next sign-in.
+    const expiry = tokenExpiry(token);
+    const expired = () => expiry !== null && expiry <= Date.now();
+    if (expired() && navigator.onLine) {
+      endSession('expired');
+      return;
+    }
     setAuthChecked(true);
+
+    const endIfExpired = () => {
+      if (expired() && navigator.onLine) endSession('expired');
+    };
+    const stopWatching = watchForEndedSession(() => endSession('ended'));
+    const timer = expiry !== null ? setTimeout(endIfExpired, Math.min(Math.max(expiry - Date.now(), 0) + 1000, 2_147_483_647)) : undefined;
+    window.addEventListener('online', endIfExpired);
+    return () => {
+      stopWatching();
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('online', endIfExpired);
+    };
   }, [pathname, showSidebar, router]);
 
   // Every protected route requires a valid session before it renders or

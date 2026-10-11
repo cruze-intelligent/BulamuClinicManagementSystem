@@ -39,6 +39,8 @@ export function CommentsSection({
       });
       const data = await res.json();
       if (data.success) setComments(data.comments);
+    } catch {
+      // Offline or unreachable - the list stays empty until the next load.
     } finally {
       setLoading(false);
     }
@@ -67,6 +69,8 @@ export function CommentsSection({
       } else {
         alert(data.error || 'Could not post comment');
       }
+    } catch {
+      alert(navigator.onLine ? 'Could not post comment - please try again.' : 'You are offline - comments are sent to the server, so post this when the connection returns.');
     } finally {
       setSubmitting(false);
     }

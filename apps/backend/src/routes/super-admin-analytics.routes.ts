@@ -5,6 +5,7 @@ import { snapshotRuntimeMetrics } from '../lib/runtime-metrics';
 import { purgeOldUsageRecords } from '../lib/usage-tracking';
 import { buildCsv, sendCsv } from '../lib/csv';
 import { mailStatus } from '../lib/mailer';
+import { sweepLapsedSubscriptions } from '../lib/subscription';
 import { alertOperator } from '../lib/operator-alerts';
 import { prisma } from '../lib/prisma';
 import { getAuthUser } from '../middleware/auth.middleware';
@@ -21,6 +22,8 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
     try {
       // Old usage records are dropped whenever the operator looks, so no separate job is needed.
       await purgeOldUsageRecords();
+      // So a trial that ended unpaid counts as past due, not as a trial.
+      await sweepLapsedSubscriptions();
       return { success: true, analytics: await buildAnalytics(days) };
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });

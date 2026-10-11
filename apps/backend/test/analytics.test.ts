@@ -410,7 +410,7 @@ describe('super admin analytics', () => {
       expect(s.database.largestTables.length).toBeGreaterThan(0);
       expect(s.database.totals.facilities).toBe(2);
       expect(s.storage).toMatchObject({ documents: 0, documentBytes: 0 });
-      expect(s.configuration.map((c: any) => c.key)).toEqual(['email', 'payments', 'paymentNotices', 'documents', 'frontend']);
+      expect(s.configuration.map((c: any) => c.key)).toEqual(['email', 'payments', 'paymentNotices', 'paymentsLive', 'documents', 'frontend']);
       expect(s.configuration.every((c: any) => typeof c.ok === 'boolean' && c.hint)).toBe(true);
 
       // The requests just made are in the API's own numbers, labelled by route pattern.

@@ -1,6 +1,7 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { getSubscriptionGate } from '../lib/subscription';
+import { getSubscriptionGate, SUBSCRIPTION_REQUIRED_MESSAGE } from '../lib/subscription';
 import { prisma } from '../lib/prisma';
+import { passwordStamp } from '../lib/session';
 import { trackUserActivity } from '../lib/usage-tracking';
 
 /**
@@ -16,7 +17,7 @@ export async function verifyStaffSession(request: FastifyRequest, reply: Fastify
   try {
     await request.jwtVerify();
   } catch (err) {
-    reply.status(401).send({ error: 'Unauthorized' });
+    reply.status(401).send({ error: 'Your session has ended. Please sign in again.', reason: 'SESSION_ENDED' });
     return false;
   }
 
@@ -24,7 +25,7 @@ export async function verifyStaffSession(request: FastifyRequest, reply: Fastify
   // userId/role a staff route can act on - reject it explicitly rather than
   // letting it fall through into a DB lookup with an undefined id.
   if ((request.user as { kind?: string }).kind === 'patient') {
-    reply.status(401).send({ error: 'Unauthorized' });
+    reply.status(401).send({ error: 'Unauthorized', reason: 'SESSION_ENDED' });
     return false;
   }
 
@@ -36,14 +37,21 @@ export async function verifyStaffSession(request: FastifyRequest, reply: Fastify
   const authUser = request.user as AuthUser;
   const user = await prisma.user.findUnique({
     where: { id: authUser.userId },
-    select: { isActive: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true } } },
+    select: { isActive: true, password: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true } } },
   });
   if (!user || !user.isActive || !user.clinic || user.clinic.deletedAt) {
-    reply.status(401).send({ error: 'Account no longer active' });
+    reply.status(401).send({ error: 'Account no longer active', reason: 'SESSION_ENDED' });
+    return false;
+  }
+  // The password was changed or reset since this session began - sign it out.
+  // (Sessions from before this check carry no stamp and simply run out.)
+  const stamp = (request.user as { pw?: string }).pw;
+  if (stamp && stamp !== passwordStamp(user.password)) {
+    reply.status(401).send({ error: 'Your password was changed. Please sign in again.', reason: 'SESSION_ENDED' });
     return false;
   }
   if (authUser.role !== 'SUPER_ADMIN' && (!user.clinic.isActive || user.clinic.registrationStatus !== 'APPROVED')) {
-    reply.status(401).send({ error: 'Facility account is not active' });
+    reply.status(401).send({ error: 'Facility account is not active', reason: 'SESSION_ENDED' });
     return false;
   }
 
@@ -84,7 +92,8 @@ export async function enforceSubscriptionGate(request: FastifyRequest, reply: Fa
 
   const { blocked } = await getSubscriptionGate(authUser.clinicId);
   if (blocked) {
-    reply.status(402).send({ error: 'Your facility subscription is past due', reason: 'SUBSCRIPTION_REQUIRED' });
+    // Shown as-is by every page, so it says what happened and what to do.
+    reply.status(402).send({ error: SUBSCRIPTION_REQUIRED_MESSAGE, reason: 'SUBSCRIPTION_REQUIRED' });
   }
 }
 

@@ -34,7 +34,7 @@ services:
       - key: PESAPAL_CONSUMER_SECRET
         sync: false
       - key: PESAPAL_ENV
-        value: sandbox
+        value: live
       - key: PESAPAL_IPN_ID
         sync: false
       - key: GOOGLE_SERVICE_ACCOUNT_EMAIL

@@ -56,13 +56,14 @@ CI (`.github/workflows/ci.yml`) runs type-checking, both test suites, and both p
 - Reproductive-health tracking (cycle history, family planning, pregnancy status) for female patients, feeding directly into HMIS reporting
 - Inter-facility referrals (`/referrals`) and a facility hierarchy (district/sub-county/parish)
 - Community health worker household-visit capture (`/chw-visit`) for Community Outreach / Mobile Unit facilities, fully offline
-- Installable PWA with service worker, app-shell caching, IndexedDB local records, offline mutation queue, and sync status badge
+- Installable PWA with service worker, app-shell caching (every page and its scripts, so pages never opened before still work offline), IndexedDB local records, offline mutation queue, and sync status badge; a step-by-step install guide for Android, iPhone/iPad and computers is on the Help page and public at `/install`
+- Sign-in lasts a 12-hour shift, or 30 days with "Keep me signed in"; changing or resetting a password ends every session on every device, and an ended session goes straight back to sign-in (never while offline, so field work isn't interrupted)
 - Timestamp-based deterministic sync conflict resolution with tombstone deletes and a Sync Activity panel (audit log + conflict log)
 - HMIS 105 outpatient reporting across 7 sections (attendance by age/gender cohort, epidemic surveillance, essential medicines, family planning, maternal health, other services, referrals)
 - FHIR R4 export (Patient, Encounter, Observation resources) and a configurable DHIS2 `dataValueSets` push for interoperability work
 - Password reset flow and an audit log for patient/reproductive-health/user/invoice writes
 - Self-service facility registration (`/auth/register`) with a private admin approval queue - the internal admin role is never selectable in any form and has no public entry point
-- 2-week free trial per approved facility, then a monthly subscription billed through Pesapal (`/billing`); a lapsed subscription blocks new writes but never blocks reading existing records
+- 2-week free trial per approved facility, then a monthly subscription billed through Pesapal (`/billing`); a lapsed subscription blocks new writes but never blocks reading existing records. Paying early adds the 30 days after what is left, admins are reminded 3 days before and on the day, the operator is emailed when a trial or paid month ends unpaid, and the app refuses new saves with a clear message (rather than queueing them on the device) until the facility renews
 - Branded legal pages: [Terms of Service](/legal/terms), [Privacy Policy](/legal/privacy), [Refund Policy](/legal/refund-policy)
 
 ## Research PDF Alignment

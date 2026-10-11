@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
-import { invalidateSubscriptionCache } from '../lib/subscription';
+import { invalidateSubscriptionCache, lapseIfDue, paidPeriodEnd } from '../lib/subscription';
 import { sendMail, subscriptionReceiptEmail, formatEmailDate, MailResult } from '../lib/mailer';
 import { alertOperator, deliveryNote } from '../lib/operator-alerts';
 import { notifyStaff } from '../lib/notifications';
@@ -11,8 +11,6 @@ import { generateReceiptPdf } from '../lib/pdf';
 import {
   getAccessToken, registerIpnUrl, submitOrderRequest, getTransactionStatus, describePesapalError, PESAPAL_STATUS_COMPLETED,
 } from '../services/pesapal.service';
-
-const SUBSCRIPTION_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
 
 function pesapalCredentials() {
   const consumerKey = process.env.PESAPAL_CONSUMER_KEY;
@@ -28,7 +26,13 @@ export async function billingRoutes(fastify: FastifyInstance) {
     const clinicId = resolveClinicScope(request, reply, (request.query as any)?.clinicId);
     if (!clinicId) return;
     try {
-      const subscription = await prisma.subscription.findUnique({ where: { clinicId } });
+      let subscription = await prisma.subscription.findUnique({ where: { clinicId } });
+      // A trial that ended overnight shows as ended straight away, not only
+      // after someone's save is refused.
+      if (subscription) {
+        const status = await lapseIfDue(subscription);
+        if (status !== subscription.status) subscription = { ...subscription, status };
+      }
       return { success: true, subscription };
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });
@@ -120,14 +124,18 @@ export async function billingRoutes(fastify: FastifyInstance) {
         if (tokenResult.success && tokenResult.token) {
           const statusResult = await getTransactionStatus(tokenResult.token, OrderTrackingId);
           const payment = await prisma.payment.findUnique({ where: { pesapalOrderTrackingId: OrderTrackingId } });
-          if (payment && statusResult.success && statusResult.status) {
+          // Pesapal can send the same notification more than once - a payment
+          // that is already COMPLETED has been applied and must not add
+          // another 30 days or send a second receipt.
+          if (payment && payment.status !== 'COMPLETED' && statusResult.success && statusResult.status) {
             const completed = statusResult.status.statusCode === PESAPAL_STATUS_COMPLETED;
-            await prisma.payment.update({
-              where: { id: payment.id },
+            const { count } = await prisma.payment.updateMany({
+              where: { id: payment.id, status: { not: 'COMPLETED' } },
               data: { status: completed ? 'COMPLETED' : 'FAILED', rawCallback: statusResult.status as any },
             });
-            if (completed) {
-              const periodEnd = new Date(Date.now() + SUBSCRIPTION_PERIOD_MS);
+            const subscription = await prisma.subscription.findUnique({ where: { id: payment.subscriptionId } });
+            if (completed && count === 1 && subscription) {
+              const periodEnd = paidPeriodEnd(subscription);
               await prisma.subscription.update({
                 where: { id: payment.subscriptionId },
                 data: { status: 'ACTIVE', lastPaymentAt: new Date(), currentPeriodEnd: periodEnd },

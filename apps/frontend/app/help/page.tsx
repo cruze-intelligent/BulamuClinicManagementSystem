@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { openOnboardingTour } from '@/components/onboarding-tour';
 import { CommentsSection } from '@/components/comments-section';
+import { InstallGuide } from '@/components/install-guide';
 
 type Faq = { question: string; answer: string };
 type FaqCategory = { title: string; icon: typeof Users; items: Faq[] };
@@ -34,7 +35,12 @@ const faqCategories: FaqCategory[] = [
       {
         question: 'Can I install Bulamu on my phone or tablet?',
         answer:
-          'Yes. Bulamu is an installable Progressive Web App. In a supported browser, use the install or "Add to Home Screen" option to add it like a native app, including offline access.',
+          'Yes - straight from the browser, no app store needed: Chrome on Android and computers, Safari on iPhone and iPad. The step-by-step guide for each device is at the top of this page (and at bulamu.site/install for staff who have not signed in yet). Installed, it keeps working without internet.',
+      },
+      {
+        question: 'How long do I stay signed in?',
+        answer:
+          'For 12 hours - a full shift. Tick "Keep me signed in for 30 days" when signing in to stay signed in on that device for a month; use it only on a device that is yours. Changing or resetting your password signs you out everywhere. Offline, you are never signed out in the middle of work - it waits until the device is back online.',
       },
       {
         question: 'I forgot my password - what do I do?',
@@ -222,9 +228,11 @@ export default function HelpPage() {
         </Button>
       </Card>
 
+      <InstallGuide />
+
       <section className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         {[
-          { title: 'Installable app', body: 'Install Bulamu from your browser and keep working offline.', icon: MonitorSmartphone },
+          { title: 'Installable app', body: 'Install Bulamu from your browser and keep working offline - see the guide above.', icon: MonitorSmartphone },
           { title: 'Facility administration', body: 'Approve facilities, manage staff, and monitor activity from one console.', icon: ShieldCheck },
           { title: 'National reporting', body: 'Generate HMIS 105 summaries and export FHIR patient bundles.', icon: CalendarCheck },
         ].map((item) => (

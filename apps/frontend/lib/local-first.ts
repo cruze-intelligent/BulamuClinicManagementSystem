@@ -1,4 +1,5 @@
 import type { Allergy, AllergyStatus } from "./allergy";
+import { assertCanSave, markSubscriptionLapsed, SubscriptionRequiredError } from "./subscription-state";
 
 export type LocalPatient = {
   id: string;
@@ -359,6 +360,7 @@ export async function createPatientOffline(input: {
   nextOfKinPhone?: string;
   consentGiven?: boolean;
 }): Promise<LocalPatient> {
+  await assertCanSave();
   const now = new Date().toISOString();
   const patient: LocalPatient = {
     id: createId(),
@@ -431,6 +433,7 @@ export async function saveAllergiesOffline(input: {
   allergyStatus: AllergyStatus;
   allergies: Allergy[];
 }): Promise<LocalPatient | undefined> {
+  await assertCanSave();
   const now = new Date().toISOString();
   const existing = await getRecord<LocalPatient>(PATIENT_STORE, input.patientId);
   const updated: LocalPatient | undefined = existing
@@ -496,6 +499,7 @@ export async function createAppointmentOffline(input: {
   patientName?: string;
   doctorName?: string;
 }): Promise<LocalAppointment> {
+  await assertCanSave();
   const now = new Date().toISOString();
   const appointment: LocalAppointment = {
     id: createId(),
@@ -577,6 +581,7 @@ export async function createConsultationOffline(input: {
   prescriptions: LocalPrescription[];
   patientName?: string;
 }): Promise<LocalConsultation> {
+  await assertCanSave();
   const now = new Date().toISOString();
   const primary = input.diagnoses.find((d) => d.type === "PRIMARY") ?? input.diagnoses[0];
   const consultation: LocalConsultation = {
@@ -657,6 +662,7 @@ export async function createLabTestOffline(input: {
   consultationId?: string;
   patientName?: string;
 }): Promise<LocalLabTest> {
+  await assertCanSave();
   const now = new Date().toISOString();
   const labTest: LocalLabTest = {
     id: createId(),
@@ -734,6 +740,7 @@ export async function addMedicineOffline(input: {
   price: number;
   expiryDate?: string;
 }): Promise<LocalMedicine> {
+  await assertCanSave();
   const now = new Date().toISOString();
   const medicine: LocalMedicine = {
     id: createId(),
@@ -815,6 +822,7 @@ export async function addReproductiveHealthRecordOffline(input: {
   para?: number;
   notes?: string;
 }): Promise<LocalReproductiveHealthRecord> {
+  await assertCanSave();
   const now = new Date().toISOString();
   const currentUser = getCurrentUser();
   const record: LocalReproductiveHealthRecord = {
@@ -888,6 +896,13 @@ export async function flushSyncQueue() {
     headers: getAuthHeaders(),
     body: JSON.stringify({ operations }),
   });
+
+  // Saved on this device before the subscription ended (or before this device
+  // knew). They stay queued and go up as soon as the facility renews.
+  if (response.status === 402) {
+    markSubscriptionLapsed();
+    throw new SubscriptionRequiredError();
+  }
 
   const data = await response.json();
   if (!response.ok || !data.success) {

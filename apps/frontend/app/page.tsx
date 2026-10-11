@@ -20,6 +20,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ContactIcons } from '@/components/contact-icons';
 import { CompanyName } from '@/components/company-credit';
+import { getHomePath } from '@/lib/useAuth';
+import { liveSessionUser } from '@/lib/staff-session';
 
 const roles = [
   { title: 'Administrator', body: 'Approve staff, track billing and trial status, and run HMIS 105 / FHIR reports for the whole facility.', icon: UserCog },
@@ -43,8 +45,9 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    const user = localStorage.getItem('user');
-    if (user) router.push('/dashboard');
+    // Straight back in for someone still signed in, to their own start page.
+    const user = liveSessionUser();
+    if (user) router.replace(getHomePath(user));
   }, [router]);
 
   const structuredData = {

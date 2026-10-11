@@ -49,16 +49,23 @@ function AdmissionChart() {
 
   const load = useCallback(async () => {
     if (!id) return;
-    const res = await fetch(`${API}/admissions/${id}`, { headers: authHeaders() });
-    const data = await res.json();
-    if (!data.success) return setError(data.error || 'Admission not found');
-    setAdmission(data.admission);
+    try {
+      const res = await fetch(`${API}/admissions/${id}`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!data.success) return setError(data.error || 'Admission not found');
+      setError('');
+      setAdmission(data.admission);
+    } catch {
+      setError(navigator.onLine ? 'Could not load this admission - please try again.' : 'You are offline. The ward chart needs an internet connection - it will load when it returns.');
+    }
   }, [id]);
 
   useEffect(() => {
     load();
-    fetch(`${API}/wards`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setWards(d.wards.filter((w: any) => w.isActive)));
-    fetch(`${API}/clinics`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setClinics(d.clinics.filter((c: any) => c.id !== user?.clinicId)));
+    fetch(`${API}/wards`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setWards(d.wards.filter((w: any) => w.isActive))).catch(() => {});
+    fetch(`${API}/clinics`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setClinics(d.clinics.filter((c: any) => c.id !== user?.clinicId))).catch(() => {});
+    window.addEventListener('online', load);
+    return () => window.removeEventListener('online', load);
   }, [load, user?.clinicId]);
 
   const send = async (url: string, body: unknown) => {

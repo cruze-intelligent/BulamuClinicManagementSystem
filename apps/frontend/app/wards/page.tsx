@@ -48,6 +48,7 @@ function Wards() {
   const [admit, setAdmit] = useState({ patientId: presetPatient, wardId: '', bed: '', reason: '', admissionIcd10Code: '', attendingDoctorId: '' });
   const [newWard, setNewWard] = useState({ name: '', type: 'GENERAL', beds: '10' });
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const load = useCallback(async () => {
     if (!clinicId) return;
@@ -62,6 +63,10 @@ function Wards() {
       if (a.success) setAdmissions(a.admissions);
       if (p.success) setPatients(p.patients);
       if (u.success) setDoctors(u.users.filter((x: any) => x.role === 'DOCTOR' && x.isActive));
+      setLoadError('');
+    } catch {
+      // Admissions are kept on the server only, so this page needs a connection.
+      setLoadError(navigator.onLine ? 'Could not load the wards - please try again.' : 'You are offline. Wards and admissions need an internet connection - they will load when it returns.');
     } finally {
       setLoading(false);
     }
@@ -69,6 +74,8 @@ function Wards() {
 
   useEffect(() => {
     load();
+    window.addEventListener('online', load);
+    return () => window.removeEventListener('online', load);
   }, [load]);
 
   const post = async (url: string, body: unknown, method = 'POST') => {
@@ -133,7 +140,9 @@ function Wards() {
           </div>
         </div>
 
-        {!loading && wards.length === 0 && (
+        {loadError && <Card role="status" className="mb-6 border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{loadError}</Card>}
+
+        {!loading && !loadError && wards.length === 0 && (
           <Card className="mb-6 p-6 text-sm">
             {isAdmin ? 'No wards yet. Use "Set up wards" to add your wards and their beds, then clinicians can admit patients.' : 'No wards have been set up yet. Ask your facility administrator to add them under Wards.'}
           </Card>

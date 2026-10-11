@@ -8,6 +8,7 @@ import { facilityTypeLabel } from '../lib/facility';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import { isUniqueConstraintError } from '../lib/prisma';
 import { recordLoginEvent } from '../lib/usage-tracking';
+import { passwordStamp, REMEMBERED_SESSION, STANDARD_SESSION } from '../lib/session';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MIN_PASSWORD_LENGTH = 10;
@@ -112,7 +113,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
   // Login
   fastify.post('/auth/login', async (request, reply) => {
-    const { email, password } = request.body as any;
+    const { email, password, remember } = request.body as any;
 
     try {
       // Find user
@@ -158,15 +159,18 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       recordLoginEvent(who, 'SUCCESS');
 
-      // Generate JWT token (12h expiry - covers a full offline field shift)
-       const token = fastify.jwt.sign(
+      // 12 hours covers a full offline field shift. "Keep me signed in" (for a
+      // device only this person uses) lasts 30 days; changing the password
+      // ends every session either way (see passwordStamp).
+      const token = fastify.jwt.sign(
         {
-            userId: user.id,
-            clinicId: user.clinicId,
-            role: user.role
+          userId: user.id,
+          clinicId: user.clinicId,
+          role: user.role,
+          pw: passwordStamp(user.password),
         },
-        { expiresIn: '12h' }
-        );
+        { expiresIn: remember === true ? REMEMBERED_SESSION : STANDARD_SESSION }
+      );
 
         // Return user data (no password) + token
         const { password: _, ...userWithoutPassword } = user;

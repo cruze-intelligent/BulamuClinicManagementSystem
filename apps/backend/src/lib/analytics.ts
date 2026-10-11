@@ -528,6 +528,7 @@ export async function buildSystemReport() {
       { key: 'email', label: 'Email (SMTP)', ok: has('SMTP_HOST') && has('SMTP_USER') && has('SMTP_PASSWORD'), hint: 'Registration, approval and notification emails' },
       { key: 'payments', label: 'Payments (Pesapal)', ok: has('PESAPAL_CONSUMER_KEY') && has('PESAPAL_CONSUMER_SECRET'), hint: 'Subscription payments' },
       { key: 'paymentNotices', label: 'Payment notifications (Pesapal IPN)', ok: has('PESAPAL_IPN_ID'), hint: 'Confirms payments automatically' },
+      { key: 'paymentsLive', label: 'Live payments (real money)', ok: process.env.PESAPAL_ENV === 'live', hint: process.env.PESAPAL_ENV === 'live' ? 'Pesapal live - facilities are charged for real' : 'Pesapal test mode - no real money is collected; set PESAPAL_ENV=live' },
       { key: 'documents', label: 'Durable document storage', ok: has('DOCUMENT_STORAGE_DIR'), hint: 'Uploaded files survive a restart' },
       { key: 'frontend', label: 'Frontend address', ok: has('FRONTEND_URL'), hint: 'Links in emails and cross-origin access' },
     ],

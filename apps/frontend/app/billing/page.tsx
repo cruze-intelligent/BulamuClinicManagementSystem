@@ -202,25 +202,29 @@ export default function BillingPage() {
               {subscription.status === 'TRIALING' && (
                 <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                   {daysRemaining(subscription.trialEndsAt)} day(s) left in your free trial. Subscribe now to keep
-                  full access after it ends.
+                  full access after it ends - your paid month starts when the trial ends, so paying early costs nothing.
                 </div>
               )}
               {subscription.status === 'PAST_DUE' && (
                 <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-                  Your trial or subscription has lapsed. New records can&apos;t be saved until payment is completed.
+                  Your trial or subscription has ended. Existing records can still be viewed, but new ones can&apos;t be
+                  saved until payment is completed. Saving works again as soon as Pesapal confirms the payment.
                 </div>
               )}
               {subscription.status === 'ACTIVE' && subscription.currentPeriodEnd && (
                 <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                  Active until {new Date(subscription.currentPeriodEnd).toLocaleDateString()}.
+                  Active until {new Date(subscription.currentPeriodEnd).toLocaleDateString()}. Renewing early adds 30 days
+                  on after that date.
                 </div>
               )}
 
               {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
 
-              {subscription.status !== 'ACTIVE' && (
+              {subscription.status !== 'CANCELLED' && (
                 <Button className="mt-6 w-full" onClick={handleSubscribe} disabled={subscribing}>
-                  {subscribing ? 'Redirecting to Pesapal...' : `Subscribe - ${subscription.amount.toLocaleString()} ${subscription.currency}/mo`}
+                  {subscribing
+                    ? 'Redirecting to Pesapal...'
+                    : `${subscription.status === 'ACTIVE' ? 'Renew' : 'Subscribe'} - ${subscription.amount.toLocaleString()} ${subscription.currency}/mo`}
                 </Button>
               )}
             </>

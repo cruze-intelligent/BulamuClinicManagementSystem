@@ -10,6 +10,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { roleLabel } from '@/lib/role-labels';
 import { useUnreadNotifications } from '@/lib/useUnreadNotifications';
 import { NAV_ITEMS } from '@/lib/nav-items';
+import { clearStaffSession } from '@/lib/staff-session';
 
 const navItems = NAV_ITEMS;
 
@@ -89,7 +90,7 @@ export function Sidebar() {
   if (!mounted || !user) return null;
 
   const handleLogout = () => {
-    localStorage.clear();
+    clearStaffSession();
     router.push('/');
   };
 

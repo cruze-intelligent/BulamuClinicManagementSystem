@@ -107,6 +107,9 @@ ready to accept real subscription payments: get your live consumer key/secret fr
 `PESAPAL_ENV=live` and the live `PESAPAL_CONSUMER_KEY`/`PESAPAL_CONSUMER_SECRET` on the Render service, redeploy, and
 repeat the IPN registration step (step B.4) once against the live environment.
 
+Production runs live (`render.yaml` sets `PESAPAL_ENV=live`, so a blueprint sync can't put it back into test mode).
+The System tab of Platform analytics shows "Live payments (real money)" as Configured when it is.
+
 ---
 
 ## 3. Endpoints of note
