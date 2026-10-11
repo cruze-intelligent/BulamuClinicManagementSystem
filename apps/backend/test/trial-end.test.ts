@@ -36,8 +36,11 @@ describe('when a trial or paid period ends', () => {
     await app?.close();
   });
 
-  const lapseAlerts = () =>
-    sendMailMock.mock.calls.map(([mail]) => mail).filter((m: any) => m.to === OPERATOR && /Trial ended unpaid|Subscription lapsed/.test(m.subject));
+  // Alerts go out in the background, so one raised at the end of an earlier
+  // test can land during the next - count only this facility's.
+  const lapseAlerts = (facility: string) =>
+    sendMailMock.mock.calls.map(([mail]) => mail)
+      .filter((m: any) => m.to === OPERATOR && /Trial ended unpaid|Subscription lapsed/.test(m.subject) && m.subject.includes(facility));
 
   async function facilityWithTrialEnding(trialEndsAt: Date, name = 'Gulu Medical Centre') {
     const clinic = await seedClinic({ name });
@@ -76,9 +79,13 @@ describe('when a trial or paid period ends', () => {
 
     expect(await sweepLapsedSubscriptions()).toBe(1);
     expect(await sweepLapsedSubscriptions()).toBe(0);
-    await vi.waitFor(() => expect(lapseAlerts()).toHaveLength(1));
+    await vi.waitFor(() => expect(lapseAlerts('Arua Health Centre')).toHaveLength(1));
+    // Noticed again later (the billing page, a refused save): still only one.
+    await sweepLapsedSubscriptions();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(lapseAlerts('Arua Health Centre')).toHaveLength(1);
 
-    const alert = lapseAlerts()[0] as any;
+    const alert = lapseAlerts('Arua Health Centre')[0] as any;
     expect(alert.subject).toContain('Trial ended unpaid - Arua Health Centre');
     expect(alert.html).toContain('ruth@arua.ug');
     expect(alert.html).toContain(clinic.facilityCode);
@@ -86,17 +93,17 @@ describe('when a trial or paid period ends', () => {
   });
 
   it('marks a paid month that ran out as past due too', async () => {
-    const clinic = await seedClinic();
+    const clinic = await seedClinic({ name: 'Lira Medical Centre' });
     await prisma.subscription.update({ where: { clinicId: clinic.id }, data: { status: 'ACTIVE', currentPeriodEnd: new Date(Date.now() - DAY) } });
 
     await sweepLapsedSubscriptions();
     expect((await prisma.subscription.findUnique({ where: { clinicId: clinic.id } }))?.status).toBe('PAST_DUE');
-    await vi.waitFor(() => expect(lapseAlerts()).toHaveLength(1));
-    expect((lapseAlerts()[0] as any).subject).toContain('Subscription lapsed');
+    await vi.waitFor(() => expect(lapseAlerts('Lira Medical Centre')).toHaveLength(1));
+    expect((lapseAlerts('Lira Medical Centre')[0] as any).subject).toContain('Subscription lapsed');
   });
 
   it('leaves running trials and paid months alone, and does not alert about internal facilities', async () => {
-    const running = await facilityWithTrialEnding(new Date(Date.now() + 5 * DAY));
+    const running = await facilityWithTrialEnding(new Date(Date.now() + 5 * DAY), 'Soroti Health Centre');
     const hq = await facilityWithTrialEnding(new Date(Date.now() - DAY), 'Bulamu HQ');
     await seedUser({ clinicId: hq.id, role: 'SUPER_ADMIN' });
 
@@ -104,7 +111,8 @@ describe('when a trial or paid period ends', () => {
     expect((await prisma.subscription.findUnique({ where: { clinicId: running.id } }))?.status).toBe('TRIALING');
     // Wait for the (skipped) alert lookup to finish before asserting nothing went out.
     await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(lapseAlerts()).toHaveLength(0);
+    expect(lapseAlerts('Bulamu HQ')).toHaveLength(0);
+    expect(lapseAlerts('Soroti Health Centre')).toHaveLength(0);
   });
 
   describe('paying', () => {
