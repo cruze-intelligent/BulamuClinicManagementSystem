@@ -1,0 +1,8 @@
+# Hostinger's CDN keeps .js files for a week. The service worker and the app
+# manifest must reach devices on the next visit after a deploy, so they are
+# never cached (the browser still checks them only when the app is opened).
+<IfModule mod_headers.c>
+  <FilesMatch "^(sw\.js|manifest\.webmanifest)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+</IfModule>

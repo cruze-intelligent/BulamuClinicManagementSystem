@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   },
   env: {
     NEXT_PUBLIC_API_URL: apiUrl,
+    // Changes every build, so each deploy registers the service worker at a new
+    // address that no CDN has cached.
+    NEXT_PUBLIC_BUILD_ID: (process.env.GITHUB_SHA || Date.now().toString(36)).slice(0, 12),
   },
 };
 

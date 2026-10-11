@@ -63,8 +63,11 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
     setOnline(navigator.onLine);
 
     if ('serviceWorker' in navigator) {
-      // Always check for a new worker, so a fix to offline behaviour reaches devices.
-      navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(console.error);
+      // A new address per build, and no HTTP caching, so each deploy's worker
+      // reaches devices even though the CDN caches scripts for a week.
+      navigator.serviceWorker
+        .register(`/sw.js?v=${process.env.NEXT_PUBLIC_BUILD_ID}`, { updateViaCache: 'none' })
+        .catch(console.error);
     }
 
     const sync = async () => {
