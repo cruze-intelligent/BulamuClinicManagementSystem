@@ -4,6 +4,7 @@ import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from
 import { recordAudit } from '../lib/audit';
 import { requireRole } from '../middleware/rbac.middleware';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
+import { parsePatientDetails } from '../lib/patient-details';
 
 export async function patientRoutes(fastify: FastifyInstance) {
 
@@ -104,6 +105,46 @@ export async function patientRoutes(fastify: FastifyInstance) {
       return { success: true, patient };
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });
+    }
+  });
+
+  // Correct a patient's registration details (name, phone, address, next of
+  // kin...). Clinical records are never edited here. The change is audited
+  // (which fields, not their values) and reaches devices on their next sync.
+  fastify.patch('/patients/:id', { preHandler: [requireRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF')] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as Record<string, unknown>;
+
+    try {
+      const existing = await prisma.patient.findUnique({ where: { id } });
+      if (!existing || existing.deletedAt) {
+        return reply.status(404).send({ error: 'Patient not found' });
+      }
+      if (!assertClinicMatch(request, reply, existing.clinicId)) return;
+
+      const parsed = parsePatientDetails(body);
+      if ('error' in parsed) return reply.status(400).send({ error: parsed.error });
+
+      const changed = (Object.keys(parsed.data) as Array<keyof typeof parsed.data>).filter((key) => {
+        const before = existing[key] instanceof Date ? (existing[key] as Date).toISOString().slice(0, 10) : existing[key];
+        const after = parsed.data[key] instanceof Date ? (parsed.data[key] as Date).toISOString().slice(0, 10) : parsed.data[key];
+        return before !== after;
+      });
+      if (changed.length === 0) return { success: true, patient: existing };
+
+      const data = Object.fromEntries(changed.map((key) => [key, parsed.data[key]]));
+      const patient = await prisma.patient.update({ where: { id }, data });
+
+      const authUser = getAuthUser(request);
+      await recordAudit({
+        entity: 'Patient', recordId: patient.id, clinicId: patient.clinicId,
+        action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
+        metadata: { fields: changed },
+      });
+
+      return { success: true, patient };
+    } catch (error: any) {
+      return reply.status(400).send({ error: error.message });
     }
   });
 

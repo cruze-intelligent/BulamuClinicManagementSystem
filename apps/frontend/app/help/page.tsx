@@ -43,6 +43,16 @@ const faqCategories: FaqCategory[] = [
           'For 12 hours - a full shift. Tick "Keep me signed in for 30 days" when signing in to stay signed in on that device for a month; use it only on a device that is yours. Changing or resetting your password signs you out everywhere. Offline, you are never signed out in the middle of work - it waits until the device is back online.',
       },
       {
+        question: "How do I correct a patient's details, or remove a patient registered by mistake?",
+        answer:
+          'Open the patient and choose Edit details to correct their name, phone, address or next of kin - front desk, nurses, doctors and administrators can do this, and each change is recorded. Administrators also see Delete patient, for test or duplicate registrations: the patient leaves every list, but nothing is erased.',
+      },
+      {
+        question: 'How do I manage my staff accounts?',
+        answer:
+          'Administrators use Staff in the menu to add people, correct a name or email, change a role, reset a forgotten password, and deactivate anyone who has left (they can be reactivated). An account added by mistake can be deleted; one someone has worked under is deactivated instead, so records keep showing who made them.',
+      },
+      {
         question: 'I forgot my password - what do I do?',
         answer:
           'Use "Forgot password" on the sign-in page. A reset link is emailed to your account address and expires after one hour.',

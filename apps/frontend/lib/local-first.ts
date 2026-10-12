@@ -23,6 +23,8 @@ export type LocalPatient = {
   clinicId: string;
   createdAt: string;
   updatedAt: string;
+  /** Set when an administrator deleted the patient; such patients are never listed. */
+  deletedAt?: string | null;
   syncStatus: "pending" | "synced" | "failed";
 };
 
@@ -306,12 +308,18 @@ export async function countPendingMutations(): Promise<number> {
 export async function listLocalPatients(clinicId: string): Promise<LocalPatient[]> {
   const patients = await getAllRecords<LocalPatient>(PATIENT_STORE);
   return patients
-    .filter((p) => p.clinicId === clinicId)
+    .filter((p) => p.clinicId === clinicId && !p.deletedAt)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function getLocalPatientById(id: string): Promise<LocalPatient | undefined> {
   return getRecord<LocalPatient>(PATIENT_STORE, id);
+}
+
+/** Drops a patient an administrator deleted from this device's copy. */
+export async function removeLocalPatient(id: string) {
+  await deleteRecord(PATIENT_STORE, id);
+  emitLocalChange();
 }
 
 export async function cachePatients(patients: Array<Omit<LocalPatient, "syncStatus">>) {

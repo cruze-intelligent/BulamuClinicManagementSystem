@@ -213,7 +213,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       include: {
         users: { where: { role: 'ADMIN' }, select: { id: true, name: true, email: true, isActive: true }, take: 1 },
         subscription: { select: { status: true, plan: true, amount: true, currency: true, trialEndsAt: true, currentPeriodEnd: true, planNotes: true } },
-        _count: { select: { users: true, patients: true } },
+        _count: { select: { users: true, patients: { where: { deletedAt: null } } } },
       },
     });
     if (!clinic) return null;
@@ -304,11 +304,13 @@ export async function clinicRoutes(fastify: FastifyInstance) {
         await Promise.all([
           prisma.clinic.count({ where: REAL_FACILITY }),
           prisma.clinic.count({ where: { ...REAL_FACILITY, isActive: true } }),
-          prisma.user.count({ where: { isActive: true, role: { not: 'SUPER_ADMIN' } } }),
-          prisma.patient.count(),
-          prisma.appointment.count(),
-          prisma.consultation.count(),
-          prisma.invoice.aggregate({ where: { status: 'PAID' }, _sum: { amount: true } }),
+          // Real facilities only, and nothing deleted - the same rules as the
+          // analytics page, so removed test facilities and Bulamu HQ don't count.
+          prisma.user.count({ where: { isActive: true, role: { not: 'SUPER_ADMIN' }, clinic: { is: REAL_FACILITY } } }),
+          prisma.patient.count({ where: { deletedAt: null, clinic: { is: REAL_FACILITY } } }),
+          prisma.appointment.count({ where: { deletedAt: null, patient: { deletedAt: null, clinic: { is: REAL_FACILITY } } } }),
+          prisma.consultation.count({ where: { deletedAt: null, patient: { deletedAt: null, clinic: { is: REAL_FACILITY } } } }),
+          prisma.invoice.aggregate({ where: { status: 'PAID', consultation: { patient: { clinic: { is: REAL_FACILITY } } } }, _sum: { amount: true } }),
           prisma.clinic.findMany({
             where: REAL_FACILITY,
             orderBy: { createdAt: 'desc' },
@@ -316,7 +318,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
               _count: {
                 select: {
                   users: true,
-                  patients: true
+                  patients: { where: { deletedAt: null } }
                 }
               },
               users: {

@@ -37,7 +37,7 @@ export async function verifyStaffSession(request: FastifyRequest, reply: Fastify
   const authUser = request.user as AuthUser;
   const user = await prisma.user.findUnique({
     where: { id: authUser.userId },
-    select: { isActive: true, password: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true } } },
+    select: { isActive: true, password: true, role: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true } } },
   });
   if (!user || !user.isActive || !user.clinic || user.clinic.deletedAt) {
     reply.status(401).send({ error: 'Account no longer active', reason: 'SESSION_ENDED' });
@@ -48,6 +48,12 @@ export async function verifyStaffSession(request: FastifyRequest, reply: Fastify
   const stamp = (request.user as { pw?: string }).pw;
   if (stamp && stamp !== passwordStamp(user.password)) {
     reply.status(401).send({ error: 'Your password was changed. Please sign in again.', reason: 'SESSION_ENDED' });
+    return false;
+  }
+  // An administrator changed this person's role: what they may do changes now,
+  // not when this session runs out (up to 30 days later).
+  if (user.role !== authUser.role) {
+    reply.status(401).send({ error: 'Your role was changed. Please sign in again.', reason: 'SESSION_ENDED' });
     return false;
   }
   if (authUser.role !== 'SUPER_ADMIN' && (!user.clinic.isActive || user.clinic.registrationStatus !== 'APPROVED')) {

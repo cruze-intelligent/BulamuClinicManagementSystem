@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,7 @@ import { ConsultationDetails } from '@/components/consultation-details';
 import { AllergyPanel } from '@/components/allergy-panel';
 import { PatientAdmissions } from '@/components/patient-admissions';
 import { SharedHistoryPanel } from '@/components/shared-history-panel';
+import { PatientDetailsEditor } from '@/components/patient-details-editor';
 
 const DOCUMENT_CATEGORIES = [
   { value: 'LAB_RESULT', label: 'Lab Result' },
@@ -46,6 +47,7 @@ function PatientHistoryContent() {
   const searchParams = useSearchParams();
   const patientId = searchParams.get('id') || '';
   const { hasRole } = useAuth();
+  const router = useRouter();
 
   const [patient, setPatient] = useState<any>(null);
   const [consultations, setConsultations] = useState([]);
@@ -374,20 +376,36 @@ function PatientHistoryContent() {
         </Link>
 
         <Card className="p-6 mb-6">
-          <h1 className="text-3xl font-bold mb-2">{patient.name}</h1>
-          <p className="text-muted-foreground">{patient.phone}</p>
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm mt-3 text-slate-600 dark:text-slate-400">
-            {patient.sex && <span>Sex: {patient.sex}</span>}
-            {patient.dateOfBirth && <span>Age: {calculateAgeYears(patient.dateOfBirth)} years</span>}
-            {(patient.village || patient.parish || patient.subCounty || patient.district) && (
-              <span>
-                Address: {[patient.village, patient.parish, patient.subCounty, patient.district].filter(Boolean).join(', ')}
-              </span>
-            )}
+          {/* One block, so the card's spacing between sections doesn't pull these lines apart. */}
+          <div>
+            <h1 className="text-3xl font-bold mb-1">{patient.name}</h1>
+            <p className="text-muted-foreground">{patient.phone}</p>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm mt-3 text-slate-600 dark:text-slate-400">
+              {patient.sex && <span>Sex: {patient.sex.charAt(0) + patient.sex.slice(1).toLowerCase()}</span>}
+              {patient.dateOfBirth && <span>Age: {calculateAgeYears(patient.dateOfBirth)} years</span>}
+              {(patient.village || patient.parish || patient.subCounty || patient.district) && (
+                <span>
+                  Address: {[patient.village, patient.parish, patient.subCounty, patient.district].filter(Boolean).join(', ')}
+                </span>
+              )}
+              {patient.email && <span>Email: {patient.email}</span>}
+              {patient.nextOfKinName && (
+                <span>Next of kin: {patient.nextOfKinName}{patient.nextOfKinPhone ? ` (${patient.nextOfKinPhone})` : ''}</span>
+              )}
+            </div>
+            <p className="text-sm mt-2 text-slate-500 dark:text-slate-400">
+              Patient since {new Date(patient.createdAt).toLocaleDateString()}
+            </p>
+
+            <PatientDetailsEditor
+              key={patient.updatedAt}
+              patient={patient}
+              canEdit={hasRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF')}
+              canDelete={hasRole('ADMIN')}
+              onSaved={(saved) => setPatient((p: any) => ({ ...p, ...saved }))}
+              onDeleted={() => router.replace('/patients')}
+            />
           </div>
-          <p className="text-sm mt-2 text-slate-500 dark:text-slate-400">
-            Patient since {new Date(patient.createdAt).toLocaleDateString()}
-          </p>
 
           <div className="mt-4">
             <AllergyPanel

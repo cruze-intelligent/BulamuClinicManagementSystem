@@ -81,7 +81,7 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
     {
       target: nav('/users'), where: 'Menu', icon: ClipboardList,
       title: 'Add your staff first',
-      body: 'Create an account for each person and give them the right role - Doctor/Clinical Officer, Nurse/Midwife, Pharmacist or Front Desk. Each role sees only the tools and notifications it needs.',
+      body: 'Create an account for each person and give them the right role - Doctor/Clinical Officer, Nurse/Midwife, Pharmacist or Front Desk. Each role sees only the tools and notifications it needs. Here you also correct details, reset passwords and deactivate anyone who leaves.',
     },
     {
       target: nav('/patients'), where: 'Menu', icon: Users,
