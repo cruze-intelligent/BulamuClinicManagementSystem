@@ -274,6 +274,7 @@ describe('sample documents', () => {
     expect(mail.attachments).toHaveLength(7);
     for (const attachment of mail.attachments) {
       expect(attachment.contentType).toBe('application/pdf');
+      expect(Buffer.from(attachment.content).length).toBeGreaterThan(1000);
       expect(pdfText(attachment.content)).toContain('SAMPLE - NOT A REAL');
     }
   });

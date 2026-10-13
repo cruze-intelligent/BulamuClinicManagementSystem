@@ -20,8 +20,9 @@ export async function facilityLogoRoutes(fastify: FastifyInstance) {
 
   fastify.put(
     '/clinics/:clinicId/logo',
-    // A base64 image is about a third larger than the file itself.
-    { preHandler: [requireRole('ADMIN')], bodyLimit: Math.ceil(MAX_LOGO_BYTES * 1.4) + 1024 },
+    // Room for an image well over the limit, so an oversized one gets the clear
+    // 'must be smaller than 500 KB' answer below rather than a bare refusal.
+    { preHandler: [requireRole('ADMIN')], bodyLimit: MAX_LOGO_BYTES * 4 },
     async (request, reply) => {
       const clinicId = resolveClinicScope(request, reply, (request.params as { clinicId: string }).clinicId);
       if (!clinicId) return;
