@@ -20,6 +20,7 @@ import { AllergyPanel } from '@/components/allergy-panel';
 import { PatientAdmissions } from '@/components/patient-admissions';
 import { SharedHistoryPanel } from '@/components/shared-history-panel';
 import { PatientDetailsEditor } from '@/components/patient-details-editor';
+import { ConsultationFee } from '@/components/consultation-fee';
 
 const DOCUMENT_CATEGORIES = [
   { value: 'LAB_RESULT', label: 'Lab Result' },
@@ -718,18 +719,7 @@ function PatientHistoryContent() {
                   />
                 </div>
 
-                {consult.invoice && (
-                  <div className="border-t pt-4">
-                    <p className="text-sm">
-                      <strong>Fee:</strong> UGX {consult.invoice.amount.toLocaleString()}
-                      <span className={`ml-2 px-2 py-1 rounded text-xs ${
-                        consult.invoice.status === 'PAID' ? 'bg-green-100 dark:bg-green-900' : 'bg-yellow-100 dark:bg-yellow-900'
-                      }`}>
-                        {consult.invoice.status}
-                      </span>
-                    </p>
-                  </div>
-                )}
+                <ConsultationFee consultationId={consult.id} invoice={consult.invoice ?? null} canCharge={hasRole('ADMIN', 'DOCTOR')} />
               </Card>
             ))}
           </div>

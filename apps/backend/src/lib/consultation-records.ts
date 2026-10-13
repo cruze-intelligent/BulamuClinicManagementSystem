@@ -1,6 +1,8 @@
 import { prisma } from './prisma';
 import type { PrescriptionInput } from './clinical';
 import { generatePrescriptionPdf, PrescriptionPdfInput } from './pdf';
+import { facilityLogo } from './facility-logo';
+import { roleTitle, type Signer } from './document-signer';
 
 /**
  * Keeps a prescription's link to a stock item only when that item really is one
@@ -39,13 +41,13 @@ function ageLabel(dateOfBirth: Date | null, at: Date): string | undefined {
 }
 
 /** Everything the printed prescription needs, for a consultation the caller has already been cleared to read. */
-export async function buildPrescriptionPdf(consultationId: string): Promise<{ pdf: Buffer; clinicId: string } | null> {
+export async function buildPrescriptionPdf(consultationId: string, producedBy?: Signer | string | null): Promise<{ pdf: Buffer; clinicId: string } | null> {
   const consultation = await prisma.consultation.findFirst({
     where: { id: consultationId, deletedAt: null },
     include: {
       ...consultationChildren,
       patient: { select: { name: true, phone: true, sex: true, dateOfBirth: true, clinic: { select: { name: true, facilityCode: true } } } },
-      appointment: { select: { clinicId: true, doctor: { select: { name: true } } } },
+      appointment: { select: { clinicId: true, doctor: { select: { name: true, role: true } } } },
     },
   });
   if (!consultation) return null;
@@ -54,11 +56,14 @@ export async function buildPrescriptionPdf(consultationId: string): Promise<{ pd
     consultationId: consultation.id,
     clinicName: consultation.patient.clinic.name,
     facilityCode: consultation.patient.clinic.facilityCode,
+    clinicLogo: await facilityLogo(consultation.appointment.clinicId),
     patientName: consultation.patient.name,
     patientPhone: consultation.patient.phone,
     patientSex: consultation.patient.sex,
     patientAge: ageLabel(consultation.patient.dateOfBirth, consultation.createdAt),
     prescriberName: consultation.appointment.doctor?.name,
+    prescriberRole: consultation.appointment.doctor ? roleTitle(consultation.appointment.doctor.role) : undefined,
+    producedBy,
     date: consultation.createdAt,
     diagnoses: consultation.diagnoses,
     prescriptions: consultation.prescriptions,

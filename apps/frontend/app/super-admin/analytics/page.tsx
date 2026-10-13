@@ -14,6 +14,7 @@ import { roleLabel } from '@/lib/role-labels';
 import { BarList, ShareRow, StatTile, TimeSeriesChart } from '@/components/analytics-charts';
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
 import { EmailDeliveryCard, MailStatus } from '@/components/email-delivery-card';
+import { SampleDocumentsCard } from '@/components/sample-documents-card';
 import {
   ENGAGEMENT_LABELS, Point, compactNumber, engagementRank, formatBytes, formatNumber, formatPercent, formatUptime, humanize, timeAgo,
 } from '@/lib/analytics-format';
@@ -477,6 +478,7 @@ export default function SuperAdminAnalyticsPage() {
                   </Card>
 
                   {system.mail && <EmailDeliveryCard initial={system.mail} />}
+                  {system.mail && <SampleDocumentsCard inbox={system.mail.operatorInbox} />}
 
                   <Card className="p-4 gap-3">
                     <div>

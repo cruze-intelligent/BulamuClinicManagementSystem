@@ -9,6 +9,7 @@ import { detectDocumentFormat, normalizeFileName, setDownloadHeaders, withFormat
 import { generateDischargeSummaryPdf, generateReferralLetterPdf } from '../lib/pdf';
 import { referralLetterInput } from './referral.routes';
 import { dischargeSummaryInput } from './admission.routes';
+import { facilityLogo } from '../lib/facility-logo';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -200,7 +201,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     if (!record) return reply.status(404).send({ error: 'Prescription not found' });
     if (consultation._count.prescriptions === 0) return reply.status(404).send({ error: 'Prescription not found' });
 
-    const built = await buildPrescriptionPdf(id);
+    const built = await buildPrescriptionPdf(id, 'downloaded by the patient from the Bulamu Patient Portal');
     if (!built) return reply.status(404).send({ error: 'Prescription not found' });
 
     reply.header('Content-Type', 'application/pdf');
@@ -214,12 +215,12 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     const { id } = request.params as any;
     const referral = await prisma.referral.findUnique({
       where: { id },
-      include: { patient: true, fromClinic: true, toClinic: { select: { name: true } }, referredBy: { select: { name: true } } },
+      include: { patient: true, fromClinic: true, toClinic: { select: { name: true } }, referredBy: { select: { name: true, role: true } } },
     });
     if (!referral || !(await findOwnRecord(authUser.patientAccountId, referral.patientId))) {
       return reply.status(404).send({ error: 'Referral not found' });
     }
-    const pdf = await generateReferralLetterPdf(referralLetterInput(referral));
+    const pdf = await generateReferralLetterPdf({ ...referralLetterInput(referral), fromClinicLogo: await facilityLogo(referral.fromClinicId), producedBy: 'downloaded by the patient from the Bulamu Patient Portal' });
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `inline; filename="referral-${id.slice(0, 8)}.pdf"`);
     return reply.send(pdf);
@@ -233,14 +234,14 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
       where: { id },
       include: {
         patient: true, ward: { select: { name: true } }, clinic: { select: { name: true, facilityCode: true } },
-        attendingDoctor: { select: { name: true } }, dischargedBy: { select: { name: true } },
+        attendingDoctor: { select: { name: true, role: true } }, dischargedBy: { select: { name: true, role: true } },
         referral: { select: { toClinic: { select: { name: true } } } },
       },
     });
     if (!admission || admission.status !== 'DISCHARGED' || !(await findOwnRecord(authUser.patientAccountId, admission.patientId))) {
       return reply.status(404).send({ error: 'Discharge summary not found' });
     }
-    const pdf = await generateDischargeSummaryPdf(dischargeSummaryInput(admission));
+    const pdf = await generateDischargeSummaryPdf({ ...dischargeSummaryInput(admission), clinicLogo: await facilityLogo(admission.clinicId), producedBy: 'downloaded by the patient from the Bulamu Patient Portal' });
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `inline; filename="discharge-summary-${id.slice(0, 8)}.pdf"`);
     return reply.send(pdf);

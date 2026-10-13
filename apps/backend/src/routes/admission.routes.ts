@@ -11,6 +11,8 @@ import { ICD10_PATTERN } from '../lib/clinical';
 import { normalizeVitals } from '../lib/vitals';
 import { generateDischargeSummaryPdf } from '../lib/pdf';
 import { allergyText, sexAgeText } from '../lib/patient-text';
+import { facilityLogo } from '../lib/facility-logo';
+import { documentProducer, roleTitle } from '../lib/document-signer';
 
 /**
  * Inpatients: wards and beds, admission, notes and observations during the
@@ -41,9 +43,9 @@ const icd10 = (value: unknown) => {
 const admissionInclude = {
   patient: { select: { id: true, name: true, phone: true, sex: true, dateOfBirth: true, allergyStatus: true, allergies: true, patientAccountId: true } },
   ward: { select: { id: true, name: true, type: true } },
-  attendingDoctor: { select: { id: true, name: true } },
+  attendingDoctor: { select: { id: true, name: true, role: true } },
   admittedBy: { select: { id: true, name: true } },
-  dischargedBy: { select: { id: true, name: true } },
+  dischargedBy: { select: { id: true, name: true, role: true } },
   referral: { select: { id: true, status: true, toClinic: { select: { name: true } } } },
 } as const;
 
@@ -363,7 +365,7 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     if (!admission || admission.clinicId !== clinicId) return reply.status(404).send({ error: 'Admission not found' });
     if (admission.status !== 'DISCHARGED') return reply.status(409).send({ error: 'The patient has not been discharged yet' });
 
-    const pdf = await generateDischargeSummaryPdf(dischargeSummaryInput(admission));
+    const pdf = await generateDischargeSummaryPdf({ ...dischargeSummaryInput(admission), clinicLogo: await facilityLogo(admission.clinicId), producedBy: await documentProducer(getAuthUser(request).userId) });
     return reply
       .header('Content-Type', 'application/pdf')
       .header('Content-Disposition', `inline; filename="discharge-summary-${admission.id.slice(0, 8)}.pdf"`)
@@ -396,6 +398,7 @@ export function dischargeSummaryInput(admission: any) {
     dischargedAt: admission.dischargedAt,
     attendingDoctor: admission.attendingDoctor?.name ?? null,
     dischargedBy: admission.dischargedBy?.name ?? null,
+    dischargedByRole: admission.dischargedBy?.role ? roleTitle(admission.dischargedBy.role) : null,
     admissionReason: admission.reason,
     outcome: OUTCOME_LABEL[admission.outcome as DischargeOutcome],
     dischargeDiagnosis: [admission.dischargeDiagnosis, admission.dischargeIcd10Code ? `(ICD-10 ${admission.dischargeIcd10Code})` : null].filter(Boolean).join(' '),

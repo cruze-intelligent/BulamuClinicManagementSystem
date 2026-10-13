@@ -3,14 +3,10 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
-import { invalidateSubscriptionCache, lapseIfDue, paidPeriodEnd } from '../lib/subscription';
-import { sendMail, subscriptionReceiptEmail, formatEmailDate, MailResult } from '../lib/mailer';
-import { alertOperator, deliveryNote } from '../lib/operator-alerts';
-import { notifyStaff } from '../lib/notifications';
+import { invalidateSubscriptionCache, lapseIfDue } from '../lib/subscription';
+import { applyPesapalStatus } from '../lib/subscription-payments';
 import { generateReceiptPdf } from '../lib/pdf';
-import {
-  getAccessToken, registerIpnUrl, submitOrderRequest, getTransactionStatus, describePesapalError, PESAPAL_STATUS_COMPLETED,
-} from '../services/pesapal.service';
+import { getAccessToken, registerIpnUrl, submitOrderRequest, describePesapalError } from '../services/pesapal.service';
 
 function pesapalCredentials() {
   const consumerKey = process.env.PESAPAL_CONSUMER_KEY;
@@ -112,92 +108,12 @@ export async function billingRoutes(fastify: FastifyInstance) {
   });
 
   // Pesapal calls this from their servers once a payment attempt resolves.
-  // Never trust the callback query params for the actual outcome - look the
-  // transaction up authoritatively via GetTransactionStatus.
+  // Never trust the callback query params for the actual outcome - the order
+  // is looked up authoritatively via GetTransactionStatus.
   fastify.get('/billing/pesapal/ipn', async (request, reply) => {
     const { OrderTrackingId, OrderMerchantReference, OrderNotificationType } = request.query as any;
-    const credentials = pesapalCredentials();
-
     try {
-      if (credentials && OrderTrackingId) {
-        const tokenResult = await getAccessToken(credentials);
-        if (tokenResult.success && tokenResult.token) {
-          const statusResult = await getTransactionStatus(tokenResult.token, OrderTrackingId);
-          const payment = await prisma.payment.findUnique({ where: { pesapalOrderTrackingId: OrderTrackingId } });
-          // Pesapal can send the same notification more than once - a payment
-          // that is already COMPLETED has been applied and must not add
-          // another 30 days or send a second receipt.
-          if (payment && payment.status !== 'COMPLETED' && statusResult.success && statusResult.status) {
-            const completed = statusResult.status.statusCode === PESAPAL_STATUS_COMPLETED;
-            const { count } = await prisma.payment.updateMany({
-              where: { id: payment.id, status: { not: 'COMPLETED' } },
-              data: { status: completed ? 'COMPLETED' : 'FAILED', rawCallback: statusResult.status as any },
-            });
-            const subscription = await prisma.subscription.findUnique({ where: { id: payment.subscriptionId } });
-            if (completed && count === 1 && subscription) {
-              const periodEnd = paidPeriodEnd(subscription);
-              await prisma.subscription.update({
-                where: { id: payment.subscriptionId },
-                data: { status: 'ACTIVE', lastPaymentAt: new Date(), currentPeriodEnd: periodEnd },
-              });
-              invalidateSubscriptionCache(payment.clinicId);
-
-              await notifyStaff({
-                type: 'PAYMENT_RECEIVED',
-                clinicId: payment.clinicId,
-                title: 'Subscription payment received',
-                body: `${payment.currency} ${payment.amount.toLocaleString()} was received. Your subscription is active through ${formatEmailDate(periodEnd)}. The receipt has been emailed and is on the Billing page.`,
-                link: '/billing',
-                emailSummary: 'A subscription payment was received.',
-                log: (message) => fastify.log.warn(message),
-              });
-
-              const [clinic, admin] = await Promise.all([
-                prisma.clinic.findUnique({ where: { id: payment.clinicId } }),
-                prisma.user.findFirst({ where: { clinicId: payment.clinicId, role: 'ADMIN' } }),
-              ]);
-              // Pesapal is waiting on this response - the receipt and the
-              // operator alert go out in the background.
-              if (clinic) {
-                void (async () => {
-                  let receipt: MailResult | null = null;
-                  if (admin) {
-                    const receiptPdf = await generateReceiptPdf({
-                      paymentId: payment.id,
-                      clinicName: clinic.name,
-                      facilityCode: clinic.facilityCode,
-                      amount: payment.amount,
-                      currency: payment.currency,
-                      paidAt: new Date(),
-                      periodEnd,
-                    });
-                    receipt = await sendMail({
-                      to: admin.email,
-                      subject: `Bulamu payment receipt - ${clinic.name}`,
-                      html: subscriptionReceiptEmail(clinic.name, payment.amount, payment.currency, periodEnd),
-                      attachments: [{ filename: `receipt-${payment.id}.pdf`, content: receiptPdf, contentType: 'application/pdf' }],
-                    });
-                  }
-                  await alertOperator({
-                    subject: `Payment received - ${clinic.name} - ${payment.currency} ${payment.amount.toLocaleString()}`,
-                    heading: 'Subscription payment received',
-                    facts: [
-                      ['Facility', clinic.name],
-                      ['Facility ID', clinic.facilityCode],
-                      ['Amount', `${payment.currency} ${payment.amount.toLocaleString()}`],
-                      ['Active through', formatEmailDate(periodEnd)],
-                      ['Pesapal reference', OrderTrackingId],
-                      ['Receipt to the facility', deliveryNote(receipt)],
-                    ],
-                    ctaPath: '/super-admin',
-                    ctaLabel: 'Open Facility Management',
-                  });
-                })().catch((error) => fastify.log.error(error, 'Payment emails failed'));
-              }
-            }
-          }
-        }
-      }
+      if (OrderTrackingId) await applyPesapalStatus(String(OrderTrackingId), (message) => fastify.log.warn(message));
     } catch (error) {
       fastify.log.error(error, 'Pesapal IPN processing failed');
     }
@@ -208,6 +124,26 @@ export async function billingRoutes(fastify: FastifyInstance) {
       orderMerchantReference: OrderMerchantReference,
       status: 200,
     });
+  });
+
+  // The admin is back from Pesapal (the callback page passes the order's
+  // tracking id): check the order now rather than waiting for Pesapal's
+  // notification, which can be late - or never arrive.
+  fastify.post('/billing/confirm', { preHandler: [requireRole('ADMIN')] }, async (request, reply) => {
+    const { orderTrackingId } = (request.body ?? {}) as { orderTrackingId?: unknown };
+    if (typeof orderTrackingId !== 'string' || !orderTrackingId) {
+      return reply.status(400).send({ error: 'orderTrackingId is required' });
+    }
+    const payment = await prisma.payment.findUnique({ where: { pesapalOrderTrackingId: orderTrackingId } });
+    if (!payment) return reply.status(404).send({ error: 'Payment not found' });
+    if (!assertClinicMatch(request, reply, payment.clinicId)) return;
+
+    try {
+      const outcome = await applyPesapalStatus(orderTrackingId, (message) => fastify.log.warn(message));
+      return { success: true, outcome };
+    } catch (error: any) {
+      return reply.status(502).send({ error: 'Could not check the payment with Pesapal - please try again shortly' });
+    }
   });
 
   // Payment history for the caller's facility, for the Billing page's
@@ -250,13 +186,16 @@ export async function billingRoutes(fastify: FastifyInstance) {
         amount: payment.amount,
         currency: payment.currency,
         paidAt: payment.updatedAt,
-        // A zero-amount receipt is the free-trial one, which always ends when
-        // the trial does - not whenever a later paid period happens to end.
-        periodEnd: payment.amount === 0 ? subscription.trialEndsAt : subscription.currentPeriodEnd || payment.updatedAt,
+        // Each receipt shows the period that payment paid for. Payments from
+        // before that was recorded fall back to what is known: the trial's
+        // end for the free-trial receipt, the current period otherwise.
+        periodStart: payment.periodStart,
+        periodEnd: payment.periodEnd ?? (payment.amount === 0 ? subscription.trialEndsAt : subscription.currentPeriodEnd || payment.updatedAt),
+        pesapalReference: payment.pesapalOrderTrackingId,
       });
 
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `attachment; filename="receipt-${payment.id}.pdf"`);
+      reply.header('Content-Disposition', `attachment; filename="bulamu-receipt-${payment.id.slice(0, 8)}.pdf"`);
       return reply.send(pdf);
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });

@@ -8,6 +8,7 @@ import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
 import { notifyDoctorOfAppointment, notifyIfLowStock, notifyLabOrdered, notifyLabResultReady, notifyLabResultToOrderer, notifyNewPrescription } from '../lib/notifications';
 import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
 import { consultationChildren, linkStockItems } from '../lib/consultation-records';
+import { parseFee } from '../lib/invoices';
 
 export async function syncRoutes(fastify: FastifyInstance) {
   // Push queued offline mutations to backend (Last-Write-Wins by timestamp,
@@ -218,6 +219,13 @@ export async function syncRoutes(fastify: FastifyInstance) {
               continue;
             }
             const prescriptions = validPrescriptions?.ok ? await linkStockItems(appointment.clinicId, validPrescriptions.value) : null;
+            let fee: number | null;
+            try {
+              fee = parseFee(payload.fee);
+            } catch (error: any) {
+              fastify.log.warn(`Rejected consultation mutation ${mutationId}: ${error.message}`);
+              continue;
+            }
             const diagnoses = validDiagnoses.value;
             const diagnosisText = primaryDiagnosisText(diagnoses);
             const clinicalNotes = typeof payload.clinicalNotes === 'string' ? payload.clinicalNotes.trim().slice(0, 4000) || null : undefined;
@@ -274,6 +282,15 @@ export async function syncRoutes(fastify: FastifyInstance) {
                   return false;
                 });
                 await tx.prescription.createMany({ data: toCreate.map((rx) => ({ ...rx, consultationId: saved.id })) });
+              }
+              // A fee recorded with the consultation becomes the facility's
+              // invoice to the patient - once: a re-sent or edited copy never
+              // bills again or changes an invoice that already exists.
+              if (fee) {
+                await tx.invoice.createMany({
+                  data: [{ consultationId: saved.id, clinicId: appointment.clinicId, amount: fee }],
+                  skipDuplicates: true,
+                });
               }
               // Send the whole record back, children included: the app replaces its
               // local copy with this, so leaving them out would make a saved

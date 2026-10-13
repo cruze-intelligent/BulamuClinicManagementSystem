@@ -1,10 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { authenticate, assertClinicMatch } from '../middleware/auth.middleware';
+import { authenticate, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { isValidServiceTag } from '../lib/hmis';
 import { notifyNewPrescription } from '../lib/notifications';
 import { normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
 import { buildPrescriptionPdf, consultationChildren, linkStockItems } from '../lib/consultation-records';
+import { parseFee } from '../lib/invoices';
+import { documentProducer } from '../lib/document-signer';
 
 const MAX_SYMPTOMS = 2000;
 const MAX_CLINICAL_NOTES = 4000;
@@ -16,7 +18,7 @@ export async function consultationRoutes(fastify: FastifyInstance) {
   // structured prescriptions. A plain `diagnosis` string is still accepted (older
   // clients) and becomes a single uncoded primary diagnosis.
   fastify.post('/consultations', { preHandler: [authenticate] }, async (request, reply) => {
-    const { appointmentId, patientId, diagnosis, diagnoses, symptoms, clinicalNotes, prescriptions, amount, serviceTags } = request.body as any;
+    const { appointmentId, patientId, diagnosis, diagnoses, symptoms, clinicalNotes, prescriptions, fee: feeInput, amount, serviceTags } = request.body as any;
 
     if (serviceTags && (!Array.isArray(serviceTags) || !serviceTags.every(isValidServiceTag))) {
       return reply.status(400).send({ error: 'Invalid serviceTags' });
@@ -32,6 +34,13 @@ export async function consultationRoutes(fastify: FastifyInstance) {
     if (!validDiagnoses.ok) return reply.status(400).send({ error: validDiagnoses.error });
     const validPrescriptions = normalizePrescriptions(prescriptions);
     if (!validPrescriptions.ok) return reply.status(400).send({ error: validPrescriptions.error });
+    // `amount` is the older name for the consultation fee.
+    let fee: number | null;
+    try {
+      fee = parseFee(feeInput ?? amount);
+    } catch (error: any) {
+      return reply.status(400).send({ error: error.message });
+    }
 
     try {
       const appointment = await prisma.appointment.findUnique({ where: { id: appointmentId } });
@@ -55,12 +64,9 @@ export async function consultationRoutes(fastify: FastifyInstance) {
           serviceTags: serviceTags || [],
           diagnoses: { create: validDiagnoses.value },
           prescriptions: { create: rx },
-          invoice: amount ? {
-            create: {
-              clinicId: (request.user as any).clinicId,
-              amount
-            }
-          } : undefined
+          // The facility's invoice to the patient, filed under the facility
+          // where the visit happened.
+          invoice: fee ? { create: { clinicId: appointment.clinicId, amount: fee } } : undefined,
         },
         include: {
           ...consultationChildren,
@@ -123,7 +129,7 @@ export async function consultationRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'This consultation has no prescriptions to print' });
       }
 
-      const built = await buildPrescriptionPdf(id);
+      const built = await buildPrescriptionPdf(id, await documentProducer(getAuthUser(request).userId));
       if (!built) return reply.status(404).send({ error: 'Consultation not found' });
 
       reply.header('Content-Type', 'application/pdf');

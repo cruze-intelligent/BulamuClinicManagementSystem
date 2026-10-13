@@ -134,10 +134,22 @@ model Clinic {
   rejectionReason String?
   deletedAt     DateTime?
   deletedBy     String?
+  logo          ClinicLogo?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([phoneKey])
+}
+
+// A facility's own logo, printed on its documents (invoices, prescriptions,
+// referral letters, discharge summaries). Kept apart from Clinic so the image
+// is only ever loaded when a document or the settings page needs it.
+model ClinicLogo {
+  clinicId  String   @id
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  data      Bytes
+  mimeType  String
+  updatedAt DateTime @updatedAt
 }
 
 enum RegistrationStatus {
@@ -185,6 +197,11 @@ model Payment {
   pesapalOrderTrackingId   String?  @unique
   pesapalMerchantReference String?  @unique
   rawCallback              Json?
+  // The period this payment paid for (for a free-trial receipt: the trial),
+  // so a receipt downloaded later still shows its own dates. Empty on
+  // payments made before this was recorded.
+  periodStart              DateTime?
+  periodEnd                DateTime?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
@@ -195,6 +212,8 @@ enum PaymentStatus {
   PENDING
   COMPLETED
   FAILED
+  // Pesapal reversed a completed payment (a refund or a chargeback).
+  REVERSED
 }
 
 model Dhis2Integration {

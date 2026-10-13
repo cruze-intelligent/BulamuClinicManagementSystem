@@ -1,5 +1,5 @@
 import {
-  ArrowRightLeft, BarChart3, BedDouble, Bell, CalendarDays, ClipboardList, CreditCard, Crown, FlaskConical, HelpCircle,
+  ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FlaskConical, HelpCircle,
   History, Home, MapPinned, Package, Pill, Receipt, Stethoscope, Users, type LucideIcon,
 } from 'lucide-react';
 
@@ -25,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { name: 'Notifications', path: '/notifications', icon: Bell, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
   { name: 'Activity', path: '/sync-activity', icon: History, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
   { name: 'Staff', path: '/users', icon: ClipboardList, roles: ['ADMIN'] },
+  { name: 'Facility', path: '/facility', icon: Building2, roles: ['ADMIN'] },
   { name: 'Billing', path: '/billing', icon: CreditCard, roles: ['ADMIN'] },
   { name: 'Help & FAQ', path: '/help', icon: HelpCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF'] },
 ];

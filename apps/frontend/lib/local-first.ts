@@ -587,6 +587,8 @@ export async function createConsultationOffline(input: {
   clinicalNotes?: string;
   serviceTags?: string[];
   prescriptions: LocalPrescription[];
+  /** Consultation fee in UGX - becomes the facility's invoice to the patient. */
+  fee?: number;
   patientName?: string;
 }): Promise<LocalConsultation> {
   await assertCanSave();
@@ -624,6 +626,7 @@ export async function createConsultationOffline(input: {
       clinicalNotes: consultation.clinicalNotes,
       serviceTags: consultation.serviceTags || [],
       prescriptions: consultation.prescriptions,
+      ...(input.fee ? { fee: input.fee } : {}),
       createdAt: consultation.createdAt,
       updatedAt: consultation.updatedAt,
     },

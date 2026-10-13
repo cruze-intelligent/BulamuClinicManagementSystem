@@ -292,7 +292,7 @@ export default function SuperAdminPage() {
     { label: 'Active Users', value: overview?.userCount || 0, icon: Users },
     { label: 'Patients', value: overview?.patientCount || 0, icon: Activity },
     { label: 'Consultations', value: overview?.consultationCount || 0, icon: ClipboardCheck },
-    { label: 'Revenue', value: `UGX ${(overview?.revenue || 0).toLocaleString()}`, icon: DatabaseZap },
+    { label: 'Subscription income', value: `UGX ${(overview?.revenue || 0).toLocaleString()}`, icon: DatabaseZap },
   ];
 
   return (

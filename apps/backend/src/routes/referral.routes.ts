@@ -5,6 +5,8 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { createReferral, ReferralError, registerReferredPatient, updateReferralStatus } from '../lib/referrals';
 import { generateReferralLetterPdf } from '../lib/pdf';
 import { addressText, allergyText, nextOfKinText, sexAgeText } from '../lib/patient-text';
+import { facilityLogo } from '../lib/facility-logo';
+import { documentProducer, roleTitle } from '../lib/document-signer';
 
 function fail(reply: FastifyReply, error: any) {
   if (error instanceof ReferralError) return reply.status(error.status).send({ error: error.message });
@@ -110,14 +112,14 @@ export async function referralRoutes(fastify: FastifyInstance) {
     try {
       const referral = await prisma.referral.findUnique({
         where: { id },
-        include: { patient: true, fromClinic: true, toClinic: { select: { name: true } }, referredBy: { select: { name: true } } },
+        include: { patient: true, fromClinic: true, toClinic: { select: { name: true } }, referredBy: { select: { name: true, role: true } } },
       });
       if (!referral) return reply.status(404).send({ error: 'Referral not found' });
       if (referral.fromClinicId !== authUser.clinicId && referral.toClinicId !== authUser.clinicId) {
         return reply.status(403).send({ error: 'Access denied: you do not have access to this referral' });
       }
 
-      const pdf = await generateReferralLetterPdf(referralLetterInput(referral));
+      const pdf = await generateReferralLetterPdf({ ...referralLetterInput(referral), fromClinicLogo: await facilityLogo(referral.fromClinicId), producedBy: await documentProducer(authUser.userId) });
       return reply
         .header('Content-Type', 'application/pdf')
         .header('Content-Disposition', `inline; filename="referral-${referral.id.slice(0, 8)}.pdf"`)
@@ -138,6 +140,7 @@ export function referralLetterInput(referral: any) {
     urgency: referral.urgency,
     createdAt: referral.createdAt,
     referredByName: referral.referredBy?.name ?? null,
+    referredByRole: referral.referredBy?.role ? roleTitle(referral.referredBy.role) : null,
     patient: {
       name: referral.patient.name,
       sexAge: sexAgeText(referral.patient),

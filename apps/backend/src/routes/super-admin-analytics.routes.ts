@@ -4,7 +4,8 @@ import { buildAnalytics, buildSystemReport, listStaff, parseDays } from '../lib/
 import { snapshotRuntimeMetrics } from '../lib/runtime-metrics';
 import { purgeOldUsageRecords } from '../lib/usage-tracking';
 import { buildCsv, sendCsv } from '../lib/csv';
-import { mailStatus } from '../lib/mailer';
+import { ADMIN_NOTIFY_EMAIL, mailStatus, operatorAlertEmail, sendMail } from '../lib/mailer';
+import { buildSampleDocuments } from '../lib/sample-documents';
 import { sweepLapsedSubscriptions } from '../lib/subscription';
 import { alertOperator } from '../lib/operator-alerts';
 import { prisma } from '../lib/prisma';
@@ -53,6 +54,28 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
       ],
     });
     return { success: true, result, mail: mailStatus() };
+  });
+
+  // One of every document Bulamu produces - made-up details, stamped SAMPLE on
+  // every page - emailed to the operator inbox (never an address the caller
+  // chooses) so branding can be checked without touching anyone's records.
+  fastify.post('/super-admin/system/sample-documents', { preHandler: [requireRole('SUPER_ADMIN')] }, async (_request, reply) => {
+    try {
+      const documents = await buildSampleDocuments();
+      const result = await sendMail({
+        to: ADMIN_NOTIFY_EMAIL,
+        subject: '[Bulamu] Sample documents for checking',
+        html: operatorAlertEmail({
+          heading: 'Sample documents',
+          intro: "One of every document Bulamu produces is attached, filled with made-up details and stamped SAMPLE on every page. Facility documents carry the facility's logo when it has added one; receipts are Bulamu's own.",
+          facts: documents.map((d, i) => [`${i + 1}`, d.title]),
+        }),
+        attachments: documents.map((d) => ({ filename: d.filename, content: d.content, contentType: 'application/pdf' })),
+      });
+      return { success: true, result, documents: documents.map((d) => d.title), mail: mailStatus() };
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
   });
 
   // The staff directory with usage: who they are, where they work, when they were

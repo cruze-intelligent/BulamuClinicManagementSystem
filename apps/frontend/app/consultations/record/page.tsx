@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { DiagnosisPicker } from '@/components/diagnosis-picker';
 import { PrescriptionBuilder } from '@/components/prescription-builder';
 import { AllergyPanel } from '@/components/allergy-panel';
@@ -48,6 +49,7 @@ function RecordConsultationForm() {
   const [symptoms, setSymptoms] = useState('');
   const [diagnoses, setDiagnoses] = useState<DiagnosisDraft[]>([emptyDiagnosis()]);
   const [clinicalNotes, setClinicalNotes] = useState('');
+  const [fee, setFee] = useState('');
   const [prescriptions, setPrescriptions] = useState<PrescriptionDraft[]>([emptyDraft()]);
   const [attempted, setAttempted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -65,6 +67,8 @@ function RecordConsultationForm() {
   }, [queryPatientId]);
 
   const diagnosisIssues = attempted ? diagnosisProblems(diagnoses) : [];
+  // Whole shillings; a slip of the finger adding zeros is caught before saving.
+  const feeProblem = fee && Number(fee) > 100_000_000 ? 'That fee looks too large - check the amount' : '';
   const conflictCount = (d: PrescriptionDraft) => findAllergyConflicts(patient, d.medication).length;
   const prescriptionIssues = prescriptions.some((d) => draftProblems(d, conflictCount(d)).length > 0);
 
@@ -74,7 +78,7 @@ function RecordConsultationForm() {
 
     // Everything is checked before anything is saved - a half-written
     // prescription must never reach a pharmacist.
-    if (diagnosisProblems(diagnoses).length > 0 || prescriptions.some((d) => draftProblems(d, conflictCount(d)).length > 0)) {
+    if (diagnosisProblems(diagnoses).length > 0 || prescriptions.some((d) => draftProblems(d, conflictCount(d)).length > 0) || feeProblem) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -90,6 +94,7 @@ function RecordConsultationForm() {
         symptoms: symptoms.trim(),
         clinicalNotes: clinicalNotes.trim(),
         prescriptions: prescriptions.filter((d) => !isBlankDraft(d)).map(draftToPayload),
+        fee: fee ? Number(fee) : undefined,
         patientName: patient?.name,
       });
 
@@ -112,6 +117,7 @@ function RecordConsultationForm() {
   const summary = [
     attempted && diagnosisIssues.length > 0 ? 'the diagnosis' : null,
     attempted && prescriptionIssues ? 'the prescription details marked below' : null,
+    attempted && feeProblem ? 'the fee' : null,
   ].filter(Boolean);
 
   return (
@@ -178,6 +184,23 @@ function RecordConsultationForm() {
             <section>
               <StepHeading n={4} title="Prescription" hint="Leave empty if nothing is prescribed. The pharmacist is told when a prescription is waiting." />
               <PrescriptionBuilder value={prescriptions} onChange={setPrescriptions} stock={stock} showProblems={attempted} allergies={patient} />
+            </section>
+
+            <section>
+              <StepHeading n={5} title="Consultation fee" hint="Optional. Creates the patient's invoice under Invoices, to be marked paid when your facility collects it. Leave empty if there is no charge." />
+              <Label htmlFor="fee" className="sr-only">Consultation fee in UGX</Label>
+              <div className="flex max-w-xs items-center gap-2">
+                <span className="text-sm text-slate-500 dark:text-slate-400">UGX</span>
+                <Input
+                  id="fee"
+                  inputMode="numeric"
+                  placeholder="e.g. 20000"
+                  value={fee}
+                  onChange={(e) => setFee(e.target.value.replace(/[^\d]/g, ''))}
+                  aria-invalid={attempted && feeProblem ? true : undefined}
+                />
+              </div>
+              {attempted && feeProblem && <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">{feeProblem}</p>}
             </section>
 
             <Button type="submit" disabled={loading} className="w-full">

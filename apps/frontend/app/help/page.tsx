@@ -48,6 +48,16 @@ const faqCategories: FaqCategory[] = [
           'Open the patient and choose Edit details to correct their name, phone, address or next of kin - front desk, nurses, doctors and administrators can do this, and each change is recorded. Administrators also see Delete patient, for test or duplicate registrations: the patient leaves every list, but nothing is erased.',
       },
       {
+        question: 'Does Bulamu collect money from our patients?',
+        answer:
+          "No. Invoices are your facility's own bills to your patients: a fee entered when recording a consultation creates the invoice, and your facility collects the payment and marks it paid under Invoices. Bulamu only keeps the record. The only payment Bulamu takes is your facility's subscription, through Pesapal.",
+      },
+      {
+        question: 'How do I put our logo on documents?',
+        answer:
+          'An administrator opens Facility in the menu and uploads a PNG or JPEG under 500 KB. It is printed on your invoices, prescriptions, referral letters and discharge summaries, which are also signed with the name and role of the clinician responsible and say who printed them.',
+      },
+      {
         question: 'How do I manage my staff accounts?',
         answer:
           'Administrators use Staff in the menu to add people, correct a name or email, change a role, reset a forgotten password, and deactivate anyone who has left (they can be reactivated). An account added by mistake can be deleted; one someone has worked under is deactivated instead, so records keep showing who made them.',

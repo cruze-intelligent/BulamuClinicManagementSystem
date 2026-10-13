@@ -1,5 +1,5 @@
 import {
-  ArrowRightLeft, BarChart3, BedDouble, Bell, CalendarDays, ClipboardList, CreditCard, Crown, FlaskConical,
+  ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FlaskConical,
   HelpCircle, History, Home, MapPinned, Moon, Package, Pill, ShieldCheck, Stethoscope, Users, type LucideIcon,
 } from 'lucide-react';
 
@@ -112,6 +112,11 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       target: nav('/billing'), where: 'Menu', icon: CreditCard,
       title: 'Subscription',
       body: 'Your free trial or subscription, payment through Pesapal, and receipts. You are reminded before it ends.',
+    },
+    {
+      target: nav('/facility'), where: 'Menu', icon: Building2,
+      title: 'Your logo on documents',
+      body: 'Add your facility logo here. It is printed on your invoices, prescriptions, referral letters and discharge summaries, which are also signed with the name and role of the staff member responsible.',
     },
     ...closing,
   ],

@@ -26,6 +26,7 @@ import { reproductiveHealthRoutes } from './routes/reproductive-health.routes';
 import { referralRoutes } from './routes/referral.routes';
 import { auditRoutes } from './routes/audit.routes';
 import { billingRoutes } from './routes/billing.routes';
+import { facilityLogoRoutes } from './routes/facility-logo.routes';
 import { commentRoutes } from './routes/comment.routes';
 import { patientAccountRoutes } from './routes/patient-account.routes';
 import { patientAuthRoutes } from './routes/patient-auth.routes';
@@ -129,6 +130,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(referralRoutes);
   await server.register(auditRoutes);
   await server.register(billingRoutes);
+  await server.register(facilityLogoRoutes);
   await server.register(documentRoutes);
   await server.register(commentRoutes);
   await server.register(patientAccountRoutes);

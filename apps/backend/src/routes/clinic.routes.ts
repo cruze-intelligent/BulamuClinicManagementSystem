@@ -84,7 +84,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
         const trialReceipt =
           (await tx.payment.findFirst({ where: { subscriptionId: subscription.id, amount: 0 } })) ??
           (await tx.payment.create({
-            data: { clinicId: id, subscriptionId: subscription.id, amount: 0, currency: subscription.currency, status: 'COMPLETED' },
+            data: { clinicId: id, subscriptionId: subscription.id, amount: 0, currency: subscription.currency, status: 'COMPLETED', periodStart: new Date(), periodEnd: subscription.trialEndsAt },
           }));
         return { clinic, subscription, trialReceipt };
       }, { timeout: 15000 });
@@ -105,7 +105,8 @@ export async function clinicRoutes(fastify: FastifyInstance) {
             amount: 0,
             currency: subscription.currency,
             paidAt: trialReceipt.createdAt,
-            periodEnd: subscription.trialEndsAt,
+            periodStart: trialReceipt.periodStart ?? trialReceipt.createdAt,
+            periodEnd: trialReceipt.periodEnd ?? subscription.trialEndsAt,
           });
           result = await sendMail({
             to: admin.email,
@@ -310,7 +311,9 @@ export async function clinicRoutes(fastify: FastifyInstance) {
           prisma.patient.count({ where: { deletedAt: null, clinic: { is: REAL_FACILITY } } }),
           prisma.appointment.count({ where: { deletedAt: null, patient: { deletedAt: null, clinic: { is: REAL_FACILITY } } } }),
           prisma.consultation.count({ where: { deletedAt: null, patient: { deletedAt: null, clinic: { is: REAL_FACILITY } } } }),
-          prisma.invoice.aggregate({ where: { status: 'PAID', consultation: { patient: { clinic: { is: REAL_FACILITY } } } }, _sum: { amount: true } }),
+          // Bulamu's own income: subscription payments received through Pesapal.
+          // (Facilities' patient invoices are their money, not Bulamu's.)
+          prisma.payment.aggregate({ where: { status: 'COMPLETED', amount: { gt: 0 }, clinic: { is: REAL_FACILITY } }, _sum: { amount: true } }),
           prisma.clinic.findMany({
             where: REAL_FACILITY,
             orderBy: { createdAt: 'desc' },
