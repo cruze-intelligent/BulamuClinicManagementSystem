@@ -89,6 +89,9 @@ export function ServiceCards() {
 /** The plans. On the Billing page, `current` marks the facility's own plan and the call to action is left out. */
 export function PlanCards({ current }: { current?: 'TRIALING' | 'STANDARD' | 'CUSTOM' } = {}) {
   const inApp = current !== undefined;
+  // The home page is designed light-only, so its cards stay light; inside the
+  // app (Billing) they follow the viewer's theme.
+  const t = (light: string, dark: string) => (inApp ? `${light} ${dark}` : light);
   return (
     <div className="grid gap-4 md:grid-cols-3">
       {PLANS.map((plan) => {
@@ -96,8 +99,8 @@ export function PlanCards({ current }: { current?: 'TRIALING' | 'STANDARD' | 'CU
         return (
           <div
             key={plan.name}
-            className={`relative flex flex-col rounded-xl border bg-white p-6 shadow-sm dark:bg-slate-900 ${
-              isCurrent || (!inApp && plan.highlight) ? 'border-emerald-500 ring-1 ring-emerald-500' : 'border-slate-200 dark:border-slate-800'
+            className={`relative flex flex-col rounded-xl border p-6 shadow-sm ${t('bg-white', 'dark:bg-slate-900')} ${
+              isCurrent || (!inApp && plan.highlight) ? 'border-emerald-500 ring-1 ring-emerald-500' : t('border-slate-200', 'dark:border-slate-800')
             }`}
           >
             {(isCurrent || (!inApp && plan.highlight)) && (
@@ -105,15 +108,15 @@ export function PlanCards({ current }: { current?: 'TRIALING' | 'STANDARD' | 'CU
                 {isCurrent ? 'Your plan' : 'Most facilities'}
               </span>
             )}
-            <h3 className="text-lg font-semibold text-slate-950 dark:text-slate-50">{plan.name}</h3>
+            <h3 className={`text-lg font-semibold ${t('text-slate-950', 'dark:text-slate-50')}`}>{plan.name}</h3>
             <p className="mt-3">
-              <span className="text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">{plan.price}</span>
-              {plan.period && <span className="ml-1 text-sm text-slate-500 dark:text-slate-400">{plan.period}</span>}
+              <span className={`text-3xl font-bold tracking-tight ${t('text-slate-950', 'dark:text-slate-50')}`}>{plan.price}</span>
+              {plan.period && <span className={`ml-1 text-sm ${t('text-slate-500', 'dark:text-slate-400')}`}>{plan.period}</span>}
             </p>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">{plan.summary}</p>
+            <p className={`mt-2 text-sm ${t('text-slate-600', 'dark:text-slate-400')}`}>{plan.summary}</p>
             <ul className="mt-5 flex-1 space-y-2">
               {plan.features.map((feature) => (
-                <li key={feature} className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+                <li key={feature} className={`flex items-start gap-2 text-sm ${t('text-slate-700', 'dark:text-slate-300')}`}>
                   <Check className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
                   {feature}
                 </li>
@@ -123,7 +126,9 @@ export function PlanCards({ current }: { current?: 'TRIALING' | 'STANDARD' | 'CU
               <Link
                 href={plan.cta.href}
                 className={`mt-6 inline-flex items-center justify-center rounded-md px-4 py-2.5 text-sm font-semibold ${
-                  plan.highlight ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'border border-slate-300 text-slate-900 hover:bg-slate-50'
+                  plan.highlight
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    : 'border border-emerald-700 bg-white text-emerald-800 hover:bg-emerald-50'
                 }`}
               >
                 {plan.cta.label}
