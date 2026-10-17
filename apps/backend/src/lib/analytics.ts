@@ -179,7 +179,7 @@ export async function buildAnalytics(days: number, now: Date = new Date()) {
     typeCounts, districtCounts,
     trackingBounds,
   ] = await Promise.all([
-    prisma.clinic.groupBy({ by: ['registrationStatus', 'isActive'], where: { deletedAt: null, users: { none: { role: 'SUPER_ADMIN' } } }, _count: true }),
+    prisma.clinic.groupBy({ by: ['registrationStatus', 'isActive'], where: { deletedAt: null, isDemo: false, users: { none: { role: 'SUPER_ADMIN' } } }, _count: true }),
     prisma.subscription.groupBy({ by: ['status', 'plan'], where: { clinic: { is: realFacility } }, _count: true }),
     prisma.user.groupBy({ by: ['role'], where: { role: { not: 'SUPER_ADMIN' }, isActive: true, clinic: { is: realFacility } }, _count: true }),
     prisma.user.count({ where: { role: { not: 'SUPER_ADMIN' }, clinic: { is: realFacility } } }),

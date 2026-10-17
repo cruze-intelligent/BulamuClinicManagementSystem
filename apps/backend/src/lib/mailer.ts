@@ -545,3 +545,36 @@ export function subscriptionReceiptEmail(rawClinicName: string, amount: number, 
     </p>
   `);
 }
+
+export function demoFacilityEmail(input: {
+  facilityName: string;
+  facilityCode: string;
+  loginUrl: string;
+  created: boolean;
+  accounts: Array<{ roleTitle: string; name: string; email: string; password: string }>;
+}): string {
+  const rows = input.accounts
+    .map((a) => `
+      <tr>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:13px;"><strong>${escapeHtml(a.roleTitle)}</strong><br/><span style="color:#64748b;">${escapeHtml(a.name)}</span></td>
+        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(a.email)}<br/><code style="font-size:13px;">${escapeHtml(a.password)}</code></td>
+      </tr>`)
+    .join('');
+  return emailShell(`
+    <h2 style="margin:0 0 12px;font-size:18px;">${input.created ? 'Your Bulamu demo facility is ready' : 'Fresh logins for the Bulamu demo facility'}</h2>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">
+      <strong>${escapeHtml(input.facilityName)}</strong> (Facility ID ${escapeHtml(input.facilityCode)}) is a demonstration facility
+      with made-up patients, visits, prescriptions, lab results, stock, wards and invoices, so every part of Bulamu can be shown.
+      Sign in with any of the accounts below to see Bulamu as that role.
+    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:6px;border-collapse:separate;">
+      <tr><th align="left" style="padding:8px 10px;background:#f8fafc;font-size:12px;color:#64748b;">Role</th><th align="left" style="padding:8px 10px;background:#f8fafc;font-size:12px;color:#64748b;">Email and password</th></tr>
+      ${rows}
+    </table>
+    <a href="${input.loginUrl}" style="display:inline-block;margin-top:20px;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">Sign in to Bulamu</a>
+    <p style="margin:20px 0 0;font-size:12px;color:#64748b;">
+      All names and records in this facility are invented. It is not counted in Bulamu's figures and its accounts receive no
+      notification emails. ${input.created ? '' : 'The earlier passwords no longer work. '}Keep these logins to people you are showing Bulamu to.
+    </p>
+  `);
+}

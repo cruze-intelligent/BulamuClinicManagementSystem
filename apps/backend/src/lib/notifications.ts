@@ -275,8 +275,10 @@ export async function notifyStaff(input: {
       })),
     });
 
+    // A demonstration facility's staff have placeholder addresses: in-app only.
+    const demo = (await prisma.clinic.findUnique({ where: { id: input.clinicId }, select: { isDemo: true } }))?.isDemo;
     for (const recipient of recipients) {
-      if (!rule.emailRoles.includes(recipient.role) || recipient.emailOptOuts.includes(input.type)) continue;
+      if (demo || !rule.emailRoles.includes(recipient.role) || recipient.emailOptOuts.includes(input.type)) continue;
       void sendMail({
         to: recipient.email,
         subject: rule.emailSubject,

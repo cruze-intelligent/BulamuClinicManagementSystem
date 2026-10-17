@@ -20,6 +20,7 @@ import {
   ThumbsUp,
   Trash2,
   Users,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -91,6 +92,9 @@ export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [pending, setPending] = useState<PendingFacility[]>([]);
+  const [deciding, setDeciding] = useState<Record<string, 'approve' | 'reject'>>({});
+  const [decisionError, setDecisionError] = useState<Record<string, string>>({});
+  const [decisionNotice, setDecisionNotice] = useState('');
   const [formData, setFormData] = useState(emptyForm);
   const [feedback, setFeedback] = useState<{ id: string; body: string; authorName: string; authorRole: string; clinicName: string; createdAt: string }[]>([]);
   const [detailsFacilityId, setDetailsFacilityId] = useState<string | null>(null);
@@ -141,33 +145,48 @@ export default function SuperAdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin]);
 
-  const approveFacility = async (id: string) => {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/${id}/approve`, {
-      method: 'PATCH',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const data = await response.json();
-    if (data.success) {
-      await Promise.all([fetchPending(), fetchOverview()]);
-    } else {
-      alert(data.error || 'Could not approve facility');
+  // Approve / reject: the row says what is happening straight away and its
+  // buttons lock (a second click used to come back as "only a pending facility
+  // can be approved", which looked like a failure). On success the facility
+  // leaves the list at once; the overview refreshes in the background.
+  const decideFacility = async (facility: PendingFacility, decision: 'approve' | 'reject') => {
+    let reason: string | undefined;
+    if (decision === 'reject') {
+      const typed = window.prompt(`Reason for rejecting ${facility.name} (optional - it is included in the email to them):`);
+      if (typed === null) return;
+      reason = typed || undefined;
     }
-  };
-
-  const rejectFacility = async (id: string) => {
-    const reason = window.prompt('Reason for rejecting this facility (optional):') || undefined;
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/${id}/reject`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ reason }),
-    });
-    const data = await response.json();
-    if (data.success) {
-      await fetchPending();
-    } else {
-      alert(data.error || 'Could not reject facility');
+    setDeciding((d) => ({ ...d, [facility.id]: decision }));
+    setDecisionError((e) => ({ ...e, [facility.id]: '' }));
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clinics/${facility.id}/${decision}`, {
+        method: 'PATCH',
+        headers: { ...(decision === 'reject' ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${localStorage.getItem('token')}` },
+        ...(decision === 'reject' ? { body: JSON.stringify({ reason }) } : {}),
+      });
+      const data = await response.json().catch(() => ({}));
+      // Already decided (e.g. in another tab): just bring the list up to date.
+      const alreadyDecided = response.status === 400 && /only a pending facility/i.test(data.error || '');
+      if (!data.success && !alreadyDecided) throw new Error(data.error || `Could not ${decision} the facility`);
+      setPending((list) => list.filter((f) => f.id !== facility.id));
+      setDecisionNotice(
+        decision === 'approve'
+          ? `${facility.name} is approved and its 14-day free trial has started. Their administrator is being emailed the welcome letter and trial receipt.`
+          : `${facility.name} was rejected. Their administrator is being emailed the decision.`
+      );
+      void fetchOverview();
+      void fetchPending();
+    } catch (error: any) {
+      setDecisionError((e) => ({
+        ...e,
+        [facility.id]: navigator.onLine ? error.message : 'You are offline - try again when the connection returns.',
+      }));
+    } finally {
+      setDeciding((d) => {
+        const next = { ...d };
+        delete next[facility.id];
+        return next;
+      });
     }
   };
 
@@ -327,6 +346,13 @@ export default function SuperAdminPage() {
         ))}
       </section>
 
+      {decisionNotice && (
+        <div role="status" className="flex items-start justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+          <span>{decisionNotice}</span>
+          <button type="button" onClick={() => setDecisionNotice('')} className="shrink-0 text-xs font-medium underline">Dismiss</button>
+        </div>
+      )}
+
       {pending.length > 0 && (
         <Card className="rounded-lg border-amber-200 bg-amber-50 p-5">
           <div className="flex items-center gap-2">
@@ -344,20 +370,21 @@ export default function SuperAdminPage() {
                     Admin: {facility.admin?.name || 'Unknown'} ({facility.admin?.email || 'n/a'})
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => setDetailsFacilityId(facility.id)}>
                     <Eye className="size-4" aria-hidden="true" />
                     View
                   </Button>
-                  <Button size="sm" onClick={() => approveFacility(facility.id)}>
-                    <ThumbsUp className="size-4" aria-hidden="true" />
-                    Approve
+                  <Button size="sm" disabled={!!deciding[facility.id]} onClick={() => decideFacility(facility, 'approve')}>
+                    {deciding[facility.id] === 'approve' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <ThumbsUp className="size-4" aria-hidden="true" />}
+                    {deciding[facility.id] === 'approve' ? 'Approving...' : 'Approve'}
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => rejectFacility(facility.id)}>
-                    <ThumbsDown className="size-4" aria-hidden="true" />
-                    Reject
+                  <Button size="sm" variant="outline" disabled={!!deciding[facility.id]} onClick={() => decideFacility(facility, 'reject')}>
+                    {deciding[facility.id] === 'reject' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <ThumbsDown className="size-4" aria-hidden="true" />}
+                    {deciding[facility.id] === 'reject' ? 'Rejecting...' : 'Reject'}
                   </Button>
                 </div>
+                {decisionError[facility.id] && <p role="alert" className="w-full text-sm text-red-700 dark:text-red-400">{decisionError[facility.id]}</p>}
               </div>
             ))}
           </div>

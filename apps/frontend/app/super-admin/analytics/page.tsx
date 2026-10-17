@@ -15,6 +15,7 @@ import { BarList, ShareRow, StatTile, TimeSeriesChart } from '@/components/analy
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
 import { EmailDeliveryCard, MailStatus } from '@/components/email-delivery-card';
 import { SampleDocumentsCard } from '@/components/sample-documents-card';
+import { DemoFacilityCard } from '@/components/demo-facility-card';
 import {
   ENGAGEMENT_LABELS, Point, compactNumber, engagementRank, formatBytes, formatNumber, formatPercent, formatUptime, humanize, timeAgo,
 } from '@/lib/analytics-format';
@@ -479,6 +480,7 @@ export default function SuperAdminAnalyticsPage() {
 
                   {system.mail && <EmailDeliveryCard initial={system.mail} />}
                   {system.mail && <SampleDocumentsCard inbox={system.mail.operatorInbox} />}
+                  <DemoFacilityCard />
 
                   <Card className="p-4 gap-3">
                     <div>

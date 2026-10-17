@@ -134,6 +134,9 @@ model Clinic {
   rejectionReason String?
   deletedAt     DateTime?
   deletedBy     String?
+  // A demonstration facility (for showing Bulamu to prospective clients): never
+  // counted in the platform's figures, and its staff are never emailed.
+  isDemo        Boolean  @default(false)
   logo          ClinicLogo?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

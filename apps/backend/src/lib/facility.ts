@@ -3,8 +3,9 @@ import { prisma } from './prisma';
 // The platform operator's own account (e.g. "Bulamu HQ") is a Clinic row only
 // because every user needs one. It is not a customer facility, so it is left
 // out of every facility listing and count: a facility is "real" when it hosts
-// no SUPER_ADMIN accounts and has not been deleted.
-export const REAL_FACILITY = { deletedAt: null, users: { none: { role: 'SUPER_ADMIN' as const } } };
+// no SUPER_ADMIN accounts, has not been deleted and is not a demonstration
+// facility (see demo-facility.ts).
+export const REAL_FACILITY = { deletedAt: null, isDemo: false, users: { none: { role: 'SUPER_ADMIN' as const } } };
 
 // Excludes ambiguous characters (0/O, 1/I/L) so codes are easy to read aloud
 // or copy onto a printed document.

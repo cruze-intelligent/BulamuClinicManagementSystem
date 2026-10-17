@@ -4,12 +4,15 @@ import { buildAnalytics, buildSystemReport, listStaff, parseDays } from '../lib/
 import { snapshotRuntimeMetrics } from '../lib/runtime-metrics';
 import { purgeOldUsageRecords } from '../lib/usage-tracking';
 import { buildCsv, sendCsv } from '../lib/csv';
-import { ADMIN_NOTIFY_EMAIL, mailStatus, operatorAlertEmail, sendMail } from '../lib/mailer';
+import { ADMIN_NOTIFY_EMAIL, demoFacilityEmail, mailStatus, operatorAlertEmail, sendMail } from '../lib/mailer';
 import { buildSampleDocuments } from '../lib/sample-documents';
 import { sweepLapsedSubscriptions } from '../lib/subscription';
-import { alertOperator } from '../lib/operator-alerts';
+import { alertOperator, frontendUrl } from '../lib/operator-alerts';
 import { prisma } from '../lib/prisma';
 import { getAuthUser } from '../middleware/auth.middleware';
+import { createOrRefreshDemoFacility, DEMO_FACILITY_NAME } from '../lib/demo-facility';
+import { isValidEmail } from '../lib/portal-invite';
+import { recordAudit } from '../lib/audit';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -73,6 +76,30 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
         attachments: documents.map((d) => ({ filename: d.filename, content: d.content, contentType: 'application/pdf' })),
       });
       return { success: true, result, documents: documents.map((d) => d.title), mail: mailStatus() };
+    } catch (error: any) {
+      return reply.status(500).send({ error: error.message });
+    }
+  });
+
+  // Creates the demonstration facility (or, if it exists, issues fresh
+  // passwords for its accounts) and emails the logins to the address given.
+  // The logins are also returned, so they can be shown once on screen.
+  fastify.post('/super-admin/system/demo-facility', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const { email } = (request.body ?? {}) as { email?: unknown };
+    if (!isValidEmail(email)) return reply.status(400).send({ error: 'Enter the email address to send the demo logins to' });
+    try {
+      const demo = await createOrRefreshDemoFacility();
+      const result = await sendMail({
+        to: email.trim(),
+        subject: demo.created ? `Your Bulamu demo facility - ${DEMO_FACILITY_NAME}` : `Fresh logins - ${DEMO_FACILITY_NAME}`,
+        html: demoFacilityEmail({ facilityName: DEMO_FACILITY_NAME, facilityCode: demo.facilityCode, loginUrl: frontendUrl('/auth/login'), created: demo.created, accounts: demo.accounts }),
+      });
+      const authUser = getAuthUser(request);
+      await recordAudit({
+        entity: 'Clinic', recordId: demo.clinicId, clinicId: demo.clinicId, action: demo.created ? 'CREATE' : 'UPDATE',
+        actorUserId: authUser.userId, actorRole: authUser.role, metadata: { demo: true, loginsSentTo: email.trim() },
+      });
+      return { success: true, created: demo.created, facilityCode: demo.facilityCode, accounts: demo.accounts, result };
     } catch (error: any) {
       return reply.status(500).send({ error: error.message });
     }
