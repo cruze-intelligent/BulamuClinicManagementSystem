@@ -208,6 +208,21 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
     },
     ...closing,
   ],
+  LAB_TECH: [
+    welcome('As the lab technician you receive test orders and record their results.'),
+    {
+      target: nav('/lab'), where: 'Menu', icon: FlaskConical,
+      title: 'Lab tests',
+      body: 'New orders arrive here and you are notified of each. Record the result when the test is done - the clinician who ordered it is asked to verify it, and the patient is told once they have.',
+      tips: ['Choose the test from the list so it is always written the same way.', 'A verified result is locked; a clinician can amend it with a reason.'],
+    },
+    {
+      target: nav('/patients'), where: 'Menu', icon: Users,
+      title: 'Patients',
+      body: 'Look a patient up to check you have the right person and sample before recording a result.',
+    },
+    ...closing,
+  ],
   STAFF: [
     welcome('At the front desk you register patients, book appointments and welcome referred patients.'),
     {

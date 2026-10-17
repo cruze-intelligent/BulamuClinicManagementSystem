@@ -11,7 +11,7 @@ vi.mock('../src/lib/mailer', async (importOriginal) => {
   return { ...actual, sendMail: sendMailMock };
 });
 
-const ROLES = ['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF'] as const;
+const ROLES = ['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF', 'LAB_TECH'] as const;
 type Role = (typeof ROLES)[number];
 
 // Every notification type, checked one by one: the in-app notice reaches exactly

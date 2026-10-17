@@ -7,6 +7,7 @@ const ROLE_LABELS: Record<string, string> = {
   NURSE: 'Nurse',
   PHARMACIST: 'Pharmacist',
   STAFF: 'Front Desk',
+  LAB_TECH: 'Lab Technician',
 };
 
 export function roleLabel(role: string): string {

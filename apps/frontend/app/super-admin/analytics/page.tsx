@@ -398,7 +398,7 @@ export default function SuperAdminAnalyticsPage() {
                 <Input className="w-56" placeholder="Search name, email or facility" aria-label="Search staff" value={userSearch} onChange={(e) => { setUserSearch(e.target.value); setUserPage(1); }} />
                 <Select className="w-auto" aria-label="Filter by role" value={userRole} onChange={(e) => { setUserRole(e.target.value); setUserPage(1); }}>
                   <option value="">All roles</option>
-                  {['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF'].map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                  {['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF', 'LAB_TECH'].map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
                 </Select>
                 <Select className="w-auto" aria-label="Filter by status" value={userStatus} onChange={(e) => { setUserStatus(e.target.value); setUserPage(1); }}>
                   <option value="">Any status</option>

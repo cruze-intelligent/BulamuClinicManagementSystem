@@ -58,6 +58,11 @@ const faqCategories: FaqCategory[] = [
           'An administrator opens Facility in the menu and uploads a PNG or JPEG under 500 KB. It is printed on your invoices, prescriptions, referral letters and discharge summaries, which are also signed with the name and role of the clinician responsible and say who printed them.',
       },
       {
+        question: 'How are lab results recorded and checked?',
+        answer:
+          "A clinician orders the test (offline too) and the lab technician - or a nurse where there is none - records the result on the Lab page. The clinician who ordered it is asked to verify it; only then is the patient told, and the result is locked. A verified result can be amended by a doctor or administrator, with a reason that is kept in the activity log. Every result shows who entered and who verified it.",
+      },
+      {
         question: 'How do I manage my staff accounts?',
         answer:
           'Administrators use Staff in the menu to add people, correct a name or email, change a role, reset a forgotten password, and deactivate anyone who has left (they can be reactivated). An account added by mistake can be deleted; one someone has worked under is deactivated instead, so records keep showing who made them.',

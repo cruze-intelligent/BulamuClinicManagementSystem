@@ -66,7 +66,7 @@ export const NOTIFICATION_RULES: Record<NotificationType, NotificationRule> = {
 
   // --- Laboratory -------------------------------------------------------------
   LAB_TEST_ORDERED: {
-    audience: 'STAFF', roles: ['NURSE'], emailRoles: [],
+    audience: 'STAFF', roles: ['LAB_TECH', 'NURSE'], emailRoles: [],
     emailSubject: 'New lab test ordered',
     label: 'Lab tests ordered',
     description: 'When a clinician orders a lab test for a patient. In-app only.',
@@ -428,9 +428,9 @@ export async function notifyLabResultToOrderer(
     type: 'LAB_RESULT_AVAILABLE',
     clinicId: input.clinicId,
     title: `Result ready: ${input.testName}`,
-    body: `The ${input.testName} result for ${input.patientName} has been recorded.`,
+    body: `The ${input.testName} result for ${input.patientName} has been recorded. Review and verify it on the Lab page - the patient is told once it is verified.`,
     link: '/lab',
-    emailSummary: 'The result of a lab test you ordered has been recorded. Sign in to Bulamu to see it.',
+    emailSummary: 'The result of a lab test you ordered has been recorded and is waiting for review. Sign in to Bulamu to see and verify it.',
     userIds: [input.orderedByUserId],
     excludeUserId: input.recordedByUserId,
     log,

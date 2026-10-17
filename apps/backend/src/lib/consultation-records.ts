@@ -48,6 +48,7 @@ export async function buildPrescriptionPdf(consultationId: string, producedBy?: 
       ...consultationChildren,
       patient: { select: { name: true, phone: true, sex: true, dateOfBirth: true, clinic: { select: { name: true, facilityCode: true } } } },
       appointment: { select: { clinicId: true, doctor: { select: { name: true, role: true } } } },
+      recordedBy: { select: { name: true, role: true } },
     },
   });
   if (!consultation) return null;
@@ -61,8 +62,9 @@ export async function buildPrescriptionPdf(consultationId: string, producedBy?: 
     patientPhone: consultation.patient.phone,
     patientSex: consultation.patient.sex,
     patientAge: ageLabel(consultation.patient.dateOfBirth, consultation.createdAt),
-    prescriberName: consultation.appointment.doctor?.name,
-    prescriberRole: consultation.appointment.doctor ? roleTitle(consultation.appointment.doctor.role) : undefined,
+    // The clinician who recorded the visit; for older visits, the doctor it was booked with.
+    prescriberName: (consultation.recordedBy ?? consultation.appointment.doctor)?.name,
+    prescriberRole: (consultation.recordedBy ?? consultation.appointment.doctor) ? roleTitle((consultation.recordedBy ?? consultation.appointment.doctor)!.role) : undefined,
     producedBy,
     date: consultation.createdAt,
     diagnoses: consultation.diagnoses,

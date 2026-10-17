@@ -7,6 +7,7 @@ import { normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from
 import { buildPrescriptionPdf, consultationChildren, linkStockItems } from '../lib/consultation-records';
 import { parseFee } from '../lib/invoices';
 import { documentProducer } from '../lib/document-signer';
+import { recordAudit } from '../lib/audit';
 
 const MAX_SYMPTOMS = 2000;
 const MAX_CLINICAL_NOTES = 4000;
@@ -58,6 +59,7 @@ export async function consultationRoutes(fastify: FastifyInstance) {
         data: {
           appointmentId,
           patientId,
+          recordedByUserId: getAuthUser(request).userId,
           diagnosis: primaryDiagnosisText(validDiagnoses.value),
           symptoms: symptomsText,
           clinicalNotes: notesText || null,
@@ -72,6 +74,12 @@ export async function consultationRoutes(fastify: FastifyInstance) {
           ...consultationChildren,
           invoice: true
         }
+      });
+
+      const authUser = getAuthUser(request);
+      await recordAudit({
+        entity: 'Consultation', recordId: consultation.id, clinicId: appointment.clinicId, action: 'CREATE',
+        actorUserId: authUser.userId, actorRole: authUser.role, metadata: { prescriptions: rx.length, ...(fee ? { fee } : {}) },
       });
 
       const patient = await prisma.patient.findUnique({ where: { id: patientId }, select: { name: true } });
@@ -103,7 +111,8 @@ export async function consultationRoutes(fastify: FastifyInstance) {
         include: {
           ...consultationChildren,
           invoice: true,
-          appointment: { include: { doctor: { select: { name: true } } } }
+          appointment: { include: { doctor: { select: { name: true } } } },
+          recordedBy: { select: { name: true, role: true } },
         },
         orderBy: { createdAt: 'desc' }
       });

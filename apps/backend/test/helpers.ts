@@ -38,7 +38,7 @@ export async function seedClinic(overrides: Partial<{ name: string; facilityType
 
 export async function seedUser(input: {
   clinicId: string;
-  role: 'SUPER_ADMIN' | 'ADMIN' | 'DOCTOR' | 'PHARMACIST' | 'NURSE' | 'STAFF';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'DOCTOR' | 'PHARMACIST' | 'NURSE' | 'STAFF' | 'LAB_TECH';
   email?: string;
   password?: string;
   name?: string;

@@ -98,6 +98,11 @@ export type LocalLabTest = {
   status: "PENDING" | "COMPLETED" | "CANCELLED";
   orderedBy: string;
   completedAt?: string;
+  /** Who entered the result, and the clinician who verified it (released it to the patient). */
+  resultedBy?: { name: string; role: string } | null;
+  resultedAt?: string | null;
+  verifiedBy?: { name: string; role: string } | null;
+  verifiedAt?: string | null;
   patient?: { name: string; phone: string };
   createdAt: string;
   updatedAt: string;

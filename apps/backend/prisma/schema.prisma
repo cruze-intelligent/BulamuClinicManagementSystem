@@ -41,6 +41,9 @@ model User {
   admissionsAttending  Admission[]     @relation("AdmissionAttendingDoctor")
   admissionsDischarged Admission[]     @relation("AdmissionDischargedBy")
   admissionNotes       AdmissionNote[]
+  labResultsEntered    LabTest[]       @relation("LabResultedBy")
+  labResultsVerified   LabTest[]       @relation("LabVerifiedBy")
+  consultationsRecorded Consultation[] @relation("ConsultationRecordedBy")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -515,6 +518,8 @@ enum Role {
   PHARMACIST
   NURSE
   STAFF
+  // Runs the laboratory: receives orders and enters results.
+  LAB_TECH
 }
 
 model Appointment {
@@ -557,6 +562,9 @@ model Consultation {
   // Assessment, plan and advice given - the clinician's free-text narrative
   // beyond the structured diagnoses and prescriptions.
   clinicalNotes String?
+  // The clinician who recorded the visit (empty on visits recorded before this was kept).
+  recordedByUserId String?
+  recordedBy       User?    @relation("ConsultationRecordedBy", fields: [recordedByUserId], references: [id], onDelete: SetNull)
   serviceTags   String[] @default([])
   diagnoses     Diagnosis[]
   prescriptions Prescription[]
@@ -689,6 +697,15 @@ model LabTest {
   // the client) - who is told when the result is ready.
   orderedByUserId String?
   completedAt     DateTime?
+  // Who entered the result, and the clinician who checked it before it was
+  // released to the patient. A verified result is locked: changing it is an
+  // amendment, with a reason, and needs verifying again.
+  resultedByUserId String?
+  resultedBy       User?     @relation("LabResultedBy", fields: [resultedByUserId], references: [id], onDelete: SetNull)
+  resultedAt       DateTime?
+  verifiedByUserId String?
+  verifiedBy       User?     @relation("LabVerifiedBy", fields: [verifiedByUserId], references: [id], onDelete: SetNull)
+  verifiedAt       DateTime?
   deletedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

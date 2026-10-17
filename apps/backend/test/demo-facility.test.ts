@@ -38,7 +38,7 @@ describe('the demo facility', () => {
     expect(res.statusCode).toBe(200);
     const { accounts, created } = res.json();
     expect(created).toBe(true);
-    expect(accounts.map((a: any) => a.role).sort()).toEqual(['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF']);
+    expect(accounts.map((a: any) => a.role).sort()).toEqual(['ADMIN', 'DOCTOR', 'LAB_TECH', 'NURSE', 'PHARMACIST', 'STAFF']);
     expect(accounts.every((a: any) => a.email.endsWith('@bulamu.site'))).toBe(true);
 
     const mail = sendMailMock.mock.calls.map(([m]) => m).find((m) => /demo facility/i.test(m.subject));
@@ -62,12 +62,16 @@ describe('the demo facility', () => {
     expect(await count(prisma.prescription, { consultation: { patient: { clinicId: clinic.id } } })).toBeGreaterThan(4);
     expect(await count(prisma.invoice, { clinicId: clinic.id })).toBe(5);
     expect(await count(prisma.labTest, { patient: { clinicId: clinic.id } })).toBe(4);
+    // Results entered by the lab technician; one still waiting for a clinician to verify it.
+    expect(await count(prisma.labTest, { patient: { clinicId: clinic.id }, resultedBy: { role: 'LAB_TECH' } })).toBe(3);
+    expect(await count(prisma.labTest, { patient: { clinicId: clinic.id }, status: 'COMPLETED', verifiedAt: null })).toBe(1);
+    expect(await count(prisma.consultation, { patient: { clinicId: clinic.id }, recordedByUserId: { not: null } })).toBe(5);
     expect(await count(prisma.medicine, { clinicId: clinic.id })).toBe(6);
     expect(await count(prisma.ward, { clinicId: clinic.id })).toBe(3);
     expect(await count(prisma.admission, { clinicId: clinic.id, status: 'ADMITTED' })).toBe(1);
     expect(await count(prisma.appointment, { clinicId: clinic.id, status: 'SCHEDULED' })).toBe(3);
     // Every role has something in its notifications.
-    for (const role of ['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF'] as const) {
+    for (const role of ['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF', 'LAB_TECH'] as const) {
       expect(await count(prisma.notification, { user: { clinicId: clinic.id, role } }), role).toBeGreaterThan(0);
     }
     expect((await prisma.subscription.findUniqueOrThrow({ where: { clinicId: clinic.id } })).status).toBe('ACTIVE');

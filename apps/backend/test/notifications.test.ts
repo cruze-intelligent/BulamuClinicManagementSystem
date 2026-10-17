@@ -145,23 +145,29 @@ describe('notifications', () => {
   });
 
   describe('lab results for patients', () => {
-    async function orderAndComplete(staffToken: string, patientId: string) {
+    // A nurse orders and enters the result; a doctor verifies it, which is
+    // when the patient is told.
+    async function orderAndComplete(users: Record<Role, { token: string }>, patientId: string) {
+      const staffToken = users.NURSE.token;
       const ordered = await app.inject({
         method: 'POST', url: '/lab', headers: authHeader(staffToken),
         payload: { patientId, testName: 'Malaria RDT', orderedBy: 'Dr Okello' },
       });
       const testId = ordered.json().test.id as string;
-      const complete = () => app.inject({
-        method: 'PATCH', url: `/lab/${testId}`, headers: authHeader(staffToken),
-        payload: { results: 'Positive', status: 'COMPLETED' },
-      });
+      const complete = async () => {
+        await app.inject({
+          method: 'PATCH', url: `/lab/${testId}`, headers: authHeader(staffToken),
+          payload: { results: 'Positive', status: 'COMPLETED' },
+        });
+        return app.inject({ method: 'POST', url: `/lab/${testId}/verify`, headers: authHeader(users.DOCTOR.token) });
+      };
       return { testId, complete };
     }
 
     it('notifies the patient once, in-app and by a generic email with no clinical detail', async () => {
       const { users } = await facility();
       const { patientId, accountId, patientToken } = await portalPatient(users.NURSE.token);
-      const { complete } = await orderAndComplete(users.NURSE.token, patientId);
+      const { complete } = await orderAndComplete(users, patientId);
 
       await complete();
 
@@ -191,7 +197,7 @@ describe('notifications', () => {
         method: 'POST', url: '/patients', headers: authHeader(users.NURSE.token),
         payload: { name: 'No Account', phone: '0700123123' },
       });
-      const { complete } = await orderAndComplete(users.NURSE.token, registered.json().patient.id);
+      const { complete } = await orderAndComplete(users, registered.json().patient.id);
       await complete();
 
       expect(await prisma.notification.count()).toBe(0);
@@ -201,7 +207,7 @@ describe('notifications', () => {
     it('does not email a patient who has not yet activated their account (in-app only)', async () => {
       const { users } = await facility();
       const { patientId, accountId } = await portalPatient(users.NURSE.token, { activate: false });
-      const { complete } = await orderAndComplete(users.NURSE.token, patientId);
+      const { complete } = await orderAndComplete(users, patientId);
       await complete();
 
       expect(await prisma.notification.count({ where: { patientAccountId: accountId } })).toBe(1);
@@ -215,7 +221,7 @@ describe('notifications', () => {
         method: 'PUT', url: '/patient-portal/notifications/preferences', headers: authHeader(patientToken!),
         payload: { emailDisabled: ['LAB_RESULT_READY'] },
       });
-      const { complete } = await orderAndComplete(users.NURSE.token, patientId);
+      const { complete } = await orderAndComplete(users, patientId);
       await complete();
 
       expect(await prisma.notification.count({ where: { patientAccountId: accountId } })).toBe(1);

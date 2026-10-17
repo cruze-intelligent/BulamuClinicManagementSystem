@@ -6,15 +6,9 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
   Building2,
-  CalendarClock,
-  CheckCircle2,
-  ClipboardList,
   MonitorSmartphone,
-  Package,
   ShieldCheck,
   Stethoscope,
-  UserCog,
-  UserRound,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -22,24 +16,7 @@ import { ContactIcons } from '@/components/contact-icons';
 import { CompanyName } from '@/components/company-credit';
 import { getHomePath } from '@/lib/useAuth';
 import { liveSessionUser } from '@/lib/staff-session';
-
-const roles = [
-  { title: 'Administrator', body: 'Approve staff, track billing and trial status, and run HMIS 105 / FHIR reports for the whole facility.', icon: UserCog },
-  { title: 'Doctor', body: "Record diagnoses, prescriptions, and lab requests directly against each patient's history.", icon: Stethoscope },
-  { title: 'Nurse', body: "Coordinate the day's schedule, register patients, and capture household outreach visits offline.", icon: CalendarClock },
-  { title: 'Pharmacist', body: 'Track medicine stock, reorder levels, and fulfil prescriptions from consultations.', icon: Package },
-  { title: 'Front desk', body: 'Register patients, manage appointment scheduling, and coordinate day-to-day front-office operations.', icon: ClipboardList },
-  { title: 'Patient', body: 'View personal health records and visit history, and stay recognized across every participating facility with a secure patient account.', icon: UserRound },
-];
-
-const capabilities = [
-  'Patient registry and searchable history',
-  'Appointments, consultations, prescriptions, and lab requests',
-  'Billing, invoices, medicine stock, and reorder alerts',
-  'HMIS 105 reporting and FHIR R4 export',
-  'Installable PWA with offline queue and sync status',
-  'Facility authorization and administrative governance',
-];
+import { PlanCards, ROLE_CARDS, ServiceCards } from '@/components/offering-cards';
 
 export default function Home() {
   const router = useRouter();
@@ -144,34 +121,34 @@ export default function Home() {
         ))}
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-12">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
-          <h2 className="text-2xl font-semibold tracking-tight">Built for every role in your facility</h2>
-          <p className="mt-1 text-sm text-slate-500">Each account only sees what its role needs - one system, the right view for everyone.</p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {roles.map((item) => (
-              <div key={item.title} className="rounded-lg border border-slate-200 bg-white p-4">
+      <section className="mx-auto max-w-7xl px-6 pb-16" aria-labelledby="services">
+        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Services</p>
+        <h2 id="services" className="mt-1 text-3xl font-semibold tracking-tight">Everything a facility runs on, in one system</h2>
+        <p className="mt-2 max-w-2xl text-slate-600">Every service is included in every plan. Each member of staff sees only what their role needs.</p>
+        <div className="mt-8"><ServiceCards /></div>
+      </section>
+
+      <section className="bg-slate-50 py-16" aria-labelledby="roles">
+        <div className="mx-auto max-w-7xl px-6">
+          <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Roles</p>
+          <h2 id="roles" className="mt-1 text-3xl font-semibold tracking-tight">Built for every role in your facility</h2>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {ROLE_CARDS.map((item) => (
+              <div key={item.title} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
                 <item.icon className="size-5 text-emerald-700" aria-hidden="true" />
-                <h3 className="mt-3 text-sm font-semibold">{item.title}</h3>
-                <p className="mt-1.5 text-xs leading-5 text-slate-600">{item.body}</p>
+                <h3 className="mt-3 font-semibold">{item.title}</h3>
+                <p className="mt-1.5 text-sm leading-6 text-slate-600">{item.body}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-6">
-          <h2 className="text-2xl font-semibold tracking-tight">Operational capabilities</h2>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {capabilities.map((item) => (
-              <div key={item} className="flex items-center gap-2 text-sm text-slate-700">
-                <CheckCircle2 className="size-4 text-emerald-700" aria-hidden="true" />
-                {item}
-              </div>
-            ))}
-          </div>
-        </div>
+      <section className="mx-auto max-w-7xl px-6 py-16" aria-labelledby="plans">
+        <p className="text-sm font-semibold uppercase tracking-wide text-emerald-700">Plans</p>
+        <h2 id="plans" className="mt-1 text-3xl font-semibold tracking-tight">Start free, then one simple monthly price</h2>
+        <p className="mt-2 max-w-2xl text-slate-600">Try everything for 14 days. Paying early never costs you trial days - your paid month starts when the trial ends.</p>
+        <div className="mt-10"><PlanCards /></div>
       </section>
       <footer className="border-t border-slate-200 px-6 py-6">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center text-sm text-slate-500 md:flex-row md:text-left">

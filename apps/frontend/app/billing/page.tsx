@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/useAuth';
 import { SubscriptionCalendar } from '@/components/subscription-calendar';
 import { ContactIcons } from '@/components/contact-icons';
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
+import { PlanCards } from '@/components/offering-cards';
 
 type Subscription = {
   status: 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED';
@@ -232,6 +233,13 @@ export default function BillingPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400">No subscription found for your facility.</p>
           )}
         </Card>
+
+        {subscription && (
+          <section className="mt-8" aria-labelledby="plans">
+            <h2 id="plans" className="mb-6 text-lg font-semibold text-slate-800 dark:text-slate-200">Plans</h2>
+            <PlanCards current={subscription.status === 'TRIALING' ? 'TRIALING' : subscription.plan} />
+          </section>
+        )}
 
         {subscription && (
           <Card className="mt-6 p-6">

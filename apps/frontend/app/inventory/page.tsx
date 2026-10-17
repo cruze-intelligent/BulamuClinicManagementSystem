@@ -15,6 +15,10 @@ import {
   LocalMedicine,
 } from '@/lib/local-first';
 import { Select } from '@/components/ui/select';
+import { MEDICINES_CATALOG } from '@/lib/medicines-catalog';
+
+// Generic name, strength and form - e.g. "Amoxicillin 500 mg capsule".
+const CATALOG_STOCK_NAMES = MEDICINES_CATALOG.flatMap((m) => m.variants.map((v) => `${m.name} ${v.strength} ${v.form}`));
 
 export default function InventoryPage() {
   const [medicines, setMedicines] = useState<LocalMedicine[]>([]);
@@ -104,11 +108,18 @@ export default function InventoryPage() {
                 <Label htmlFor="name">Medicine Name</Label>
                 <Input
                   id="name"
+                  list="medicine-catalog"
+                  autoComplete="off"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g. Coartem 20/120"
+                  placeholder="Start typing, e.g. Artemether/Lumefantrine"
                   required
                 />
+                {/* The same names prescribers pick from, so stock and prescriptions match. */}
+                <datalist id="medicine-catalog">
+                  {CATALOG_STOCK_NAMES.map((name) => <option key={name} value={name} />)}
+                </datalist>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Choose from the list where you can, so it matches what clinicians prescribe.</p>
               </div>
 
               <div>

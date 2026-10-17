@@ -3,7 +3,7 @@ import { TOUR_STEPS } from './tour-steps';
 import { NAV_ITEMS } from './nav-items';
 
 describe('the guided walkthrough', () => {
-  const roles = ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF'];
+  const roles = ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF', 'LAB_TECH'];
 
   it('has a tour for every role', () => {
     for (const role of roles) expect(TOUR_STEPS[role]?.length, role).toBeGreaterThan(2);

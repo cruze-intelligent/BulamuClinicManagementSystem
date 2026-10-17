@@ -20,6 +20,7 @@ const ROLE_OPTIONS = [
   { value: 'NURSE', label: 'Nurse / Midwife', hint: 'Registers patients, runs the lab, records observations on the wards.' },
   { value: 'PHARMACIST', label: 'Pharmacist', hint: 'Dispensing and medicine stock.' },
   { value: 'STAFF', label: 'Front Desk', hint: 'Registers patients, books appointments, welcomes referred patients. No clinical records.' },
+  { value: 'LAB_TECH', label: 'Lab Technician', hint: 'Receives lab orders and records results; a clinician verifies them before the patient is told.' },
   { value: 'ADMIN', label: 'Administrator', hint: 'Everything, plus staff, billing and reports. Give this to as few people as possible.' },
 ];
 
@@ -29,6 +30,7 @@ const ROLE_BADGE: Record<string, string> = {
   NURSE: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
   PHARMACIST: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
   STAFF: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  LAB_TECH: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
 };
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join('');
@@ -69,7 +71,7 @@ export default function UsersPage() {
     const clinicId = JSON.parse(localStorage.getItem('user') || '{}').clinicId;
     try {
       const data = await call(`/users/${clinicId}`, 'GET');
-      setUsers(data.users);
+      setUsers(Array.isArray(data.users) ? data.users : []);
       setLoadError('');
     } catch {
       setLoadError(navigator.onLine ? 'Could not load your staff - please try again.' : 'You are offline. Staff accounts load when the connection returns.');

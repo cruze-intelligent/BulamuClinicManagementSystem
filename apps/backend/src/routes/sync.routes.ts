@@ -5,7 +5,7 @@ import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/aut
 import { recordConflictIfStale } from '../lib/conflict';
 import { recordAudit } from '../lib/audit';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
-import { notifyDoctorOfAppointment, notifyIfLowStock, notifyLabOrdered, notifyLabResultReady, notifyLabResultToOrderer, notifyNewPrescription } from '../lib/notifications';
+import { notifyDoctorOfAppointment, notifyIfLowStock, notifyLabOrdered, notifyNewPrescription } from '../lib/notifications';
 import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
 import { consultationChildren, linkStockItems } from '../lib/consultation-records';
 import { parseFee } from '../lib/invoices';
@@ -252,6 +252,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                   id: payload.id,
                   appointmentId: payload.appointmentId,
                   patientId: payload.patientId,
+                  recordedByUserId: authUser.userId,
                   diagnosis: diagnosisText,
                   symptoms: payload.symptoms,
                   clinicalNotes: clinicalNotes ?? null,
@@ -301,6 +302,12 @@ export async function syncRoutes(fastify: FastifyInstance) {
               });
             });
             const prescribedCount = prescriptions?.length ?? 0;
+            // Who recorded or changed the visit (which parts - never their content).
+            await recordAudit({
+              entity: 'Consultation', recordId: record.id, clinicId: appointment.clinicId, action: existing ? 'UPDATE' : 'CREATE',
+              actorUserId: authUser.userId, actorRole: authUser.role,
+              metadata: { offline: true, prescriptions: prescribedCount, ...(fee ? { fee } : {}) },
+            });
 
             if (!existing) {
               const consultedPatient = await prisma.patient.findUnique({ where: { id: payload.patientId }, select: { name: true } });
@@ -336,14 +343,15 @@ export async function syncRoutes(fastify: FastifyInstance) {
               if (stale) continue;
             }
 
+            // Devices send lab orders only. Results are entered, verified and
+            // amended through the lab routes, which record who did each and
+            // keep a verified result locked - so anything a device says about
+            // results or status is ignored here.
             record = await prisma.labTest.upsert({
               where: { id: payload.id },
               update: {
-                testName: payload.testName,
-                results: payload.results || '',
-                status: payload.status || 'PENDING',
+                ...(existing?.status === 'PENDING' ? { testName: payload.testName } : {}),
                 orderedBy: payload.orderedBy,
-                completedAt: payload.completedAt ? new Date(payload.completedAt) : null,
                 updatedAt: incomingUpdatedAt,
               },
               create: {
@@ -351,28 +359,18 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 patientId: payload.patientId,
                 consultationId: payload.consultationId || null,
                 testName: payload.testName,
-                results: payload.results || '',
-                status: payload.status || 'PENDING',
+                results: '',
+                status: 'PENDING',
                 orderedBy: payload.orderedBy,
                 orderedByUserId: authUser.userId,
-                completedAt: payload.completedAt ? new Date(payload.completedAt) : null,
                 createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
                 updatedAt: incomingUpdatedAt,
               },
             });
 
-            const log = (message: string) => fastify.log.warn(message);
-            // A new order reaches the lab; a result reaches the patient and the
-            // clinician who ordered it - each once.
+            // A new order reaches the lab - once.
             if (!existing) {
-              await notifyLabOrdered({ clinicId: patient.clinicId, patientName: patient.name, testName: record.testName, orderedByUserId: authUser.userId }, log);
-            }
-            if (record.status === 'COMPLETED' && existing?.status !== 'COMPLETED') {
-              await notifyLabResultReady({ patient, testName: record.testName }, log);
-              await notifyLabResultToOrderer({
-                clinicId: patient.clinicId, patientName: patient.name, testName: record.testName,
-                orderedByUserId: record.orderedByUserId, recordedByUserId: authUser.userId,
-              }, log);
+              await notifyLabOrdered({ clinicId: patient.clinicId, patientName: patient.name, testName: record.testName, orderedByUserId: authUser.userId }, (message) => fastify.log.warn(message));
             }
           }
         } else if (entity === 'reproductiveHealth') {

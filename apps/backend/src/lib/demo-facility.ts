@@ -19,6 +19,7 @@ const STAFF = [
   { key: 'nurse', role: 'NURSE', name: 'Sr Prossy Namubiru', email: 'demo.nurse@bulamu.site' },
   { key: 'pharmacist', role: 'PHARMACIST', name: 'Brian Mugisha', email: 'demo.pharmacist@bulamu.site' },
   { key: 'frontdesk', role: 'STAFF', name: 'Esther Atim', email: 'demo.frontdesk@bulamu.site' },
+  { key: 'labtech', role: 'LAB_TECH', name: 'Ivan Kato', email: 'demo.lab@bulamu.site' },
 ] as const;
 
 export type DemoAccount = { role: string; roleTitle: string; name: string; email: string; password: string };
@@ -145,7 +146,7 @@ async function seedDemoRecords(clinicId: string, users: Record<string, { id: str
     { patient: 0, days: -6, symptoms: 'Fever and headache for 3 days', dx: [{ code: 'B54', description: 'Malaria, unspecified' }], rx: ['Artemether/Lumefantrine', 'Paracetamol'], fee: 20000, paid: true, lab: { test: 'Malaria RDT', result: 'Positive' } },
     { patient: 1, days: -5, symptoms: 'Cough for two weeks, night sweats', dx: [{ code: 'J20.9', description: 'Acute bronchitis, unspecified' }], rx: ['Amoxicillin'], fee: 25000, paid: true, lab: { test: 'Sputum GeneXpert', result: 'MTB not detected' } },
     { patient: 2, days: -3, symptoms: 'Diarrhoea and vomiting since yesterday', dx: [{ code: 'A09', description: 'Gastroenteritis and colitis of unspecified origin' }], rx: ['ORS'], fee: 15000, paid: false, lab: null },
-    { patient: 4, days: -2, symptoms: 'Tiredness, dizziness', dx: [{ code: 'D50.9', description: 'Iron deficiency anaemia, unspecified' }], rx: ['Ferrous sulphate'], fee: 20000, paid: false, lab: { test: 'Haemoglobin', result: '9.4 g/dL' } },
+    { patient: 4, days: -2, symptoms: 'Tiredness, dizziness', dx: [{ code: 'D50.9', description: 'Iron deficiency anaemia, unspecified' }], rx: ['Ferrous sulphate'], fee: 20000, paid: false, lab: { test: 'Haemoglobin', result: '9.4 g/dL', awaitingVerification: true } },
     { patient: 3, days: -1, symptoms: 'Burning on passing urine', dx: [{ code: 'N39.0', description: 'Urinary tract infection, site not specified' }], rx: ['Metronidazole'], fee: 20000, paid: false, lab: { test: 'Urinalysis', result: null } },
   ];
   const DOSES: Record<string, { strength: string; form: string; dosage: string; frequency: string; duration: string; quantity: number }> = {
@@ -164,7 +165,7 @@ async function seedDemoRecords(clinicId: string, users: Record<string, { id: str
     const consultation = await prisma.consultation.create({
       data: {
         appointmentId: appointment.id, patientId: patient.id, diagnosis: v.dx[0].description, symptoms: v.symptoms,
-        clinicalNotes: 'Example note for the demonstration facility.', serviceTags: [], createdAt: at(v.days, 10),
+        clinicalNotes: 'Example note for the demonstration facility.', serviceTags: [], createdAt: at(v.days, 10), recordedByUserId: doctor,
         diagnoses: { create: v.dx.map((d) => ({ icd10Code: d.code, description: d.description, type: 'PRIMARY' as const, certainty: 'CONFIRMED' as const })) },
         prescriptions: {
           create: v.rx.map((name) => ({
@@ -183,6 +184,10 @@ async function seedDemoRecords(clinicId: string, users: Record<string, { id: str
           patientId: patient.id, consultationId: consultation.id, testName: v.lab.test, results: v.lab.result ?? '',
           status: v.lab.result ? 'COMPLETED' : 'PENDING', orderedBy: 'Dr Samuel Okello', orderedByUserId: doctor,
           completedAt: v.lab.result ? at(v.days, 12) : null, createdAt: at(v.days, 10),
+          // Entered by the lab technician; verified by the doctor - except one, left
+          // waiting so the verification step can be shown.
+          ...(v.lab.result ? { resultedByUserId: users.labtech.id, resultedAt: at(v.days, 12) } : {}),
+          ...(v.lab.result && !('awaitingVerification' in v.lab) ? { verifiedByUserId: doctor, verifiedAt: at(v.days, 13) } : {}),
         },
       });
     }
@@ -240,8 +245,9 @@ async function seedDemoRecords(clinicId: string, users: Record<string, { id: str
       note(users.pharmacist.id, 'LOW_STOCK', 'Low stock: Amoxicillin 500 mg', '60 capsules left - at or below the reorder level of 150.', '/inventory', 20),
       note(users.admin.id, 'LOW_STOCK', 'Low stock: Amoxicillin 500 mg', '60 capsules left - at or below the reorder level of 150.', '/inventory', 20),
       note(users.pharmacist.id, 'STOCK_EXPIRING', 'Expiring soon: ORS sachets', '180 sachets of ORS sachets expire within two months.', '/inventory', 10),
+      note(users.labtech.id, 'LAB_TEST_ORDERED', 'New lab test: Opio Daniel', 'Urinalysis ordered by Dr Samuel Okello.', '/lab', 24),
       note(users.nurse.id, 'LAB_TEST_ORDERED', 'New lab test: Opio Daniel', 'Urinalysis ordered by Dr Samuel Okello.', '/lab', 24),
-      note(users.doctor.id, 'LAB_RESULT_AVAILABLE', 'Lab result ready: Nakimuli Agnes', 'Haemoglobin result is in.', '/lab', 40),
+      note(users.doctor.id, 'LAB_RESULT_AVAILABLE', 'Result ready: Haemoglobin', 'The Haemoglobin result for Nakimuli Agnes has been recorded. Review and verify it on the Lab page - the patient is told once it is verified.', '/lab', 40),
       note(users.nurse.id, 'PATIENT_ADMITTED', 'Patient admitted: Achieng Mary', 'Female Ward, bed 3 - Severe malaria with vomiting.', '/wards', 18),
       note(users.doctor.id, 'APPOINTMENT_BOOKED', 'New appointment: Tumusiime Brian', 'Booked with you today at 14:00.', '/appointments', 6),
       note(users.frontdesk.id, 'APPOINTMENT_REQUESTED', 'Appointment request', 'A patient asked for an appointment through the Patient Portal.', '/appointments', 4),

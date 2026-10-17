@@ -12,6 +12,7 @@ import { DocumentItem } from '@/components/document-item';
 import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, openDocumentPreview } from '@/lib/document-preview';
 import { useAuth } from '@/lib/useAuth';
 import { calculateAgeYears } from '@/lib/age';
+import { roleLabel } from '@/lib/role-labels';
 import { validateReproductiveHealthForm } from '@/lib/reproductive-health-validation';
 import { CommentsSection } from '@/components/comments-section';
 import { Select } from '@/components/ui/select';
@@ -705,7 +706,9 @@ function PatientHistoryContent() {
                 <div className="mb-4 flex justify-between items-start gap-3">
                   <div>
                     <h3 className="font-bold text-lg">Visit on {new Date(consult.createdAt).toLocaleDateString()}</h3>
-                    {consult.appointment?.doctor?.name && (
+                    {consult.recordedBy ? (
+                      <p className="text-sm text-muted-foreground">Recorded by {consult.recordedBy.name} ({roleLabel(consult.recordedBy.role)})</p>
+                    ) : consult.appointment?.doctor?.name && (
                       <p className="text-sm text-muted-foreground">Seen by {consult.appointment.doctor.name}</p>
                     )}
                   </div>

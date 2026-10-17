@@ -8,6 +8,7 @@ const ROLE_TITLES: Record<string, string> = {
   NURSE: 'Nurse / Midwife',
   PHARMACIST: 'Pharmacist',
   STAFF: 'Front Desk',
+  LAB_TECH: 'Laboratory Technician',
   SUPER_ADMIN: 'Bulamu platform administrator',
 };
 
