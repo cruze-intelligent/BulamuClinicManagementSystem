@@ -28,4 +28,12 @@ describe('the System tab sample documents card', () => {
     fireEvent.click(screen.getByRole('button', { name: /Send sample documents/ }));
     await waitFor(() => expect(screen.getByRole('status').textContent).toBe('Not sent: relay unreachable'));
   });
+
+  it('sends one of every email too, and says how many went', async () => {
+    respond({ success: true, total: 18, sent: 18 });
+    render(<SampleDocumentsCard inbox="starplay.stargames@gmail.com" />);
+    fireEvent.click(screen.getByRole('button', { name: /Send sample emails/ }));
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('18 sample emails sent to starplay.stargames@gmail.com, one per message.'));
+    expect((fetch as any).mock.calls[0][0]).toMatch(/\/super-admin\/system\/sample-emails$/);
+  });
 });

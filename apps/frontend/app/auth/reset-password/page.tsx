@@ -4,7 +4,7 @@ import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 
 export default function ResetPasswordPage() {
@@ -55,7 +55,7 @@ function ResetPasswordForm() {
       alert('Password updated. Please sign in.');
       router.push('/auth/login');
     } catch {
-      setError('Unable to reach the Bulamu API');
+      setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -65,7 +65,7 @@ function ResetPasswordForm() {
     return (
       <main className="min-h-screen bg-slate-950 px-6 py-10 text-white flex items-center justify-center">
         <Card className="w-full max-w-md rounded-lg border-slate-800 bg-white dark:bg-slate-900 p-6 text-slate-950 dark:text-slate-50 shadow-2xl">
-          <p className="text-sm text-slate-600 dark:text-slate-400">This reset link is missing its token. Request a new one from the login page.</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">This reset link is incomplete. Request a new one from the sign-in page.</p>
         </Card>
       </main>
     );
@@ -79,13 +79,12 @@ function ResetPasswordForm() {
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
           <div>
             <Label htmlFor="password">New Password</Label>
-            <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <PasswordInput id="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <div>
             <Label htmlFor="confirmPassword">Confirm Password</Label>
-            <Input
+            <PasswordInput
               id="confirmPassword"
-              type="password"
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}

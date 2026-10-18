@@ -94,7 +94,7 @@ export default function InventoryPage() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Pharmacy & Inventory</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Local-First Stock Management</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Medicines and supplies in stock</p>
           </div>
           <Button onClick={() => setShowForm(!showForm)}>
             {showForm ? 'Cancel' : '+ Add Medicine'}

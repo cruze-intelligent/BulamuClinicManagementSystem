@@ -4,6 +4,7 @@ import { buildTestApp, seedClinic, seedUser, loginAs, authHeader } from './helpe
 import { resetDb } from './db';
 import { prisma } from '../src/lib/prisma';
 import { notifyStaff } from '../src/lib/notifications';
+import { setUsageTrackingEnabled } from '../src/lib/usage-tracking';
 
 const sendMailMock = vi.hoisted(() => vi.fn());
 vi.mock('../src/lib/mailer', async (importOriginal) => {
@@ -11,7 +12,7 @@ vi.mock('../src/lib/mailer', async (importOriginal) => {
   return { ...actual, sendMail: sendMailMock };
 });
 
-describe('the demo facility', () => {
+describe('demo facilities', () => {
   let app: FastifyInstance;
 
   beforeEach(async () => {
@@ -33,21 +34,22 @@ describe('the demo facility', () => {
   const create = (token: string, email = 'admin@scholara.site') =>
     app.inject({ method: 'POST', url: '/super-admin/system/demo-facility', headers: authHeader(token), payload: { email } });
 
-  it('creates Bulamu Test Facility with an account for every role, and emails the logins to the address given (not used as a login)', async () => {
+  it('creates a private demo with a sign-in for every role, and emails them to the address given (not used as a login)', async () => {
     const res = await create(await operator());
     expect(res.statusCode).toBe(200);
-    const { accounts, created } = res.json();
-    expect(created).toBe(true);
+    const { accounts, password, demoCode, expiresAt } = res.json();
     expect(accounts.map((a: any) => a.role).sort()).toEqual(['ADMIN', 'DOCTOR', 'LAB_TECH', 'NURSE', 'PHARMACIST', 'STAFF']);
-    expect(accounts.every((a: any) => a.email.endsWith('@bulamu.site'))).toBe(true);
+    expect(accounts.every((a: any) => a.email.endsWith(`.${demoCode}@demo.bulamu.site`))).toBe(true);
+    expect(new Date(expiresAt).getTime() - Date.now()).toBeGreaterThan(13.9 * 24 * 3600 * 1000);
 
-    const mail = sendMailMock.mock.calls.map(([m]) => m).find((m) => /demo facility/i.test(m.subject));
+    const mail = sendMailMock.mock.calls.map(([m]) => m).find((m) => /your demo is ready/i.test(m.subject));
     expect(mail.to).toBe('admin@scholara.site');
+    expect(mail.html).toContain(password);
+    expect(mail.html).toContain('Your guided tour');
     for (const account of accounts) {
       expect(mail.html).toContain(account.email);
-      expect(mail.html).toContain(account.password);
       // Every role can actually sign in with what was sent.
-      const login = await loginAs(app, account.email, account.password);
+      const login = await loginAs(app, account.email, password);
       expect(login.user.role).toBe(account.role);
     }
     expect(await prisma.user.findUnique({ where: { email: 'admin@scholara.site' } })).toBeNull();
@@ -77,18 +79,79 @@ describe('the demo facility', () => {
     expect((await prisma.subscription.findUniqueOrThrow({ where: { clinicId: clinic.id } })).status).toBe('ACTIVE');
   });
 
-  it('a second run issues fresh passwords and keeps the data (never a second facility)', async () => {
+  it('every demo is its own: sending another never touches logins already sent', async () => {
     const token = await operator();
-    const first = (await create(token)).json();
-    const second = (await create(token)).json();
-    expect(second.created).toBe(false);
-    expect(await prisma.clinic.count({ where: { isDemo: true } })).toBe(1);
-    expect(await prisma.patient.count({ where: { clinic: { isDemo: true } } })).toBe(8);
+    const first = (await create(token, 'first@example.org')).json();
+    const second = (await create(token, 'second@example.org')).json();
+    expect(await prisma.clinic.count({ where: { isDemo: true } })).toBe(2);
+    expect(second.demoCode).not.toBe(first.demoCode);
+    expect(second.password).not.toBe(first.password);
 
     const admin = (r: any) => r.accounts.find((a: any) => a.role === 'ADMIN');
-    expect(admin(second).password).not.toBe(admin(first).password);
-    const old = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: admin(first).email, password: admin(first).password } });
-    expect(old.statusCode).toBe(401);
+    for (const demo of [first, second]) {
+      const login = await loginAs(app, admin(demo).email, demo.password);
+      expect(login.user.clinicId).toBe((await prisma.user.findUniqueOrThrow({ where: { email: admin(demo).email } })).clinicId);
+    }
+    // Each sees only its own records.
+    const firstClinic = (await prisma.user.findUniqueOrThrow({ where: { email: admin(first).email } })).clinicId;
+    const secondClinic = (await prisma.user.findUniqueOrThrow({ where: { email: admin(second).email } })).clinicId;
+    expect(firstClinic).not.toBe(secondClinic);
+  });
+
+  it("keeps how a demo was used, never who it was sent to", async () => {
+    const token = await operator();
+    const demo = (await create(token, 'prospect@example.org')).json();
+    const doctor = demo.accounts.find((a: any) => a.role === 'DOCTOR');
+    setUsageTrackingEnabled(true);
+    try {
+      await loginAs(app, doctor.email, demo.password);
+      await app.inject({ method: 'POST', url: '/auth/login', payload: { email: doctor.email, password: 'wrong-password' } });
+      await vi.waitFor(async () => {
+        expect(await prisma.loginEvent.count()).toBe(2);
+        expect((await prisma.user.findUniqueOrThrow({ where: { email: doctor.email } })).lastLoginAt).not.toBeNull();
+      });
+    } finally {
+      setUsageTrackingEnabled(false);
+    }
+
+    const res = await app.inject({ method: 'GET', url: '/super-admin/demos', headers: authHeader(token) });
+    expect(res.statusCode).toBe(200);
+    const [usage] = res.json().demos;
+    expect(usage).toMatchObject({ demoCode: demo.demoCode, open: true, signIns: 1, failedSignIns: 1, rolesTried: ['Doctor / Clinical Officer'] });
+    expect(JSON.stringify(res.json())).not.toContain('prospect@example.org');
+    const audit = await prisma.auditLog.findMany();
+    expect(JSON.stringify(audit)).not.toContain('prospect@example.org');
+
+    // ...and none of it counts in the platform's own figures.
+    const analytics = (await app.inject({ method: 'GET', url: '/super-admin/analytics?days=30', headers: authHeader(token) })).json().analytics;
+    expect(analytics.security.signIns).toBe(0);
+    expect(analytics.security.wrongPassword).toBe(0);
+    expect(analytics.headline.patients.new).toBe(0);
+  });
+
+  it('closes after 14 days (or when closed early): its sign-ins stop with a clear reason', async () => {
+    const token = await operator();
+    const demo = (await create(token)).json();
+    const admin = demo.accounts.find((a: any) => a.role === 'ADMIN');
+    const session = (await loginAs(app, admin.email, demo.password)).token;
+    const clinicId = (await prisma.user.findUniqueOrThrow({ where: { email: admin.email } })).clinicId;
+
+    await prisma.clinic.update({ where: { id: clinicId }, data: { demoExpiresAt: new Date(Date.now() - 1000) } });
+    const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: admin.email, password: demo.password } });
+    expect(login.statusCode).toBe(403);
+    expect(login.json().reason).toBe('DEMO_ENDED');
+    // A session already open ends too.
+    expect((await app.inject({ method: 'GET', url: '/patients/' + clinicId, headers: authHeader(session) })).statusCode).toBe(401);
+
+    const usage = (await app.inject({ method: 'GET', url: '/super-admin/demos', headers: authHeader(token) })).json().demos;
+    expect(usage[0].open).toBe(false);
+    expect((await prisma.clinic.findUniqueOrThrow({ where: { id: clinicId } })).deletedAt).not.toBeNull();
+
+    const other = (await create(token)).json();
+    const otherClinic = (await prisma.user.findUniqueOrThrow({ where: { email: other.accounts[0].email } })).clinicId;
+    expect((await app.inject({ method: 'POST', url: `/super-admin/demos/${otherClinic}/close`, headers: authHeader(token) })).statusCode).toBe(200);
+    const closed = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: other.accounts[0].email, password: other.password } });
+    expect(closed.json().reason).toBe('DEMO_ENDED');
   });
 
   it("stays out of the platform's figures, and its staff are never emailed", async () => {

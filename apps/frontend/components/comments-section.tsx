@@ -70,7 +70,7 @@ export function CommentsSection({
         alert(data.error || 'Could not post comment');
       }
     } catch {
-      alert(navigator.onLine ? 'Could not post comment - please try again.' : 'You are offline - comments are sent to the server, so post this when the connection returns.');
+      alert(navigator.onLine ? 'Could not post comment - please try again.' : 'You are offline. Comments need a connection - post this when it comes back.');
     } finally {
       setSubmitting(false);
     }

@@ -63,7 +63,7 @@ export function FacilityDetailsModal({ clinicId, onClose }: { clinicId: string; 
         if (data.success) setFacility(data.facility);
         else setError(data.error || 'Could not load facility details');
       } catch {
-        if (!cancelled) setError('Unable to reach the Bulamu API');
+        if (!cancelled) setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
       } finally {
         if (!cancelled) setLoading(false);
       }

@@ -102,7 +102,7 @@ const faqCategories: FaqCategory[] = [
       {
         question: 'How do I register a new patient?',
         answer:
-          'From Patients, use Register Patient to capture demographics, location, next of kin, and consent. Registration works offline and syncs automatically once a connection is available.',
+          'From Patients, use Register Patient to capture demographics, location, next of kin, and consent. Registration works without internet and is sent automatically once a connection is available.',
       },
       {
         question: 'How do I book an appointment and record a consultation?',
@@ -153,7 +153,7 @@ const faqCategories: FaqCategory[] = [
     ],
   },
   {
-    title: 'Reports & interoperability',
+    title: 'Reports',
     icon: BarChart3,
     items: [
       {
@@ -164,7 +164,7 @@ const faqCategories: FaqCategory[] = [
       {
         question: 'What is the FHIR export for?',
         answer:
-          'It exports patient, encounter, and observation records in HL7 FHIR R4 format, the standard used to interoperate with systems like OpenMRS, Bahmni, and UgandaEMR.',
+          'It exports your patients\' records in FHIR, the international standard format for health records, so they can be moved into other systems such as UgandaEMR, OpenMRS or Bahmni.',
       },
       {
         question: 'What does the DHIS2 push do?',
@@ -174,23 +174,23 @@ const faqCategories: FaqCategory[] = [
     ],
   },
   {
-    title: 'Offline access & sync',
+    title: 'Working without internet',
     icon: DatabaseZap,
     items: [
       {
         question: 'Does Bulamu work without an internet connection?',
         answer:
-          'Yes, by design. Patient, appointment, consultation, and inventory records are stored on the device and queued for sync, so day-to-day work continues uninterrupted during outages.',
+          'Yes. Patients, appointments, visits and stock are saved on the device and sent automatically when the connection returns, so day-to-day work carries on during outages.',
       },
       {
-        question: 'How do I know if my data has synced?',
+        question: 'How do I know my work has been sent?',
         answer:
-          'Sync Activity shows a live sync status badge along with a full audit and conflict log for every record that has been pushed or pulled.',
+          'The badge at the bottom of the screen shows "Synced", "Offline" or how many changes are waiting to be sent. The Activity page lists what has been recorded and any changes that clashed.',
       },
       {
         question: 'What happens if the same record is edited offline in two places?',
         answer:
-          'Bulamu resolves conflicts deterministically by timestamp - the most recent edit wins, and every conflict is logged and visible in Sync Activity for review.',
+          'If two people change the same record while offline, the most recent change is kept, and the clash is listed on the Activity page so it can be checked.',
       },
     ],
   },
@@ -259,7 +259,7 @@ export default function HelpPage() {
         {[
           { title: 'Installable app', body: 'Install Bulamu from your browser and keep working offline - see the guide above.', icon: MonitorSmartphone },
           { title: 'Facility administration', body: 'Approve facilities, manage staff, and monitor activity from one console.', icon: ShieldCheck },
-          { title: 'National reporting', body: 'Generate HMIS 105 summaries and export FHIR patient bundles.', icon: CalendarCheck },
+          { title: 'National reporting', body: 'Produce the monthly HMIS 105 report and export patient records for other health systems.', icon: CalendarCheck },
         ].map((item) => (
           <Card key={item.title} className="rounded-lg p-5">
             <item.icon className="size-5 text-emerald-700" aria-hidden="true" />

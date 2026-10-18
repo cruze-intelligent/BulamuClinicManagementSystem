@@ -34,4 +34,4 @@ export function useSlowNotice(active: boolean, delayMs = 4000) {
 }
 
 export const SLOW_REQUEST_MESSAGE =
-  'Connecting to the secure server. If it has been idle this can take up to a minute - please keep this page open.';
+  'Connecting to Bulamu. The first sign-in after a quiet spell can take up to a minute - please keep this page open.';

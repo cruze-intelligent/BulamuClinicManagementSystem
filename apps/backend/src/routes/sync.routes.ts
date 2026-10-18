@@ -9,6 +9,7 @@ import { notifyDoctorOfAppointment, notifyIfLowStock, notifyLabOrdered, notifyNe
 import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
 import { consultationChildren, linkStockItems } from '../lib/consultation-records';
 import { parseFee } from '../lib/invoices';
+import { sendRouteError } from '../lib/http-error';
 
 export async function syncRoutes(fastify: FastifyInstance) {
   // Push queued offline mutations to backend (Last-Write-Wins by timestamp,
@@ -584,7 +585,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
         reproductiveHealth,
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }

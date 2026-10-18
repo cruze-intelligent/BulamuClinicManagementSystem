@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
 import { notifyDoctorOfAppointment, notifyPatient } from '../lib/notifications';
+import { sendRouteError } from '../lib/http-error';
 
 export async function appointmentRoutes(fastify: FastifyInstance) {
 
@@ -36,7 +37,7 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
 
       return { success: true, appointment };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -63,7 +64,7 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
 
       return { success: true, appointments, count: appointments.length };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -94,7 +95,7 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
 
       return { success: true, appointment };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -114,7 +115,7 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
 
       return { success: true, requests };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -189,7 +190,7 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
 
       return { success: true, appointment, appointmentRequest };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -237,7 +238,7 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
 
       return { success: true, appointmentRequest };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 }

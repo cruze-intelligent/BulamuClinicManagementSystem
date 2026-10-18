@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ShieldCheck } from 'lucide-react';
+import { BrandMark } from '@/components/brand';
 import { ContactIcons } from '@/components/contact-icons';
 import { useAuth, getHomePath } from '@/lib/useAuth';
 
@@ -19,9 +19,7 @@ export function LegalLayout({ title, effectiveDate, children }: { title: string;
       <header className="border-b border-slate-200 bg-slate-950 px-6 py-6 text-white">
         <div className="mx-auto flex max-w-4xl items-center justify-between">
           <Link href={getHomePath(user)} className="flex items-center gap-3">
-            <div className="flex size-9 items-center justify-center rounded-md bg-emerald-500 text-slate-950">
-              <ShieldCheck className="size-5" aria-hidden="true" />
-            </div>
+            <BrandMark className="size-9" />
             <span className="text-lg font-semibold">Bulamu</span>
           </Link>
           <nav className="hidden gap-5 text-sm text-slate-300 sm:flex">

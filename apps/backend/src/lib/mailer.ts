@@ -1,6 +1,8 @@
 import nodemailer, { SendMailOptions, Transporter } from 'nodemailer';
+import { BULAMU_LOGO_PNG } from './brand-logo';
 
 const BRAND_TEAL = '#0f766e';
+const BRAND_DARK = '#115e59';
 
 // Where Bulamu-operations notifications (new registrations, approvals,
 // payments, access requests...) are sent. Overridable via env (comma-separated
@@ -70,6 +72,8 @@ export type MailAttachment = {
   filename: string;
   content: Buffer;
   contentType: string;
+  /** Set for an image shown inside the email (referenced as cid:...), not offered as a download. */
+  cid?: string;
 };
 
 /**
@@ -99,7 +103,7 @@ export async function sendMail(input: {
     to: input.to,
     subject: input.subject,
     html: input.html,
-    attachments: input.attachments,
+    attachments: withInlineLogo(input.html, input.attachments),
   };
 
   let result: MailResult;
@@ -123,6 +127,15 @@ export async function sendMail(input: {
   }
   logDelivery(input, result);
   return result;
+}
+
+// Every Bulamu email shows the logo in its header; it goes along inside the message.
+function withInlineLogo(html: string, attachments: MailAttachment[] = []): MailAttachment[] | undefined {
+  const logo = html.includes(`cid:${LOGO_CID}`)
+    ? [{ filename: 'bulamu.png', content: BULAMU_LOGO_PNG, contentType: 'image/png', cid: LOGO_CID }]
+    : [];
+  const all = [...logo, ...attachments];
+  return all.length ? all : undefined;
 }
 
 // Only failures to open the connection - never one that happened mid-conversation.
@@ -201,20 +214,108 @@ export function escapeHtml(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
-function emailShell(bodyHtml: string): string {
+// --- Email design -------------------------------------------------------------
+// One look for every email: a dark header with the Bulamu mark, a teal accent
+// line, an eyebrow and heading, and a footer that says who sent it and why.
+// Inline styles and tables only - that is what email clients render reliably.
+
+export const TAGLINE = 'Patient care, organised.';
+const SITE = 'https://bulamu.site';
+/** The logo travels inside each email (Content-ID), so it shows even where remote images are blocked. */
+export const LOGO_CID = 'bulamu-logo';
+
+const INK = '#0b1f1c';
+const TEXT = '#1f2a37';
+const MUTED = '#4b5563';
+const FAINT = '#6b7280';
+const TINT = '#f0fdfa';
+const TINT_LINE = '#99f6e4';
+const MONO = "'IBM Plex Mono',Consolas,'Courier New',monospace";
+
+const P = `margin:0 0 14px;font-size:15px;line-height:1.65;color:${TEXT}`;
+const SMALL = `margin:0 0 12px;font-size:13px;line-height:1.6;color:${MUTED}`;
+
+function heading(text: string): string {
+  return `<h1 style="margin:0 0 18px;font-size:24px;line-height:1.3;font-weight:800;letter-spacing:-0.3px;color:${INK}">${text}</h1>`;
+}
+
+function para(html: string): string {
+  return `<p style="${P}">${html}</p>`;
+}
+
+function note(html: string): string {
+  return `<p style="${SMALL}">${html}</p>`;
+}
+
+function button(href: string, label: string, variant: 'primary' | 'outline' = 'primary'): string {
+  const look = variant === 'primary'
+    ? `background:${BRAND_TEAL};color:#ffffff;border:1px solid ${BRAND_TEAL}`
+    : `background:#ffffff;color:${BRAND_TEAL};border:1px solid ${BRAND_TEAL}`;
+  return `<a href="${href}" style="display:inline-block;${look};font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:10px" target="_blank">${label}</a>`;
+}
+
+/** The main action, centred, with room around it. */
+function action(href: string, label: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:10px 0 26px">${button(href, label)}</td></tr></table>`;
+}
+
+/** A one-time code or ID, large and easy to read out. */
+function codeBox(value: string, caption?: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 22px"><tr><td align="center" style="background:${TINT};border:1px solid ${TINT_LINE};border-radius:12px;padding:18px 12px">
+    <span style="font-family:${MONO};font-size:28px;font-weight:700;letter-spacing:6px;color:${BRAND_DARK}">${value}</span>
+    ${caption ? `<div style="margin-top:6px;font-size:12px;color:${FAINT}">${caption}</div>` : ''}
+  </td></tr></table>`;
+}
+
+/** Label / value rows, e.g. a facility's details. Values must already be escaped. */
+function factsTable(rows: Array<[string, string]>): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 22px;border:1px solid #e5e7eb;border-radius:12px;border-collapse:separate">
+    ${rows.map(([label, value], i) => `<tr>
+      <td style="padding:10px 14px;font-size:13px;color:${FAINT};vertical-align:top;white-space:nowrap;width:1%;${i ? 'border-top:1px solid #f1f3f5;' : ''}">${label}</td>
+      <td style="padding:10px 14px;font-size:14px;color:${INK};${i ? 'border-top:1px solid #f1f3f5;' : ''}">${value}</td>
+    </tr>`).join('')}
+  </table>`;
+}
+
+/** A tinted aside with a teal edge, for what the reader should keep in mind. */
+function callout(html: string): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 22px"><tr>
+    <td style="background:${TINT};border-left:4px solid #14b8a6;border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.6;color:${MUTED}">${html}</td>
+  </tr></table>`;
+}
+
+const SIGN_OFF = `<p style="margin:22px 0 0;font-size:15px;line-height:1.6;color:${TEXT}">Warm regards,<br/><strong style="color:${INK}">The Bulamu team</strong></p>`;
+
+function emailShell(bodyHtml: string, options: { preheader?: string; eyebrow?: string; footnote?: string } = {}): string {
+  const { preheader, eyebrow, footnote = 'You received this email because of your account with Bulamu.' } = options;
   return `<!DOCTYPE html>
-<html>
-<body style="margin:0;padding:0;background:#f8fafc;font-family:Helvetica,Arial,sans-serif;color:#1e293b;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;padding:24px 0;">
-    <tr><td align="center">
-      <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;">
-        <tr><td style="background:${BRAND_TEAL};padding:20px 28px;">
-          <span style="color:#ffffff;font-size:20px;font-weight:bold;">Bulamu</span><br/>
-          <span style="color:#d1fae5;font-size:10px;letter-spacing:1px;">MEDICAL FACILITY OS</span>
+<html lang="en">
+<head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="color-scheme" content="light"/></head>
+<body style="margin:0;padding:0;background:#eef4f2;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:${TEXT}">
+  ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0">${preheader}</div>` : ''}
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef4f2">
+    <tr><td align="center" style="padding:32px 12px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden">
+        <tr><td style="background:#042f2e;padding:22px 32px">
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:middle"><img src="cid:${LOGO_CID}" width="40" height="40" alt="Bulamu" style="display:block;border:0;border-radius:10px"/></td>
+            <td style="vertical-align:middle;padding-left:12px">
+              <div style="font-size:20px;font-weight:800;letter-spacing:-0.3px;color:#ffffff">Bulamu</div>
+              <div style="font-size:12px;letter-spacing:0.2px;color:#5eead4">${TAGLINE}</div>
+            </td>
+          </tr></table>
         </td></tr>
-        <tr><td style="padding:28px;">${bodyHtml}</td></tr>
-        <tr><td style="padding:16px 28px;border-top:1px solid #e2e8f0;">
-          <span style="color:#64748b;font-size:11px;">Bulamu is a product of Cruze Intelligent Systems (U) Ltd.</span>
+        <tr><td style="height:4px;background:#14b8a6;line-height:4px;font-size:0">&nbsp;</td></tr>
+        <tr><td style="padding:34px 32px 30px">
+          ${eyebrow ? `<p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${BRAND_TEAL}">${eyebrow}</p>` : ''}
+          ${bodyHtml}
+        </td></tr>
+        <tr><td style="padding:18px 32px 22px;background:#f8faf9;border-top:1px solid #edf2f0;font-size:12px;line-height:1.7;color:${FAINT}">
+          <strong style="color:${INK}">Bulamu</strong> &middot; ${TAGLINE}<br/>
+          <a href="${SITE}" style="color:${BRAND_TEAL};text-decoration:none">bulamu.site</a> &middot;
+          <a href="mailto:admin@bulamu.site" style="color:${BRAND_TEAL};text-decoration:none">admin@bulamu.site</a> &middot;
+          a product of Cruze Intelligent Systems (U) Ltd
+          ${footnote ? `<br/><span style="color:#9ca3af">${footnote}</span>` : ''}
         </td></tr>
       </table>
     </td></tr>
@@ -225,17 +326,11 @@ function emailShell(bodyHtml: string): string {
 
 export function passwordResetEmail(resetUrl: string): string {
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">Reset your password</h2>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      We received a request to reset the password on your Bulamu account. This link expires in 1 hour.
-    </p>
-    <a href="${resetUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
-      Reset Password
-    </a>
-    <p style="margin:20px 0 0;font-size:12px;color:#64748b;">
-      If you didn't request this, you can safely ignore this email.
-    </p>
-  `);
+    ${heading('Reset your password')}
+    ${para('We received a request to reset the password on your Bulamu account. Use the button below to choose a new one. The link works once, for the next hour.')}
+    ${action(resetUrl, 'Choose a new password')}
+    ${note("If you didn't ask for this, you can ignore this email: your password stays as it is.")}
+  `, { eyebrow: 'Your account', preheader: 'Choose a new password for your Bulamu account. The link works for one hour.' });
 }
 
 // "23 October 2026" - unambiguous, unlike 10/23/2026 vs 23/10/2026.
@@ -243,25 +338,24 @@ export function formatEmailDate(date: Date): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' });
 }
 
+/** "1 November 2026, 2:52 pm" in East Africa Time. */
+export function formatEmailDateTime(date: Date): string {
+  const time = date.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Kampala' }).replace(/\s?([ap])\.?m\.?/i, ' $1m').toLowerCase();
+  return `${formatEmailDate(date)}, ${time}`;
+}
+
 export function registrationReceivedEmail(rawAdminName: string, rawClinicName: string, facilityCode: string): string {
   const adminName = escapeHtml(rawAdminName);
   const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">We have received your registration</h2>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      Dear ${adminName}, thank you for registering <strong>${clinicName}</strong> on Bulamu.
-    </p>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      Your Facility ID is <strong>${facilityCode}</strong>. Please keep it for your records.
-    </p>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      A Bulamu administrator will now review your details. You will not be able to sign in until the review is
-      complete. As soon as your facility is approved, we will email you and your 2-week free trial will begin.
-    </p>
-    <p style="margin:0;font-size:12px;color:#64748b;">
-      If you did not register a facility on Bulamu, you can safely ignore this email.
-    </p>
-  `);
+    ${heading('Thank you for registering with Bulamu')}
+    ${para(`Dear ${adminName},`)}
+    ${para(`Thank you for registering <strong>${clinicName}</strong>. We have received your details and a member of the Bulamu team will now review them.`)}
+    ${factsTable([['Facility', clinicName], ['Facility ID', `<strong>${escapeHtml(facilityCode)}</strong>`]])}
+    ${para('You will be able to sign in once the review is complete. We will email you as soon as your facility is approved, and your 14-day free trial starts then.')}
+    ${note('Please keep your Facility ID: quote it whenever you contact us.')}
+    ${SIGN_OFF}
+  `, { eyebrow: 'Registration received', preheader: `We have received ${clinicName}'s registration and will email you once it is approved.`, footnote: 'You received this because this address was used to register a facility on Bulamu. If that was not you, you can ignore it.' });
 }
 
 export function facilityApprovedEmail(
@@ -272,115 +366,73 @@ export function facilityApprovedEmail(
 ): string {
   const clinicName = escapeHtml(rawClinicName);
   const { facilityCode, adminEmail, receiptAttached = true } = extra;
+  const facts: Array<[string, string]> = [['Facility', clinicName]];
+  if (facilityCode) facts.push(['Facility ID', `<strong>${escapeHtml(facilityCode)}</strong>`]);
+  if (adminEmail) facts.push(['Sign in with', `<span style="font-family:${MONO};font-size:13px;color:${BRAND_DARK}">${escapeHtml(adminEmail)}</span>`]);
+  if (trialEndsAt) facts.push(['Free trial until', formatEmailDate(trialEndsAt)]);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} is approved</h2>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      Your facility has been reviewed and approved on Bulamu. Your 2-week free trial has started${trialEndsAt ? ` and runs through <strong>${formatEmailDate(trialEndsAt)}</strong>` : ''} -
-      sign in to start registering patients, booking appointments, and recording consultations.
-      ${receiptAttached ? 'A receipt for your free trial is attached for your records.' : ''}
-    </p>
-    ${facilityCode || adminEmail ? `<p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      ${facilityCode ? `Facility ID: <strong>${escapeHtml(facilityCode)}</strong><br/>` : ''}
-      ${adminEmail ? `Sign in with: <strong>${escapeHtml(adminEmail)}</strong>` : ''}
-    </p>` : ''}
-    <a href="${loginUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
-      Sign In
-    </a>
-  `);
+    ${heading(`Welcome to Bulamu: ${clinicName} is approved`)}
+    ${para('Good news: your facility has been reviewed and approved, and your 14-day free trial has started. Sign in to add your staff, register patients, book appointments and record visits.')}
+    ${factsTable(facts)}
+    ${action(loginUrl, 'Sign in to Bulamu')}
+    ${para('A short guided tour starts the first time you sign in, and <strong>Help &amp; FAQ</strong> in the menu answers the common questions.')}
+    ${receiptAttached ? note('A receipt for your free trial is attached for your records.') : ''}
+    ${note('Questions? Simply reply to this email, quoting your Facility ID.')}
+    ${SIGN_OFF}
+  `, { eyebrow: 'Facility approved', preheader: `${clinicName} is approved and your free trial has started.` });
 }
 
 export function patientPortalAccountCreatedEmail(rawPatientName: string, portableId: string, rawClinicName: string, setPasswordUrl: string): string {
   const patientName = escapeHtml(rawPatientName);
   const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">Your Bulamu patient account</h2>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      ${clinicName} created a Bulamu portal account for ${patientName}. Your Patient ID is:
-    </p>
-    <p style="margin:0 0 20px;font-size:20px;font-weight:bold;letter-spacing:1px;color:${BRAND_TEAL};">${portableId}</p>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      Keep this ID - any Bulamu facility you visit can use it to link your visit there once you approve it.
-      Use the button below to set your password and sign in to the Patient Portal, where you can view your
-      records, upload documents and request appointments. You will be asked to confirm the phone number you gave
-      the facility. This link expires in 72 hours.
-    </p>
-    <a href="${setPasswordUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
-      Set Password
-    </a>
-    <p style="margin:20px 0 0;font-size:12px;color:#64748b;">
-      If you were not expecting this email, you can safely ignore it - no one can access your account until this
-      link is used.
-    </p>
-  `);
+    ${heading('Your Bulamu patient account')}
+    ${para(`${clinicName} has created a Bulamu Patient Portal account for ${patientName}. In the portal you can see your records and results, add your own documents and ask for appointments.`)}
+    ${codeBox(escapeHtml(portableId), 'Your Patient ID')}
+    ${para('Keep this ID. Any Bulamu facility you visit can use it to link your visit there, once you approve it.')}
+    ${action(setPasswordUrl, 'Set your password')}
+    ${note('You will be asked to confirm the phone number you gave the facility. The link works for 72 hours.')}
+  `, { eyebrow: 'Patient Portal', preheader: `${clinicName} created your Bulamu patient account. Set your password to sign in.`, footnote: 'If you were not expecting this, you can ignore it: nobody can use the account until this link is used.' });
 }
 
 export function patientAccountClosedEmail(): string {
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">Your Patient Portal account has been closed</h2>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      Your Bulamu Patient Portal account was closed at your request. Your email address, phone number and password
-      have been erased from the account, along with your notifications and any documents you uploaded yourself, and
-      no facility can access your records through the account any more.
-    </p>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      The clinical records that each facility holds about you have not been removed, because facilities are required
-      to keep them. To ask about those records, please contact the facility directly.
-    </p>
-    <p style="margin:0;font-size:12px;color:#64748b;">
-      If you did not close this account, please contact Bulamu support straight away.
-    </p>
-  `);
+    ${heading('Your Patient Portal account is closed')}
+    ${para('Your Bulamu Patient Portal account was closed at your request. Your email address, phone number and password have been erased from it, along with your notifications and the documents you uploaded yourself. No facility can reach your records through the account any more.')}
+    ${callout("The clinical records each facility holds about you have not been removed, because facilities are required to keep them. To ask about those records, please contact the facility directly.")}
+    ${note('If you did not close this account, please reply to this email straight away.')}
+  `, { eyebrow: 'Patient Portal', preheader: 'Your Bulamu Patient Portal account has been closed.' });
 }
 
 export function patientPasswordResetEmail(setPasswordUrl: string): string {
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">Reset your Patient Portal password</h2>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      We received a request to reset the password on your Bulamu patient account. You will be asked to confirm the
-      phone number you gave your facility. This link expires in 1 hour.
-    </p>
-    <a href="${setPasswordUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
-      Reset Password
-    </a>
-    <p style="margin:20px 0 0;font-size:12px;color:#64748b;">
-      If you did not request this, you can safely ignore this email.
-    </p>
-  `);
+    ${heading('Reset your Patient Portal password')}
+    ${para('We received a request to reset the password on your Bulamu patient account. You will be asked to confirm the phone number you gave your facility.')}
+    ${action(setPasswordUrl, 'Choose a new password')}
+    ${note("The link works for one hour. If you didn't ask for this, you can ignore this email.")}
+  `, { eyebrow: 'Patient Portal', preheader: 'Choose a new password for your Bulamu patient account.' });
 }
 
 /** The code a patient gives a facility to approve it seeing their history from other facilities. */
 export function historyShareOtpEmail(rawClinicName: string, code: string): string {
   const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} is asking to see your health history</h2>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      ${clinicName} would like to see your records from the other facilities you have visited - your allergies,
-      diagnoses, medicines, lab results and hospital stays - so they can treat you safely. Nothing is shared unless you agree.
-    </p>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      If you agree, give this code to the staff member helping you. It expires in 10 minutes.
-    </p>
-    <p style="margin:0 0 20px;font-size:28px;font-weight:bold;letter-spacing:4px;color:${BRAND_TEAL};">${code}</p>
-    <p style="margin:0;font-size:13px;color:#64748b;">
-      If you do not agree, or did not expect this, do nothing - no records will be shared. You can stop sharing at any
-      time from the Access page of your Patient Portal.
-    </p>
-  `);
+    ${heading(`${clinicName} is asking to see your health history`)}
+    ${para(`${clinicName} would like to see your records from the other facilities you have visited (your allergies, diagnoses, medicines, lab results and hospital stays) so they can treat you safely. Nothing is shared unless you agree.`)}
+    ${para('If you agree, give this code to the staff member helping you:')}
+    ${codeBox(escapeHtml(code), 'Expires in 10 minutes')}
+    ${note('If you do not agree, or did not expect this, do nothing: no records will be shared. You can stop sharing at any time from the Access page of your Patient Portal.')}
+  `, { eyebrow: 'Your consent', preheader: `${clinicName} is asking to see your health history. Your code expires in 10 minutes.` });
 }
 
 export function patientAccessOtpEmail(rawClinicName: string, code: string): string {
   const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">Confirm your identity at ${clinicName}</h2>
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
-      ${clinicName} is asking to link your Bulamu patient account to a visit there. If this is you, share this
-      code with the staff member helping you. This code expires in 10 minutes.
-    </p>
-    <p style="margin:0 0 20px;font-size:28px;font-weight:bold;letter-spacing:4px;color:${BRAND_TEAL};">${code}</p>
-    <p style="margin:0;font-size:13px;color:#64748b;">
-      If you did not request this, you can safely ignore this email - no changes were made to your account.
-    </p>
-  `);
+    ${heading(`Confirm it's you at ${clinicName}`)}
+    ${para(`${clinicName} is linking your Bulamu patient account to your visit there. If this is you, give this code to the staff member helping you:`)}
+    ${codeBox(escapeHtml(code), 'Expires in 10 minutes')}
+    ${note('If you did not ask for this, you can ignore this email: nothing has changed on your account.')}
+  `, { eyebrow: 'Your consent', preheader: `Your code for ${clinicName}. It expires in 10 minutes.` });
 }
 
 // Notification emails never contain patient names or clinical details - they
@@ -388,49 +440,36 @@ export function patientAccessOtpEmail(rawClinicName: string, code: string): stri
 // detail is shown after sign-in.
 export function notificationEmail(input: { heading: string; message: string; ctaUrl: string; ctaLabel: string }): string {
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">${input.heading}</h2>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">${input.message}</p>
-    <a href="${input.ctaUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
-      ${input.ctaLabel}
-    </a>
-    <p style="margin:20px 0 0;font-size:12px;color:#64748b;">
-      You can choose which notification emails you receive from the Notifications page after you sign in.
-    </p>
-  `);
+    ${heading(input.heading)}
+    ${para(input.message)}
+    ${action(input.ctaUrl, input.ctaLabel)}
+  `, { eyebrow: 'Notification', preheader: input.message, footnote: 'You can choose which emails you receive from the Notifications page after you sign in.' });
 }
 
 export function facilityRejectedEmail(rawClinicName: string, reason: string | undefined): string {
   const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">${clinicName} was not approved</h2>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      After review, we were unable to approve this facility's registration on Bulamu${reason ? `: <strong>${escapeHtml(reason)}</strong>` : '.'}
-    </p>
-    <p style="margin:0;font-size:13px;color:#64748b;">
-      If you believe this is a mistake or have questions, reply to this email or write to
-      <a href="mailto:admin@bulamu.site" style="color:${BRAND_TEAL};">admin@bulamu.site</a>. You are welcome to register again once the matter is resolved.
-    </p>
-  `);
+    ${heading(`About your registration for ${clinicName}`)}
+    ${para('Thank you for your interest in Bulamu. After reviewing your details, we were unable to approve this registration.')}
+    ${reason ? factsTable([['Reason', escapeHtml(reason)]]) : ''}
+    ${para('If you think this is a mistake, or the matter can be put right, simply reply to this email. You are welcome to register again once it is resolved.')}
+    ${SIGN_OFF}
+  `, { eyebrow: 'Registration', preheader: `An update on the registration for ${clinicName}.` });
 }
 
 export function newAccessRequestEmail(facilityName: string, contactPerson: string, phone: string, email: string): string {
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">New evaluation access request</h2>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      <strong>${escapeHtml(facilityName)}</strong> requested evaluation access.<br/>
-      Contact: ${escapeHtml(contactPerson)} - ${escapeHtml(phone)} - ${escapeHtml(email)}
-    </p>
-  `);
+    ${heading('New request to try Bulamu')}
+    ${factsTable([['Facility', escapeHtml(facilityName)], ['Contact', escapeHtml(contactPerson)], ['Phone', escapeHtml(phone)], ['Email', escapeHtml(email)]])}
+  `, { eyebrow: 'For the Bulamu team', footnote: 'Sent to the Bulamu team inbox.' });
 }
 
 export function feedbackSubmittedEmail(authorName: string, authorRole: string, clinicName: string, body: string): string {
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">New feedback submitted</h2>
-    <p style="margin:0 0 8px;font-size:13px;color:#64748b;">
-      ${escapeHtml(authorName)} (${escapeHtml(authorRole)}) - ${escapeHtml(clinicName)}
-    </p>
-    <p style="margin:0;font-size:14px;line-height:1.5;white-space:pre-wrap;">${escapeHtml(body)}</p>
-  `);
+    ${heading('New feedback')}
+    ${note(`${escapeHtml(authorName)} (${escapeHtml(authorRole)}) &middot; ${escapeHtml(clinicName)}`)}
+    ${callout(`<span style="white-space:pre-wrap;color:${TEXT};font-size:14px">${escapeHtml(body)}</span>`)}
+  `, { eyebrow: 'For the Bulamu team', footnote: 'Sent to the Bulamu team inbox.' });
 }
 
 /**
@@ -441,140 +480,177 @@ export function feedbackSubmittedEmail(authorName: string, authorRole: string, c
 export function operatorAlertEmail(input: { heading: string; intro?: string; facts: Array<[string, string | number | null | undefined]>; ctaUrl?: string; ctaLabel?: string }): string {
   const rows = input.facts
     .filter(([, value]) => value !== null && value !== undefined && value !== '')
-    .map(([label, value]) => `
-      <tr>
-        <td style="padding:6px 12px 6px 0;font-size:13px;color:#64748b;vertical-align:top;white-space:nowrap;">${escapeHtml(label)}</td>
-        <td style="padding:6px 0;font-size:13px;color:#1e293b;">${escapeHtml(value)}</td>
-      </tr>`)
-    .join('');
+    .map(([label, value]): [string, string] => [escapeHtml(label), escapeHtml(value)]);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">${escapeHtml(input.heading)}</h2>
-    ${input.intro ? `<p style="margin:0 0 16px;font-size:14px;line-height:1.5;">${escapeHtml(input.intro)}</p>` : ''}
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px;border-collapse:collapse;">${rows}</table>
-    ${input.ctaUrl ? `<a href="${input.ctaUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
-      ${escapeHtml(input.ctaLabel || 'Open Bulamu')}
-    </a>` : ''}
-  `);
+    ${heading(escapeHtml(input.heading))}
+    ${input.intro ? para(escapeHtml(input.intro)) : ''}
+    ${rows.length ? factsTable(rows) : ''}
+    ${input.ctaUrl ? action(input.ctaUrl, escapeHtml(input.ctaLabel || 'Open Bulamu')) : ''}
+  `, { eyebrow: 'For the Bulamu team', footnote: 'Sent to the Bulamu team inbox. Alerts carry facility and account details only, never patient information.' });
 }
 
 export type FacilityLetter = { adminName?: string | null; facilityCode: string; reason?: string | null };
 
-const SUPPORT_LINE = `
-    <p style="margin:16px 0 0;font-size:13px;color:#64748b;line-height:1.5;">
-      For questions, simply reply to this email or write to <a href="mailto:admin@bulamu.site" style="color:${BRAND_TEAL};">admin@bulamu.site</a>,
-      quoting your Facility ID. Bulamu Support, Cruze Intelligent Systems (U) Ltd.
-    </p>`;
+const SUPPORT_LINE = note(`Questions? Simply reply to this email, or write to <a href="mailto:admin@bulamu.site" style="color:${BRAND_TEAL}">admin@bulamu.site</a>, quoting your Facility ID.`);
 
 function letterOpening(letter: FacilityLetter, clinicName: string): string {
-  return `
-    <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">Dear ${escapeHtml(letter.adminName || `${clinicName} administrator`)},</p>`;
+  return para(`Dear ${escapeHtml(letter.adminName || `${clinicName} administrator`)},`);
 }
 
 function letterFacts(letter: FacilityLetter, clinicName: string, effective: string): string {
-  return `
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 16px;border-collapse:collapse;font-size:13px;">
-      <tr><td style="padding:3px 12px 3px 0;color:#64748b;">Facility</td><td style="padding:3px 0;">${clinicName}</td></tr>
-      <tr><td style="padding:3px 12px 3px 0;color:#64748b;">Facility ID</td><td style="padding:3px 0;">${escapeHtml(letter.facilityCode)}</td></tr>
-      <tr><td style="padding:3px 12px 3px 0;color:#64748b;">Effective</td><td style="padding:3px 0;">${effective}</td></tr>
-      ${letter.reason ? `<tr><td style="padding:3px 12px 3px 0;color:#64748b;vertical-align:top;">Reason</td><td style="padding:3px 0;">${escapeHtml(letter.reason)}</td></tr>` : ''}
-    </table>`;
+  const rows: Array<[string, string]> = [['Facility', clinicName], ['Facility ID', escapeHtml(letter.facilityCode)], ['Effective', effective]];
+  if (letter.reason) rows.push(['Reason', escapeHtml(letter.reason)]);
+  return factsTable(rows);
 }
 
 /** Tells a facility's admin that the facility was suspended or reactivated. */
 export function facilityStatusEmail(rawClinicName: string, active: boolean, loginUrl: string, letter: FacilityLetter): string {
   const clinicName = escapeHtml(rawClinicName);
   const effective = formatEmailDate(new Date());
-  return emailShell(active ? `
-    <h2 style="margin:0 0 12px;font-size:18px;">Access restored: ${clinicName}</h2>
+  return active
+    ? emailShell(`
+    ${heading(`Access restored: ${clinicName}`)}
     ${letterOpening(letter, clinicName)}
-    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">
-      We are pleased to let you know that your facility's access to Bulamu has been restored. You and your staff can
-      sign in again with your usual accounts, and all of your records are exactly as you left them.
-    </p>
+    ${para("We are pleased to let you know that your facility's access to Bulamu has been restored. You and your staff can sign in again with your usual accounts, and all of your records are exactly as you left them.")}
     ${letterFacts(letter, clinicName, effective)}
-    <a href="${loginUrl}" style="display:inline-block;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">
-      Sign In
-    </a>
+    ${action(loginUrl, 'Sign in to Bulamu')}
     ${SUPPORT_LINE}
-  ` : `
-    <h2 style="margin:0 0 12px;font-size:18px;">Your facility's access has been suspended</h2>
+    ${SIGN_OFF}
+  `, { eyebrow: 'Access restored', preheader: `${clinicName} can sign in to Bulamu again.` })
+    : emailShell(`
+    ${heading("Your facility's access has been suspended")}
     ${letterOpening(letter, clinicName)}
-    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">
-      We are writing to let you know that access to Bulamu has been suspended for your facility. While the suspension
-      is in place, you and your staff will not be able to sign in.
-    </p>
+    ${para('We are writing to let you know that access to Bulamu has been suspended for your facility. While the suspension is in place, you and your staff will not be able to sign in.')}
     ${letterFacts(letter, clinicName, effective)}
-    <p style="margin:0 0 4px;font-size:14px;line-height:1.5;">
-      Your records are kept safe and nothing has been deleted. Once the matter is resolved, access can be restored and
-      everything will be as you left it.
-    </p>
+    ${callout('Your records are kept safe and nothing has been deleted. Once the matter is resolved, access can be restored and everything will be as you left it.')}
     ${SUPPORT_LINE}
-  `);
+    ${SIGN_OFF}
+  `, { eyebrow: 'Access suspended', preheader: `Access to Bulamu has been suspended for ${clinicName}.` });
 }
 
 /** Tells a facility's admin that the facility has been removed from Bulamu. */
 export function facilityRemovedEmail(rawClinicName: string, letter: FacilityLetter): string {
   const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">Your facility has been removed from Bulamu</h2>
+    ${heading('Your facility has been removed from Bulamu')}
     ${letterOpening(letter, clinicName)}
-    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">
-      We are writing to confirm that your facility's account on Bulamu has been closed. Staff accounts at the facility
-      have been deactivated and can no longer sign in.
-    </p>
+    ${para("We are writing to confirm that your facility's account on Bulamu has been closed. Staff accounts at the facility have been deactivated and can no longer sign in.")}
     ${letterFacts(letter, clinicName, formatEmailDate(new Date()))}
-    <p style="margin:0 0 4px;font-size:14px;line-height:1.5;">
-      Your facility's records have not been erased. They are retained securely for the period set out in our data
-      retention policy, as health records must be. If you need a copy of your records, or believe this was done in
-      error, please contact us.
-    </p>
+    ${callout("Your facility's records have not been erased. They are kept securely for the period set out in our data retention policy, as health records must be. If you need a copy of your records, or believe this was done in error, please contact us.")}
     ${SUPPORT_LINE}
-  `);
+    ${SIGN_OFF}
+  `, { eyebrow: 'Account closed', preheader: `${clinicName}'s Bulamu account has been closed.` });
 }
 
 export function subscriptionReceiptEmail(rawClinicName: string, amount: number, currency: string, periodEnd: Date): string {
   const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">Payment received</h2>
-    <p style="margin:0 0 20px;font-size:14px;line-height:1.5;">
-      Thank you - we've received <strong>${currency} ${amount.toLocaleString()}</strong> for ${clinicName}'s
-      Bulamu subscription. Your subscription is active through <strong>${formatEmailDate(periodEnd)}</strong>.
-    </p>
-    <p style="margin:0;font-size:13px;color:#64748b;">
-      A PDF receipt is attached for your records.
-    </p>
-  `);
+    ${heading('Thank you: payment received')}
+    ${para(`We have received your payment for ${clinicName}'s Bulamu subscription.`)}
+    ${factsTable([['Facility', clinicName], ['Amount', `<strong>${escapeHtml(currency)} ${amount.toLocaleString()}</strong>`], ['Active until', formatEmailDate(periodEnd)]])}
+    ${note('A PDF receipt is attached for your records.')}
+    ${SIGN_OFF}
+  `, { eyebrow: 'Payment received', preheader: `Payment received. ${clinicName}'s subscription is active until ${formatEmailDate(periodEnd)}.` });
 }
 
-export function demoFacilityEmail(input: {
-  facilityName: string;
-  facilityCode: string;
-  loginUrl: string;
-  created: boolean;
-  accounts: Array<{ roleTitle: string; name: string; email: string; password: string }>;
-}): string {
-  const rows = input.accounts
-    .map((a) => `
-      <tr>
-        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:13px;"><strong>${escapeHtml(a.roleTitle)}</strong><br/><span style="color:#64748b;">${escapeHtml(a.name)}</span></td>
-        <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;font-size:13px;">${escapeHtml(a.email)}<br/><code style="font-size:13px;">${escapeHtml(a.password)}</code></td>
-      </tr>`)
-    .join('');
+/** Tells a facility's admin that the Bulamu team has given them more trial days. */
+export function trialExtendedEmail(rawClinicName: string, days: number, trialEndsAt: Date, loginUrl: string): string {
+  const clinicName = escapeHtml(rawClinicName);
   return emailShell(`
-    <h2 style="margin:0 0 12px;font-size:18px;">${input.created ? 'Your Bulamu demo facility is ready' : 'Fresh logins for the Bulamu demo facility'}</h2>
-    <p style="margin:0 0 16px;font-size:14px;line-height:1.5;">
-      <strong>${escapeHtml(input.facilityName)}</strong> (Facility ID ${escapeHtml(input.facilityCode)}) is a demonstration facility
-      with made-up patients, visits, prescriptions, lab results, stock, wards and invoices, so every part of Bulamu can be shown.
-      Sign in with any of the accounts below to see Bulamu as that role.
-    </p>
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:6px;border-collapse:separate;">
-      <tr><th align="left" style="padding:8px 10px;background:#f8fafc;font-size:12px;color:#64748b;">Role</th><th align="left" style="padding:8px 10px;background:#f8fafc;font-size:12px;color:#64748b;">Email and password</th></tr>
-      ${rows}
+    ${heading(`Your free trial has been extended by ${days} day${days === 1 ? '' : 's'}`)}
+    ${para(`Good news: the Bulamu team has added ${days} day${days === 1 ? '' : 's'} to ${clinicName}'s free trial, so you have more time to try everything with your team.`)}
+    ${factsTable([['Facility', clinicName], ['Free trial until', `<strong>${formatEmailDate(trialEndsAt)}</strong>`]])}
+    ${action(loginUrl, 'Sign in to Bulamu')}
+    ${note('When you are ready, an administrator can subscribe from the Billing page. Paying early never costs you trial days.')}
+    ${SIGN_OFF}
+  `, { eyebrow: 'Free trial', preheader: `${clinicName}'s free trial now runs until ${formatEmailDate(trialEndsAt)}.` });
+}
+
+/** The guided tour sent with every demo: one action followed through the whole facility. */
+const DEMO_TOUR: Array<{ title: string; body: string }> = [
+  { title: 'Start as the administrator', body: 'The Dashboard shows the facility at a glance. Look through Staff, Wards and Invoices, then open Reports for the monthly HMIS 105 figures.' },
+  { title: 'Switch to the front desk', body: 'Register a new patient under Patients, then book them in Appointments with Dr Samuel Okello for today.' },
+  { title: 'Then the doctor', body: 'In Consultations, choose Record visit for your new patient: symptoms, a coded diagnosis and a prescription (try amoxicillin for Achieng Mary to see her penicillin allergy warning). Then order a Malaria RDT for them on the Lab Tests page.' },
+  { title: 'Now the lab technician', body: 'Lab Tests shows the test the doctor just ordered. Enter the result; it waits for a clinician to verify it before the patient is told.' },
+  { title: 'Finish as the pharmacist', body: 'Dispensing shows the prescription waiting. Dispense it and watch the stock go down in Inventory, next to the low-stock and expiry alerts.' },
+];
+
+const DEMO_ALSO: Array<[string, string]> = [
+  ['Doctor', 'verify the haemoglobin result waiting on the Lab Tests page; once verified, it is locked.'],
+  ['Nurse', 'on Wards, Achieng Mary is admitted to the Female Ward: record her observations and read the ward-round notes.'],
+  ['Administrator', 'Invoices shows paid and outstanding bills; every printout carries the facility\'s name and who produced it.'],
+];
+
+export function demoFacilityEmail(input: {
+  loginUrl: string;
+  registerUrl: string;
+  password: string;
+  expiresAt: Date;
+  accounts: Array<{ roleTitle: string; name: string; email: string }>;
+}): string {
+  const expires = formatEmailDateTime(input.expiresAt);
+  const rows = input.accounts.map((a, i) => `
+      <tr>
+        <td style="padding:10px;vertical-align:top;${i < input.accounts.length - 1 ? 'border-bottom:1px solid #f1f3f5;' : ''}">
+          <div style="font-size:14px;font-weight:600;color:${INK}">${escapeHtml(a.roleTitle)}</div>
+          <div style="font-size:12px;color:${FAINT}">${escapeHtml(a.name)}</div>
+        </td>
+        <td style="padding:10px;vertical-align:top;${i < input.accounts.length - 1 ? 'border-bottom:1px solid #f1f3f5;' : ''}font-family:${MONO};font-size:13px;color:${BRAND_DARK};word-break:break-all">${escapeHtml(a.email)}</td>
+      </tr>`).join('');
+  const steps = DEMO_TOUR.map((step, i) => `
+      <tr>
+        <td style="vertical-align:top;padding:0 12px 16px 0;width:26px">
+          <div style="width:24px;height:24px;line-height:24px;border-radius:12px;background:${BRAND_TEAL};color:#ffffff;font-size:12px;font-weight:700;text-align:center">${i + 1}</div>
+        </td>
+        <td style="vertical-align:top;padding:0 0 16px">
+          <div style="font-size:15px;font-weight:700;color:${INK};margin:2px 0 3px">${step.title}</div>
+          <div style="font-size:14px;line-height:1.6;color:${MUTED}">${step.body}</div>
+        </td>
+      </tr>`).join('');
+  const also = DEMO_ALSO.map(([role, text]) => `<p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:${MUTED}"><span style="color:#14b8a6">&rsaquo;</span>&nbsp; <strong style="color:${INK}">${role}:</strong> ${text}</p>`).join('');
+
+  return emailShell(`
+    ${heading('Thank you for your interest in Bulamu')}
+    ${para('Hello,')}
+    ${para('Thank you for taking the time to look at Bulamu. Rather than a slideshow, we have set up a working demo facility just for you, already filled with patients, visits, prescriptions, lab results, stock, wards and invoices.')}
+    ${para('There is a sign-in for every role, and the short tour below walks you through it, so you can see your facility the way each person in it would: from the front desk to the pharmacy.')}
+    ${action(input.loginUrl, 'Open your demo')}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${TINT_LINE};border-radius:12px;background:${TINT}">
+      <tr><td style="padding:18px 20px 6px">
+        <p style="margin:0;font-size:16px;font-weight:700;color:${INK}">Your sign-ins</p>
+        <p style="margin:6px 0 0;font-size:14px;line-height:1.55;color:${MUTED}">Every account uses the same password:</p>
+        <p style="margin:8px 0 10px"><span style="display:inline-block;font-family:${MONO};font-size:17px;font-weight:600;color:${BRAND_DARK};background:#ffffff;border:1px solid ${TINT_LINE};border-radius:8px;padding:7px 14px;letter-spacing:0.3px">${escapeHtml(input.password)}</span></p>
+        <p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:${MUTED}">These sign-ins expire after <strong style="color:${INK}">14 days</strong>, on ${expires} (East Africa Time).</p>
+      </td></tr>
+      <tr><td style="padding:0 12px 12px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;border-collapse:separate">
+          <tr>
+            <th align="left" style="padding:10px;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:${FAINT};border-bottom:1px solid #e5e7eb">Role</th>
+            <th align="left" style="padding:10px;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:${FAINT};border-bottom:1px solid #e5e7eb">Sign in with</th>
+          </tr>
+          ${rows}
+        </table>
+      </td></tr>
     </table>
-    <a href="${input.loginUrl}" style="display:inline-block;margin-top:20px;background:${BRAND_TEAL};color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:14px;font-weight:bold;">Sign in to Bulamu</a>
-    <p style="margin:20px 0 0;font-size:12px;color:#64748b;">
-      All names and records in this facility are invented. It is not counted in Bulamu's figures and its accounts receive no
-      notification emails. ${input.created ? '' : 'The earlier passwords no longer work. '}Keep these logins to people you are showing Bulamu to.
-    </p>
-  `);
+
+    <p style="margin:30px 0 4px;font-size:17px;font-weight:800;color:${INK}">Your guided tour</p>
+    ${note('Follow these steps in order. Each one builds on the last, so together they show how a single patient visit travels through the whole facility.')}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:6px">${steps}</table>
+
+    <p style="margin:8px 0 10px;font-size:15px;font-weight:700;color:${INK}">Also worth a look</p>
+    ${also}
+    ${note('Tip: to watch two roles side by side, sign in to the second one in a private browser window.')}
+
+    ${callout(`This demo is yours alone: nobody else can see or change it. Your sign-ins expire after <strong style="color:${INK}">14 days, on ${expires}</strong>, and the demo then closes. Emails are never sent from inside a demo, so nothing you try there reaches anyone: each person's messages appear under Notifications instead. Every name and record in it is made up.`)}
+
+    ${para('When you are ready to bring your own facility, registration takes a few minutes and starts with a free 14-day trial.')}
+    <p style="margin:0 0 24px">${button(input.registerUrl, 'Register your facility', 'outline')}</p>
+    ${para('If you have any questions, or would like us to walk you through it, simply reply to this email. We would be glad to help.')}
+    ${SIGN_OFF}
+  `, {
+    eyebrow: 'Your demo is ready',
+    preheader: 'Thank you for your interest in Bulamu. Your demo is ready, with a sign-in for every role and a short guided tour.',
+    footnote: 'You received this because the Bulamu team sent you a demo. Your email address is not kept on file.',
+  });
 }

@@ -7,6 +7,7 @@ import { encryptSecret, decryptSecret } from '../lib/crypto';
 import { buildDataValueSet, pushDataValueSet } from '../services/dhis2.service';
 import { recordAudit } from '../lib/audit';
 import { rankDiagnoses, formatPrescriptionLine } from '../lib/clinical';
+import { sendRouteError } from '../lib/http-error';
 
 export async function reportsRoutes(fastify: FastifyInstance) {
 
@@ -71,7 +72,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
         }
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -86,7 +87,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
       const report = await computeHmis105Report(clinicId, Number(month), Number(year));
       return { success: true, ...report };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -116,7 +117,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
       const { encryptedPassword, ...safeIntegration } = integration;
       return { success: true, integration: safeIntegration };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -132,7 +133,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
       const { encryptedPassword, ...safeIntegration } = integration;
       return { success: true, integration: safeIntegration };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -181,7 +182,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
 
       return { success: result.success, status: result.status, unmappedFigures, response: result.response };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -342,7 +343,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
       reply.header('Content-Disposition', `attachment; filename="fhir-patients-${clinicId}.json"`);
       return fhirBundle;
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }

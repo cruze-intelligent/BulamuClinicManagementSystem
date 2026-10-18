@@ -3,7 +3,8 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { LogOut, PanelLeftClose, PanelLeftOpen, Search, ShieldCheck, X } from 'lucide-react';
+import { LogOut, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
+import { BrandMark, TAGLINE } from '@/components/brand';
 import { useAuth, getHomePath } from '@/lib/useAuth';
 import { useSidebar } from '@/lib/sidebar-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -106,13 +107,11 @@ export function Sidebar() {
       >
         <div className="border-b border-slate-200 p-5 dark:border-slate-800">
           <Link href={getHomePath(user)} className={`flex items-center gap-3 ${collapsed ? 'justify-center' : ''}`} title="Go to dashboard">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
-              <ShieldCheck className="size-5" aria-hidden="true" />
-            </div>
+            <BrandMark />
             {!collapsed && (
               <div className="min-w-0">
                 <h1 className="text-lg font-semibold tracking-tight text-slate-950 dark:text-slate-50">Bulamu</h1>
-                <p className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-500">Medical Facility OS</p>
+                <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{TAGLINE}</p>
               </div>
             )}
           </Link>
@@ -123,15 +122,6 @@ export function Sidebar() {
             </div>
           )}
         </div>
-
-        {!collapsed && (
-          <div className="px-4 pt-4">
-            <div className="flex min-h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-              <Search className="size-4 shrink-0" aria-hidden="true" />
-              <span className="truncate">Search patients from dashboard</span>
-            </div>
-          </div>
-        )}
 
         <NavLinks items={filteredNavItems} pathname={pathname} compact={collapsed} badges={badges} />
 
@@ -150,13 +140,13 @@ export function Sidebar() {
           <ThemeToggle collapsed={collapsed} />
           <button
             onClick={handleLogout}
-            title={collapsed ? 'Logout' : undefined}
+            title={collapsed ? 'Sign out' : undefined}
             className={`flex min-h-10 items-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50 ${
               collapsed ? 'justify-center' : 'w-full justify-center'
             }`}
           >
             <LogOut className="size-4 shrink-0" aria-hidden="true" />
-            {!collapsed && 'Logout'}
+            {!collapsed && 'Sign out'}
           </button>
         </div>
       </aside>
@@ -176,12 +166,10 @@ export function Sidebar() {
       >
         <div className="flex items-center justify-between border-b border-slate-200 p-5 dark:border-slate-800">
           <Link href={getHomePath(user)} onClick={closeMobile} className="flex items-center gap-3" title="Go to dashboard">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
-              <ShieldCheck className="size-5" aria-hidden="true" />
-            </div>
+            <BrandMark />
             <div className="min-w-0">
               <h1 className="text-lg font-semibold tracking-tight text-slate-950 dark:text-slate-50">Bulamu</h1>
-              <p className="text-xs font-medium uppercase text-emerald-700 dark:text-emerald-500">Medical Facility OS</p>
+              <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">{TAGLINE}</p>
             </div>
           </Link>
           <button
@@ -209,7 +197,7 @@ export function Sidebar() {
             className="flex min-h-10 w-full items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
           >
             <LogOut className="size-4 shrink-0" aria-hidden="true" />
-            Logout
+            Sign out
           </button>
         </div>
       </aside>

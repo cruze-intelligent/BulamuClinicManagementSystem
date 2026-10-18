@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import ClientLayout from "./client-layout";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { SidebarProvider } from "@/lib/sidebar-provider";
+
+// Bundled at build time and served from bulamu.site itself - no request to
+// Google when a page loads, and it keeps working offline once cached.
+const brandFont = Plus_Jakarta_Sans({ subsets: ["latin"], display: "swap", variable: "--font-brand" });
 
 // Runs before hydration so the correct theme class is present on first paint -
 // avoids a flash of the wrong theme when the stored preference is "dark".
@@ -18,9 +23,9 @@ const GA_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-3BR26W
 // needed for absolute OG/canonical URLs. Falls back to a placeholder so local
 // builds don't break before that domain exists.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://bulamu.site";
-const SITE_TITLE = "Bulamu Medical Facility OS";
+const SITE_TITLE = "Bulamu - clinic management for Uganda";
 const SITE_DESCRIPTION =
-  "Offline-first clinic management system for Ugandan medical facilities - clinics, Health Centre II/III/IV, hospitals, laboratories, imaging centres, pharmacies, mobile units, and community outreach teams. Patient records, appointments, prescriptions, billing, and HMIS 105 / FHIR reporting that keeps working without internet.";
+  "Clinic management for Ugandan health facilities - clinics, Health Centre II/III/IV, hospitals, laboratories, pharmacies and outreach teams. Patient records, appointments, prescriptions, lab results, stock, billing and HMIS 105 reporting, in one system that keeps working without internet.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -93,7 +98,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="antialiased">
+      <body className={`${brandFont.variable} antialiased`}>
         {process.env.NODE_ENV === "production" && (
           <>
             <Script

@@ -112,6 +112,23 @@ async function countBetween(table: string, column: string, from: Date, to: Date,
 const notDeleted = Prisma.sql`AND "deletedAt" IS NULL`;
 const staffOnly = Prisma.sql`u."role" <> 'SUPER_ADMIN'`;
 
+// Demo facilities exist to show Bulamu to prospective clients: their made-up
+// records and their visitors' sign-ins never count in the platform's figures
+// (their usage is reported on its own, in the Demos section).
+const DEMO_CLINICS = Prisma.sql`(SELECT "id" FROM "Clinic" WHERE "isDemo")`;
+const DEMO_PATIENTS = Prisma.sql`(SELECT "id" FROM "Patient" WHERE "clinicId" IN ${DEMO_CLINICS})`;
+const notDemo = {
+  clinic: Prisma.sql`AND NOT "isDemo"`,
+  byClinic: Prisma.sql`AND "clinicId" NOT IN ${DEMO_CLINICS}`,
+  byOptionalClinic: Prisma.sql`AND ("clinicId" IS NULL OR "clinicId" NOT IN ${DEMO_CLINICS})`,
+  byPatient: Prisma.sql`AND "patientId" NOT IN ${DEMO_PATIENTS}`,
+  byConsultation: Prisma.sql`AND "consultationId" NOT IN (SELECT "id" FROM "Consultation" WHERE "patientId" IN ${DEMO_PATIENTS})`,
+  byReferrer: Prisma.sql`AND "fromClinicId" NOT IN ${DEMO_CLINICS}`,
+};
+const notDeletedOrDemo = (filter: Prisma.Sql) => Prisma.sql`${notDeleted} ${filter}`;
+const demoClinicIds = async () => (await prisma.clinic.findMany({ where: { isDemo: true }, select: { id: true } })).map((c) => c.id);
+const realActivity = Prisma.sql`AND a."clinicId" NOT IN ${DEMO_CLINICS}`;
+
 /** Distinct staff active on each EAT day (platform operators excluded). */
 async function activeUsersByDay(range: Range): Promise<Point[]> {
   const rows = await prisma.$queryRaw<Array<{ day: string; n: number }>>(Prisma.sql`
@@ -120,7 +137,7 @@ async function activeUsersByDay(range: Range): Promise<Point[]> {
     LEFT JOIN (
       SELECT a."day" AS day, count(DISTINCT a."userId")::int AS n
       FROM "UserActivityDay" a JOIN "User" u ON u."id" = a."userId"
-      WHERE a."day" >= ${range.fromDay}::date AND a."day" <= ${range.toDay}::date AND ${staffOnly}
+      WHERE a."day" >= ${range.fromDay}::date AND a."day" <= ${range.toDay}::date AND ${staffOnly} ${realActivity}
       GROUP BY 1
     ) c ON c.day = d::date
     ORDER BY d
@@ -132,7 +149,7 @@ async function distinctActiveUsersSince(fromDay: string, toDay: string): Promise
   const rows = await prisma.$queryRaw<Array<{ n: number }>>(Prisma.sql`
     SELECT count(DISTINCT a."userId")::int AS n
     FROM "UserActivityDay" a JOIN "User" u ON u."id" = a."userId"
-    WHERE a."day" >= ${fromDay}::date AND a."day" <= ${toDay}::date AND ${staffOnly}
+    WHERE a."day" >= ${fromDay}::date AND a."day" <= ${toDay}::date AND ${staffOnly} ${realActivity}
   `);
   return rows[0]?.n ?? 0;
 }
@@ -146,6 +163,7 @@ async function loginsByDay(range: Range, outcomes: string[]): Promise<Point[]> {
       FROM "LoginEvent" e
       WHERE e."createdAt" >= ${range.fromTs} AND e."createdAt" < ${range.toTs}
         AND e."outcome"::text IN (${Prisma.join(outcomes)})
+        AND e."clinicId" NOT IN ${DEMO_CLINICS}
       GROUP BY 1
     ) c ON c.day = d::date
     ORDER BY d
@@ -184,12 +202,12 @@ export async function buildAnalytics(days: number, now: Date = new Date()) {
     prisma.user.groupBy({ by: ['role'], where: { role: { not: 'SUPER_ADMIN' }, isActive: true, clinic: { is: realFacility } }, _count: true }),
     prisma.user.count({ where: { role: { not: 'SUPER_ADMIN' }, clinic: { is: realFacility } } }),
     prisma.patient.count({ where: { deletedAt: null, clinic: { is: realFacility } } }),
-    countBetween('Patient', 'createdAt', range.fromTs, range.toTs, notDeleted),
-    countBetween('Patient', 'createdAt', range.prevFromTs, range.fromTs, notDeleted),
-    countBetween('Consultation', 'createdAt', range.fromTs, range.toTs, notDeleted),
-    countBetween('Consultation', 'createdAt', range.prevFromTs, range.fromTs, notDeleted),
-    countBetween('Clinic', 'createdAt', range.fromTs, range.toTs, notDeleted),
-    countBetween('Clinic', 'createdAt', range.prevFromTs, range.fromTs, notDeleted),
+    countBetween('Patient', 'createdAt', range.fromTs, range.toTs, notDeletedOrDemo(notDemo.byClinic)),
+    countBetween('Patient', 'createdAt', range.prevFromTs, range.fromTs, notDeletedOrDemo(notDemo.byClinic)),
+    countBetween('Consultation', 'createdAt', range.fromTs, range.toTs, notDeletedOrDemo(notDemo.byPatient)),
+    countBetween('Consultation', 'createdAt', range.prevFromTs, range.fromTs, notDeletedOrDemo(notDemo.byPatient)),
+    countBetween('Clinic', 'createdAt', range.fromTs, range.toTs, notDeletedOrDemo(notDemo.clinic)),
+    countBetween('Clinic', 'createdAt', range.prevFromTs, range.fromTs, notDeletedOrDemo(notDemo.clinic)),
     prisma.payment.aggregate({ where: { status: 'COMPLETED', amount: { gt: 0 }, updatedAt: { gte: range.fromTs, lt: range.toTs } }, _sum: { amount: true }, _count: true }),
     prisma.payment.aggregate({ where: { status: 'COMPLETED', amount: { gt: 0 }, updatedAt: { gte: range.prevFromTs, lt: range.fromTs } }, _sum: { amount: true } }),
     prisma.subscription.aggregate({ where: { status: 'ACTIVE', clinic: { is: realFacility } }, _sum: { amount: true } }),
@@ -197,16 +215,16 @@ export async function buildAnalytics(days: number, now: Date = new Date()) {
     distinctActiveUsersSince(wauFrom, range.toDay),
     distinctActiveUsersSince(mauFrom, range.toDay),
     activeUsersByDay(range),
-    dailyCounts('Patient', 'createdAt', range, notDeleted),
-    dailyCounts('Consultation', 'createdAt', range, notDeleted),
-    dailyCounts('Appointment', 'createdAt', range, notDeleted),
-    dailyCounts('Clinic', 'createdAt', range, notDeleted),
+    dailyCounts('Patient', 'createdAt', range, notDeletedOrDemo(notDemo.byClinic)),
+    dailyCounts('Consultation', 'createdAt', range, notDeletedOrDemo(notDemo.byPatient)),
+    dailyCounts('Appointment', 'createdAt', range, notDeletedOrDemo(notDemo.byClinic)),
+    dailyCounts('Clinic', 'createdAt', range, notDeletedOrDemo(notDemo.clinic)),
     loginsByDay(range, ['SUCCESS']),
     loginsByDay(range, ['WRONG_PASSWORD', 'BLOCKED']),
     prisma.$queryRaw<Array<{ role: string; n: number }>>(Prisma.sql`
       SELECT u."role"::text AS role, count(DISTINCT a."userId")::int AS n
       FROM "UserActivityDay" a JOIN "User" u ON u."id" = a."userId"
-      WHERE a."day" >= ${range.fromDay}::date AND a."day" <= ${range.toDay}::date AND ${staffOnly}
+      WHERE a."day" >= ${range.fromDay}::date AND a."day" <= ${range.toDay}::date AND ${staffOnly} ${realActivity}
       GROUP BY 1
     `),
     prisma.clinic.groupBy({ by: ['facilityType'], where: { ...realFacility, registrationStatus: 'APPROVED' }, _count: true }),
@@ -246,29 +264,29 @@ export async function buildAnalytics(days: number, now: Date = new Date()) {
     syncConflicts, auditEvents, notifications,
     loginBreakdown, neverSignedIn, deactivated,
   ] = await Promise.all([
-    countBetween('Prescription', 'createdAt', range.fromTs, range.toTs),
-    prisma.prescription.count({ where: { dispensedByUserId: { not: null }, dispensedAt: { gte: range.fromTs, lt: range.toTs } } }),
+    countBetween('Prescription', 'createdAt', range.fromTs, range.toTs, notDemo.byConsultation),
+    prisma.prescription.count({ where: { dispensedByUserId: { not: null }, dispensedAt: { gte: range.fromTs, lt: range.toTs }, consultation: { patient: { clinic: { isDemo: false } } } } }),
     prisma.patient.count({ where: { deletedAt: null, allergyStatus: { not: 'UNKNOWN' }, clinic: { is: realFacility } } }),
     prisma.$queryRaw<Array<{ coded: number; total: number }>>(Prisma.sql`
       SELECT
         (SELECT count(*)::int FROM "Diagnosis" d JOIN "Consultation" c ON c."id" = d."consultationId"
-          WHERE d."type" = 'PRIMARY' AND d."icd10Code" IS NOT NULL AND c."deletedAt" IS NULL
+          WHERE d."type" = 'PRIMARY' AND d."icd10Code" IS NOT NULL AND c."deletedAt" IS NULL AND c."patientId" NOT IN ${DEMO_PATIENTS}
             AND c."createdAt" >= ${range.fromTs} AND c."createdAt" < ${range.toTs}) AS coded,
-        (SELECT count(*)::int FROM "Consultation" c WHERE c."deletedAt" IS NULL
+        (SELECT count(*)::int FROM "Consultation" c WHERE c."deletedAt" IS NULL AND c."patientId" NOT IN ${DEMO_PATIENTS}
             AND c."createdAt" >= ${range.fromTs} AND c."createdAt" < ${range.toTs}) AS total
     `),
     prisma.patientAccount.count({ where: { status: { not: 'CLOSED' } } }),
     prisma.patientAccount.count({ where: { status: { not: 'CLOSED' }, mustResetPassword: false } }),
     countBetween('PatientAccount', 'createdAt', range.fromTs, range.toTs),
-    prisma.document.count({ where: { uploadedByUserId: { not: null }, createdAt: { gte: range.fromTs, lt: range.toTs } } }),
+    prisma.document.count({ where: { uploadedByUserId: { not: null }, createdAt: { gte: range.fromTs, lt: range.toTs }, clinic: { isDemo: false } } }),
     prisma.document.count({ where: { uploadedByPatientAccountId: { not: null }, createdAt: { gte: range.fromTs, lt: range.toTs } } }),
-    prisma.appointment.groupBy({ by: ['status'], where: { deletedAt: null, createdAt: { gte: range.fromTs, lt: range.toTs } }, _count: true }),
-    countBetween('LabTest', 'createdAt', range.fromTs, range.toTs, notDeleted),
-    countBetween('Referral', 'createdAt', range.fromTs, range.toTs),
-    countBetween('SyncConflictLog', 'createdAt', range.fromTs, range.toTs),
-    countBetween('AuditLog', 'createdAt', range.fromTs, range.toTs),
-    countBetween('Notification', 'createdAt', range.fromTs, range.toTs),
-    prisma.loginEvent.groupBy({ by: ['outcome'], where: { createdAt: { gte: range.fromTs, lt: range.toTs } }, _count: true }),
+    prisma.appointment.groupBy({ by: ['status'], where: { deletedAt: null, createdAt: { gte: range.fromTs, lt: range.toTs }, clinicId: { notIn: await demoClinicIds() } }, _count: true }),
+    countBetween('LabTest', 'createdAt', range.fromTs, range.toTs, notDeletedOrDemo(notDemo.byPatient)),
+    countBetween('Referral', 'createdAt', range.fromTs, range.toTs, notDemo.byReferrer),
+    countBetween('SyncConflictLog', 'createdAt', range.fromTs, range.toTs, notDemo.byClinic),
+    countBetween('AuditLog', 'createdAt', range.fromTs, range.toTs, notDemo.byClinic),
+    countBetween('Notification', 'createdAt', range.fromTs, range.toTs, notDemo.byOptionalClinic),
+    prisma.loginEvent.groupBy({ by: ['outcome'], where: { createdAt: { gte: range.fromTs, lt: range.toTs }, clinicId: { notIn: await demoClinicIds() } }, _count: true }),
     prisma.user.count({ where: { role: { not: 'SUPER_ADMIN' }, isActive: true, lastLoginAt: null, createdAt: { lt: new Date(now.getTime() - 7 * DAY_MS) }, clinic: { is: realFacility } } }),
     prisma.user.count({ where: { role: { not: 'SUPER_ADMIN' }, isActive: false, clinic: { is: { ...realFacility, registrationStatus: 'APPROVED' } } } }),
   ]);

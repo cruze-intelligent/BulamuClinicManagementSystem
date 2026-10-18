@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, LogOut, ShieldCheck, Users } from 'lucide-react';
+import { Bell, LogOut, Users } from 'lucide-react';
+import { BrandMark } from '@/components/brand';
 import { usePatientAuth, clearPatientSession } from '@/lib/usePatientAuth';
 import { useUnreadNotifications } from '@/lib/useUnreadNotifications';
 
@@ -46,9 +47,7 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
       <header className="border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-3xl items-center justify-between">
           <Link href={isPublicPage ? '/' : '/patient-portal/dashboard'} className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-md bg-emerald-700 text-white">
-              <ShieldCheck className="size-4" aria-hidden="true" />
-            </div>
+            <BrandMark className="size-8" />
             <div>
               <span className="block text-sm font-semibold leading-tight text-slate-950 dark:text-slate-50">Bulamu</span>
               <span className="block text-[11px] leading-tight text-slate-500 dark:text-slate-400">Patient Portal</span>

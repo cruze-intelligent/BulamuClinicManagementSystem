@@ -8,6 +8,7 @@ import { buildPrescriptionPdf, consultationChildren, linkStockItems } from '../l
 import { parseFee } from '../lib/invoices';
 import { documentProducer } from '../lib/document-signer';
 import { recordAudit } from '../lib/audit';
+import { sendRouteError } from '../lib/http-error';
 
 const MAX_SYMPTOMS = 2000;
 const MAX_CLINICAL_NOTES = 4000;
@@ -40,7 +41,7 @@ export async function consultationRoutes(fastify: FastifyInstance) {
     try {
       fee = parseFee(feeInput ?? amount);
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
 
     try {
@@ -91,7 +92,7 @@ export async function consultationRoutes(fastify: FastifyInstance) {
 
       return { success: true, consultation };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -119,7 +120,7 @@ export async function consultationRoutes(fastify: FastifyInstance) {
 
       return { success: true, consultations };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -145,7 +146,7 @@ export async function consultationRoutes(fastify: FastifyInstance) {
       reply.header('Content-Disposition', `inline; filename="prescription-${id}.pdf"`);
       return reply.send(built.pdf);
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }

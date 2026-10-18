@@ -4,6 +4,7 @@ import { authenticate, assertClinicMatch, getAuthUser, resolveClinicScope } from
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { notifyLabOrdered, notifyLabResultReady, notifyLabResultToOrderer } from '../lib/notifications';
+import { sendRouteError } from '../lib/http-error';
 
 export async function labRoutes(fastify: FastifyInstance) {
 
@@ -25,7 +26,7 @@ export async function labRoutes(fastify: FastifyInstance) {
 
       return { success: true, tests };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -52,7 +53,7 @@ export async function labRoutes(fastify: FastifyInstance) {
 
       return { success: true, test };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -70,7 +71,7 @@ export async function labRoutes(fastify: FastifyInstance) {
       });
       return { success: true, tests };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -121,7 +122,7 @@ export async function labRoutes(fastify: FastifyInstance) {
       }
       return { success: true, test };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -142,7 +143,7 @@ export async function labRoutes(fastify: FastifyInstance) {
       await notifyLabResultReady({ patient: existing.patient, testName: test.testName }, (message) => fastify.log.warn(message));
       return { success: true, test };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -176,7 +177,7 @@ export async function labRoutes(fastify: FastifyInstance) {
       });
       return { success: true, test };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 }

@@ -25,11 +25,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/useAuth';
 import { FACILITY_TYPES, facilityTypeLabel } from '@/lib/facility-types';
 import { Select } from '@/components/ui/select';
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
+import { isOnTrial, TrialExtensionsCard } from '@/components/trial-extensions-card';
 
 
 type Facility = {
@@ -44,7 +46,7 @@ type Facility = {
   users: number;
   patients: number;
   admin: { name: string; email: string; isActive: boolean } | null;
-  subscription: { status: string; plan: 'STANDARD' | 'CUSTOM'; amount: number; trialEndsAt: string; currentPeriodEnd: string | null } | null;
+  subscription: { status: string; plan: 'STANDARD' | 'CUSTOM'; amount: number; trialEndsAt: string; currentPeriodEnd: string | null; trialExtendedDays?: number; lastPaymentAt?: string | null } | null;
 };
 
 type PendingFacility = {
@@ -69,7 +71,6 @@ type Overview = {
   appointmentCount: number;
   consultationCount: number;
   revenue: number;
-  evaluationEndsAt: string;
   clinics: Facility[];
 };
 
@@ -320,17 +321,16 @@ export default function SuperAdminPage() {
         <div>
           <div className="flex items-center gap-2 text-sm font-semibold uppercase text-emerald-700">
             <Crown className="size-4" aria-hidden="true" />
-            Facility Administration
+            Platform administration
           </div>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">Facility authorization console</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-50">Facilities</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
-            Authorize medical facilities, monitor national readiness, suspend access when needed, and verify the
-            two-week evaluation environment across facility types.
+            Approve new registrations, look after the facilities already using Bulamu, and manage their trials and plans.
           </p>
         </div>
         <Button onClick={() => setShowForm((value) => !value)}>
           <Plus className="size-4" aria-hidden="true" />
-          {showForm ? 'Close form' : 'Authorize facility'}
+          {showForm ? 'Close form' : 'Add a facility'}
         </Button>
       </header>
 
@@ -391,16 +391,16 @@ export default function SuperAdminPage() {
         </Card>
       )}
 
-      <section className="grid gap-4 lg:grid-cols-[1.5fr_1fr]">
-        <Card className="rounded-lg p-5">
+      <section className="grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <Card className="min-w-0 rounded-lg p-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Authorized facilities</h2>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Approved facilities</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400">Includes clinics, hospitals, labs, imaging centres, pharmacies, outreach, and mobile units.</p>
             </div>
             {loading && <span className="text-sm text-slate-500 dark:text-slate-400">Loading...</span>}
           </div>
-          <div className="mt-4 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+          <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 dark:bg-slate-800 text-xs uppercase text-slate-500 dark:text-slate-400">
                 <tr>
@@ -434,7 +434,7 @@ export default function SuperAdminPage() {
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-slate-800 dark:text-slate-200">{facility.admin?.name || 'Not assigned'}</p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">{facility.admin?.email || 'Create admin to activate'}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{facility.admin?.email || 'No administrator yet'}</p>
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
                       {facility.patients} patients / {facility.users} users
@@ -445,6 +445,11 @@ export default function SuperAdminPage() {
                       }`}>
                         {facility.isActive ? 'Active' : 'Suspended'}
                       </span>
+                      {isOnTrial(facility) && facility.subscription && (
+                        <p className="mt-1 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+                          Trial until {new Date(facility.subscription.trialEndsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex flex-wrap gap-2">
@@ -478,28 +483,10 @@ export default function SuperAdminPage() {
           </div>
         </Card>
 
-        <Card className="rounded-lg p-5">
-          <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Research alignment</h2>
-          <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-400">
-            {[
-              'HMIS 105 outpatient reporting',
-              'FHIR R4 patient bundle export',
-              'Offline-first local queue and sync',
-              'Tier 2 edge clinic deployment path',
-              'Role-based access for facility teams',
-              'Centralized governance and authorization',
-            ].map((item) => (
-              <div key={item} className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-emerald-700" aria-hidden="true" />
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            Two-week evaluation ends:{' '}
-            <strong>{overview?.evaluationEndsAt ? new Date(overview.evaluationEndsAt).toLocaleDateString() : 'after authorization'}</strong>
-          </div>
-        </Card>
+        <TrialExtensionsCard
+          facilities={overview?.clinics || []}
+          onExtended={(message) => { setDecisionNotice(message); void fetchOverview(); }}
+        />
       </section>
 
       <Card className="rounded-lg p-5">
@@ -529,7 +516,7 @@ export default function SuperAdminPage() {
 
       {showForm && (
         <Card className="rounded-lg p-5">
-          <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Authorize a medical facility</h2>
+          <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Add a facility</h2>
           <form onSubmit={createFacility} className="mt-4 grid gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="name">Facility name</Label>
@@ -565,10 +552,10 @@ export default function SuperAdminPage() {
             </div>
             <div className="md:col-span-2">
               <Label htmlFor="adminPassword">Temporary admin password</Label>
-              <Input id="adminPassword" type="password" value={formData.adminPassword} onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })} required />
+              <PasswordInput id="adminPassword" value={formData.adminPassword} onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })} required />
             </div>
             <div className="md:col-span-2">
-              <Button type="submit" className="w-full">Authorize facility and create admin</Button>
+              <Button type="submit" className="w-full">Add the facility and its administrator</Button>
             </div>
           </form>
         </Card>

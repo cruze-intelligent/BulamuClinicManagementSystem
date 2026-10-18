@@ -7,10 +7,11 @@ import { generateReferralLetterPdf } from '../lib/pdf';
 import { addressText, allergyText, nextOfKinText, sexAgeText } from '../lib/patient-text';
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer, roleTitle } from '../lib/document-signer';
+import { sendRouteError } from '../lib/http-error';
 
 function fail(reply: FastifyReply, error: any) {
   if (error instanceof ReferralError) return reply.status(error.status).send({ error: error.message });
-  return reply.status(400).send({ error: error.message });
+  return sendRouteError(reply, error, 400);
 }
 
 export async function referralRoutes(fastify: FastifyInstance) {
@@ -78,7 +79,7 @@ export async function referralRoutes(fastify: FastifyInstance) {
         })),
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -125,7 +126,7 @@ export async function referralRoutes(fastify: FastifyInstance) {
         .header('Content-Disposition', `inline; filename="referral-${referral.id.slice(0, 8)}.pdf"`)
         .send(pdf);
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }

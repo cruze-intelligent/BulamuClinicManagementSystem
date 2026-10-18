@@ -5,6 +5,7 @@ import { CheckCircle2, ChevronRight, KeyRound, Pencil, Search, Trash2, UserCheck
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { roleLabel } from '@/lib/role-labels';
 import { Select } from '@/components/ui/select';
@@ -167,7 +168,7 @@ export default function UsersPage() {
               </div>
               <div>
                 <Label htmlFor="password">Starting password</Label>
-                <Input id="password" type="password" autoComplete="new-password" minLength={8} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required />
+                <PasswordInput id="password" autoComplete="new-password" minLength={8} value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required />
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">At least 8 characters. They can change it with &quot;Forgot your password?&quot;.</p>
               </div>
               {formError && <p role="alert" className="text-sm text-red-600 sm:col-span-2">{formError}</p>}
@@ -336,7 +337,7 @@ function StaffCard({
           }}
         >
           <Label htmlFor={`password-${user.id}`}>New password for {user.name}</Label>
-          <Input id={`password-${user.id}`} type="password" autoComplete="new-password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 max-w-sm" />
+          <PasswordInput id={`password-${user.id}`} autoComplete="new-password" minLength={8} required value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 max-w-sm" />
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">At least 8 characters. They are signed out on every device and sign in again with this password.</p>
           {error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}
           <div className="mt-3 flex gap-2">

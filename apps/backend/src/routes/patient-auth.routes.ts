@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { hashToken } from '../lib/crypto';
 import { normalizePhoneKey } from '../lib/patient-account';
 import { sendPasswordLink } from '../lib/portal-invite';
+import { sendRouteError } from '../lib/http-error';
 
 const MIN_PASSWORD_LENGTH = 10;
 
@@ -62,7 +63,7 @@ export async function patientAuthRoutes(fastify: FastifyInstance) {
         patient: { portableId: account.portableId, email: account.email, phone: account.phone },
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -109,7 +110,7 @@ export async function patientAuthRoutes(fastify: FastifyInstance) {
 
       return { success: true };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 

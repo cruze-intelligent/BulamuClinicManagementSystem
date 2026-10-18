@@ -64,7 +64,7 @@ export default function BookAppointment() {
     <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-2 text-slate-800 dark:text-slate-200">Book Appointment</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Works offline with background sync</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Works without internet - saved on this device and sent when you're back online</p>
 
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">

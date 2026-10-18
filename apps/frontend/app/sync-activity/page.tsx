@@ -74,7 +74,7 @@ export default function SyncActivityPage() {
       })
       .catch(() => setLoadError(navigator.onLine
         ? 'Could not load the activity log - please try again.'
-        : 'You are offline. The activity log loads from the server when the connection returns; work saved on this device is still shown in the sync badge.'))
+        : 'You are offline. The activity log loads when the connection returns; work saved on this device is still counted in the badge at the bottom of the screen.'))
       .finally(() => setLoading(false));
   };
 
@@ -119,7 +119,7 @@ export default function SyncActivityPage() {
   const description = isSuperAdmin
     ? 'Who touched sensitive records across every facility on Bulamu.'
     : isAdmin
-    ? 'Offline sync conflicts and who touched sensitive records at your facility.'
+    ? 'Changes that clashed while working offline, and who opened sensitive records at your facility.'
     : 'A record of the actions you have taken in Bulamu.';
 
   return (
@@ -161,7 +161,7 @@ export default function SyncActivityPage() {
           <>
             {isAdmin && !actorFilter && (
               <>
-                <h2 className="text-xl font-semibold mb-3">Sync Conflicts</h2>
+                <h2 className="text-xl font-semibold mb-3">Changes that clashed</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">
                   An older offline edit arrived after a newer one had already synced - the older edit was not applied.
                 </p>

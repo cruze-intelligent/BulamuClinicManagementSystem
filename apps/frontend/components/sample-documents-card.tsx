@@ -1,54 +1,68 @@
 'use client';
 
 import { useState } from 'react';
-import { CheckCircle2, FileText, XCircle } from 'lucide-react';
+import { CheckCircle2, FileText, Mail, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
 /**
- * Emails one of every document Bulamu produces - made-up details, stamped
- * SAMPLE on every page - to the operator inbox, for checking branding and
- * layout without opening anyone's records.
+ * Emails samples to the operator inbox for checking without opening anyone's
+ * records: one of every document Bulamu produces (made-up details, stamped
+ * SAMPLE on every page), or one of every email it sends.
  */
 export function SampleDocumentsCard({ inbox }: { inbox: string }) {
-  const [sending, setSending] = useState(false);
+  const [sending, setSending] = useState<'documents' | 'emails' | null>(null);
   const [outcome, setOutcome] = useState<{ sent: boolean; message: string } | null>(null);
 
-  const send = async () => {
-    setSending(true);
+  const send = async (kind: 'documents' | 'emails') => {
+    setSending(kind);
     setOutcome(null);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/super-admin/system/sample-documents`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/super-admin/system/sample-${kind}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Request failed');
-      setOutcome(
-        data.result?.sent
-          ? { sent: true, message: `${data.documents.length} sample documents sent to ${inbox}.` }
-          : { sent: false, message: `Not sent: ${data.result?.reason || 'unknown reason'}` }
-      );
+      if (kind === 'documents') {
+        setOutcome(
+          data.result?.sent
+            ? { sent: true, message: `${data.documents.length} sample documents sent to ${inbox}.` }
+            : { sent: false, message: `Not sent: ${data.result?.reason || 'unknown reason'}` }
+        );
+      } else {
+        setOutcome(
+          data.sent === data.total
+            ? { sent: true, message: `${data.total} sample emails sent to ${inbox}, one per message.` }
+            : { sent: false, message: `${data.sent} of ${data.total} sample emails sent${data.reason ? ` - ${data.reason}` : ''}.` }
+        );
+      }
     } catch (e: any) {
       setOutcome({ sent: false, message: e.message || 'Request failed' });
     } finally {
-      setSending(false);
+      setSending(null);
     }
   };
 
   return (
     <Card className="p-4 gap-3" data-testid="sample-documents">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-medium">Sample documents</h3>
+        <div className="max-w-2xl">
+          <h3 className="text-sm font-medium">Samples for checking</h3>
           <p className="text-xs text-muted-foreground">
-            Emails one of every document Bulamu produces - invoices, prescription, referral letter, discharge summary and both
-            receipts - to <strong className="text-foreground">{inbox}</strong>. They use made-up details and are stamped SAMPLE on every page.
+            Sends to <strong className="text-foreground">{inbox}</strong>, with made-up details: one of every document Bulamu
+            produces (invoices, prescription, referral letter, discharge summary and both receipts, stamped SAMPLE on every page),
+            or one of every email it sends (with &quot;[Sample]&quot; in the subject).
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={send} disabled={sending}>
-          <FileText className="h-4 w-4 mr-1" aria-hidden />{sending ? 'Sending...' : 'Send sample documents'}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => send('documents')} disabled={!!sending}>
+            <FileText className="h-4 w-4 mr-1" aria-hidden />{sending === 'documents' ? 'Sending...' : 'Send sample documents'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => send('emails')} disabled={!!sending}>
+            <Mail className="h-4 w-4 mr-1" aria-hidden />{sending === 'emails' ? 'Sending...' : 'Send sample emails'}
+          </Button>
+        </div>
       </div>
       {outcome && (
         <p role="status" className={`flex items-start gap-1.5 text-sm ${outcome.sent ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>

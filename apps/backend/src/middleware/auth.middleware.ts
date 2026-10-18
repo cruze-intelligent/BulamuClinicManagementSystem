@@ -3,6 +3,7 @@ import { getSubscriptionGate, SUBSCRIPTION_REQUIRED_MESSAGE } from '../lib/subsc
 import { prisma } from '../lib/prisma';
 import { passwordStamp } from '../lib/session';
 import { trackUserActivity } from '../lib/usage-tracking';
+import { demoHasEnded } from '../lib/demo-facility';
 
 /**
  * Verifies the JWT and re-checks the account/facility is still active.
@@ -37,9 +38,9 @@ export async function verifyStaffSession(request: FastifyRequest, reply: Fastify
   const authUser = request.user as AuthUser;
   const user = await prisma.user.findUnique({
     where: { id: authUser.userId },
-    select: { isActive: true, password: true, role: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true } } },
+    select: { isActive: true, password: true, role: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true, isDemo: true, demoExpiresAt: true } } },
   });
-  if (!user || !user.isActive || !user.clinic || user.clinic.deletedAt) {
+  if (!user || !user.isActive || !user.clinic || user.clinic.deletedAt || demoHasEnded(user.clinic)) {
     reply.status(401).send({ error: 'Account no longer active', reason: 'SESSION_ENDED' });
     return false;
   }

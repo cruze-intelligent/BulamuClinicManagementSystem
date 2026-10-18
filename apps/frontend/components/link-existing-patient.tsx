@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 
@@ -152,7 +153,7 @@ export function LinkExistingPatient() {
               {method === 'PIN' ? (
                 <div>
                   <Label htmlFor="link-password" className="text-xs">Patient enters their portal password</Label>
-                  <Input id="link-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <PasswordInput id="link-password" value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
               ) : !otpSent ? (
                 <Button size="sm" variant="outline" disabled={sendingOtp} onClick={handleSendOtp}>

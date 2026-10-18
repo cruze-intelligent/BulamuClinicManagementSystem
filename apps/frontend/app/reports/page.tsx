@@ -35,7 +35,7 @@ export default function ReportsPage() {
         alert(`DHIS2 push failed: ${data.error || 'Unknown error'}`);
       }
     } catch (err) {
-      alert('Could not reach the Bulamu API to push to DHIS2');
+      alert("We couldn't reach Bulamu to send the report to DHIS2. Please check your connection and try again.");
     } finally {
       setPushingDhis2(false);
     }
@@ -97,7 +97,7 @@ export default function ReportsPage() {
       a.download = `fhir-patients-bundle.json`;
       a.click();
     } catch (err) {
-      alert('Error downloading FHIR Bundle');
+      alert('The FHIR export could not be downloaded. Please try again.');
     }
   };
 
@@ -183,7 +183,7 @@ export default function ReportsPage() {
                 <p className="text-3xl font-bold text-slate-800 dark:text-slate-200 mt-2">{report.totalAppointments}</p>
               </Card>
               <Card className="p-6">
-                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">Clinical Encounters</h3>
+                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">Consultations</h3>
                 <p className="text-3xl font-bold text-slate-800 dark:text-slate-200 mt-2">{report.totalConsultations}</p>
               </Card>
               <Card className="p-6">

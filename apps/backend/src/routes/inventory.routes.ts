@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch } from '../middleware/auth.middleware';
 import { notifyIfLowStock } from '../lib/notifications';
+import { sendRouteError } from '../lib/http-error';
 
 export async function inventoryRoutes(fastify: FastifyInstance) {
 
@@ -19,7 +20,7 @@ export async function inventoryRoutes(fastify: FastifyInstance) {
 
       return { success: true, medicines };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -38,7 +39,7 @@ export async function inventoryRoutes(fastify: FastifyInstance) {
 
       return { success: true, medicine };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -63,7 +64,7 @@ export async function inventoryRoutes(fastify: FastifyInstance) {
 
       return { success: true, medicine };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -81,7 +82,7 @@ export async function inventoryRoutes(fastify: FastifyInstance) {
       const medicine = await prisma.medicine.update({ where: { id }, data: { deletedAt: new Date() } });
       return { success: true, medicine };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 }

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Menu, ShieldCheck } from 'lucide-react';
+import { Menu } from 'lucide-react';
+import { BrandMark } from '@/components/brand';
 import { Sidebar } from '@/components/sidebar';
 import { PwaRuntime } from '@/components/pwa-runtime';
 import { OnboardingTour } from '@/components/onboarding-tour';
@@ -90,9 +91,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
             <Menu className="size-5" aria-hidden="true" />
           </button>
           <Link href={getHomePath(user)} className="flex items-center gap-2">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
-              <ShieldCheck className="size-4" aria-hidden="true" />
-            </div>
+            <BrandMark className="size-7" />
             <span className="font-semibold text-slate-950 dark:text-slate-50">Bulamu</span>
           </Link>
         </header>

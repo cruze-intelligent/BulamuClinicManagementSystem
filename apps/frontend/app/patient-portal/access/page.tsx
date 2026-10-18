@@ -36,7 +36,7 @@ export default function PatientPortalAccessPage() {
       if (body.success) setData(body);
       else setError(body.error || 'Unable to load access');
     } catch {
-      setError('Unable to reach the Bulamu API');
+      setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
       setLoading(false);
     }

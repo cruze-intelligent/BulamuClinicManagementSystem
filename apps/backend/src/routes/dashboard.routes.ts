@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope } from '../middleware/auth.middleware';
+import { sendRouteError } from '../lib/http-error';
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
 
@@ -43,7 +44,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         todayAppointments: appointments
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -68,7 +69,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
 
       return { success: true, patients };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }

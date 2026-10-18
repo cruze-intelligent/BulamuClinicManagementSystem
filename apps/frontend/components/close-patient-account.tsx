@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { clearPatientSession } from '@/lib/usePatientAuth';
 
@@ -45,7 +45,7 @@ export function ClosePatientAccount() {
         window.location.href = '/patient-portal/login';
       }, 4000);
     } catch {
-      setError('Unable to reach the Bulamu API. Please try again.');
+      setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
       setClosing(false);
     }
@@ -109,7 +109,7 @@ export function ClosePatientAccount() {
 
           <div>
             <Label htmlFor="close-password">Confirm with your password</Label>
-            <Input id="close-password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+            <PasswordInput id="close-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
           <label className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
             <input type="checkbox" className="mt-0.5" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />

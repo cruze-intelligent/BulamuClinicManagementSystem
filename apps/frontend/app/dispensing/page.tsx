@@ -71,7 +71,7 @@ export default function DispensingPage() {
       if (!data.success) throw new Error(data.error || 'Could not load prescriptions');
       setItems(data.items);
     } catch (e: any) {
-      setLoadError(e?.message === 'Failed to fetch' ? 'Unable to reach the Bulamu API. Dispensing needs a connection - check your network and refresh.' : e?.message || 'Could not load prescriptions');
+      setLoadError(e?.message === 'Failed to fetch' ? "We couldn't reach Bulamu. Dispensing needs a connection - check your network and refresh." : e?.message || 'Could not load prescriptions');
     } finally {
       setLoading(false);
     }

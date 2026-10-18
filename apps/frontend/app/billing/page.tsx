@@ -67,7 +67,7 @@ export default function BillingPage() {
       const paymentsData = await paymentsRes.json();
       if (paymentsData.success) setPayments(paymentsData.payments);
     } catch {
-      setError('Could not reach the Bulamu API');
+      setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -118,7 +118,7 @@ export default function BillingPage() {
         setSubscribing(false);
       }
     } catch {
-      setError('Could not reach the Bulamu API');
+      setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
       setSubscribing(false);
     }
   };

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 
 export default function PatientSetPasswordPage() {
@@ -56,7 +57,7 @@ function SetPasswordForm() {
       alert('Password set. Please sign in.');
       router.push('/patient-portal/login');
     } catch {
-      setError('Unable to reach the Bulamu API');
+      setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -87,11 +88,11 @@ function SetPasswordForm() {
         </div>
         <div>
           <Label htmlFor="password">New password</Label>
-          <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+          <PasswordInput id="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         <div>
           <Label htmlFor="confirmPassword">Confirm password</Label>
-          <Input id="confirmPassword" type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          <PasswordInput id="confirmPassword" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
         </div>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <Button type="submit" className="w-full" disabled={loading}>

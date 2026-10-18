@@ -42,7 +42,7 @@ function drawLetterhead(doc: PDFKit.PDFDocument, issuer: string, issuerLine?: st
     .fillColor('#d1fae5')
     .font('Helvetica')
     .fontSize(9)
-    .text('MEDICAL FACILITY OS', 50, 44, { characterSpacing: 1 });
+    .text('PATIENT CARE, ORGANISED.', 50, 44, { characterSpacing: 1 });
 
   // The issuer's text ends where the logo panel (if any) begins.
   let textRight = doc.page.width - 50;

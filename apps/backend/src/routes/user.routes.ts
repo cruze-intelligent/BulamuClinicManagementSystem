@@ -5,6 +5,7 @@ import bcrypt from 'bcrypt';
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { isValidEmail } from '../lib/portal-invite';
+import { sendRouteError } from '../lib/http-error';
 
 // ADMIN accounts may never mint a SUPER_ADMIN - only SUPER_ADMIN can (and doesn't use this route today).
 const ADMIN_ASSIGNABLE_ROLES = ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH'];
@@ -38,7 +39,7 @@ export async function userRoutes(fastify: FastifyInstance) {
 
       return { success: true, users };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -97,7 +98,7 @@ export async function userRoutes(fastify: FastifyInstance) {
       if (isUniqueConstraintError(error)) {
         return reply.status(409).send({ error: 'An account with this email already exists' });
       }
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -152,7 +153,7 @@ export async function userRoutes(fastify: FastifyInstance) {
       return { success: true, user };
     } catch (error: any) {
       if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'An account with this email already exists' });
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -177,7 +178,7 @@ export async function userRoutes(fastify: FastifyInstance) {
       });
       return { success: true, user };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -196,7 +197,7 @@ export async function userRoutes(fastify: FastifyInstance) {
       });
       return { success: true, user };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -223,7 +224,7 @@ export async function userRoutes(fastify: FastifyInstance) {
       });
       return { success: true };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -261,7 +262,7 @@ export async function userRoutes(fastify: FastifyInstance) {
       });
       return { success: true };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 }

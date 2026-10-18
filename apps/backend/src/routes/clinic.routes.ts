@@ -9,6 +9,7 @@ import { generateReceiptPdf } from '../lib/pdf';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage, facilityTypeLabel, REAL_FACILITY } from '../lib/facility';
 import { buildCsv, sendCsv } from '../lib/csv';
 import bcrypt from 'bcrypt';
+import { sendRouteError } from '../lib/http-error';
 
 const TRIAL_LENGTH_MS = 14 * 24 * 60 * 60 * 1000; // 2-week free trial
 const DEFAULT_SUBSCRIPTION_AMOUNT = 100000; // UGX/month
@@ -46,7 +47,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
         })),
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -134,7 +135,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
       return { success: true, clinic };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -183,7 +184,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
       return { success: true, clinic };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -199,7 +200,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
       return { success: true, clinics };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -250,7 +251,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       if (!facility) return reply.status(404).send({ error: 'Facility not found' });
       return { success: true, facility };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -295,7 +296,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       );
       return sendCsv(reply, `bulamu-facility-${facility.facilityCode}.csv`, csv);
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -335,7 +336,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
                 take: 1
               },
               subscription: {
-                select: { status: true, plan: true, amount: true, trialEndsAt: true, currentPeriodEnd: true }
+                select: { status: true, plan: true, amount: true, trialEndsAt: true, currentPeriodEnd: true, trialExtendedDays: true, lastPaymentAt: true }
               }
             }
           })
@@ -351,7 +352,6 @@ export async function clinicRoutes(fastify: FastifyInstance) {
           appointmentCount,
           consultationCount,
           revenue: revenue._sum.amount || 0,
-          evaluationEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
           clinics: clinics.map((clinic) => ({
             id: clinic.id,
             facilityCode: clinic.facilityCode,
@@ -369,7 +369,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
         }
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
   
@@ -461,7 +461,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
       if (isUniqueConstraintError(error)) {
         return reply.status(409).send({ error: 'An account with this email already exists' });
       }
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -519,7 +519,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
       return { success: true, clinic };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -584,7 +584,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
       return { success: true };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 }

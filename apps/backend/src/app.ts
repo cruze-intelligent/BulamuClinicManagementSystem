@@ -1,4 +1,5 @@
 import Fastify, { FastifyInstance } from 'fastify';
+import { STATUS_CODES } from 'http';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
@@ -34,6 +35,7 @@ import { patientPortalRoutes } from './routes/patient-portal.routes';
 import { patientAccessRoutes } from './routes/patient-access.routes';
 import { notificationRoutes } from './routes/notification.routes';
 import { patientAccountClosureRoutes } from './routes/patient-account-closure.routes';
+import { SERVER_ERROR_MESSAGE } from './lib/http-error';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -50,6 +52,20 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   const server = Fastify({
     logger: process.env.NODE_ENV === 'test' ? false : true,
+  });
+
+  // An error no route caught: one on our side (5xx) is logged and answered in
+  // plain words - its technical detail never reaches the screen. Anything else
+  // (a malformed request, say) keeps Fastify's usual answer.
+  server.setErrorHandler((error, request, reply) => {
+    const status = error.statusCode && error.statusCode >= 400 ? error.statusCode : 500;
+    if (status >= 500) {
+      request.log.error({ err: error }, 'Unhandled error');
+      return reply.status(status).send({ error: SERVER_ERROR_MESSAGE });
+    }
+    // Screens show `error`; for too many attempts, make it say what to do.
+    const label = status === 429 ? 'Too many attempts. Please wait a minute and try again.' : STATUS_CODES[status] ?? 'Error';
+    return reply.status(status).send({ statusCode: status, code: error.code, error: label, message: error.message });
   });
 
   // Response-time and error counts for the operator's system panel. Routes are

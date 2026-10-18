@@ -61,7 +61,7 @@ export function NotificationCenter({ basePath, tokenKey }: { basePath: string; t
       }
       if (prefs.success) setPreferences(prefs.preferences);
     } catch {
-      setError('Unable to reach the Bulamu API');
+      setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
       setLoading(false);
     }

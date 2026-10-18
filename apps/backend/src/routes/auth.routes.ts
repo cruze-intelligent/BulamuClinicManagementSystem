@@ -8,7 +8,9 @@ import { facilityTypeLabel } from '../lib/facility';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import { isUniqueConstraintError } from '../lib/prisma';
 import { recordLoginEvent } from '../lib/usage-tracking';
+import { demoHasEnded } from '../lib/demo-facility';
 import { passwordStamp, REMEMBERED_SESSION, STANDARD_SESSION } from '../lib/session';
+import { sendRouteError } from '../lib/http-error';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 const MIN_PASSWORD_LENGTH = 10;
@@ -107,13 +109,15 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (isUniqueConstraintError(error)) {
         return reply.status(409).send({ error: 'An account with this email already exists' });
       }
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
   // Login
   fastify.post('/auth/login', async (request, reply) => {
-    const { email, password, remember } = request.body as any;
+    const { email: rawEmail, password, remember } = request.body as any;
+    // A space copied along with an address (from an email, say) is not part of it.
+    const email = typeof rawEmail === 'string' ? rawEmail.trim() : rawEmail;
 
     try {
       // Find user
@@ -135,6 +139,13 @@ export async function authRoutes(fastify: FastifyInstance) {
       if (!validPassword) {
         recordLoginEvent(who, 'WRONG_PASSWORD');
         return reply.status(401).send({ error: 'Invalid credentials' });
+      }
+
+      // A demo is open for a set time; after that its sign-ins stop, with a
+      // message that says so rather than a vague "deactivated".
+      if (demoHasEnded(user.clinic)) {
+        recordLoginEvent(who, 'BLOCKED');
+        return reply.status(403).send({ error: 'This demo has ended', reason: 'DEMO_ENDED' });
       }
 
       if (
@@ -182,7 +193,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         };
         
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -230,7 +241,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       return { success: true };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -257,7 +268,7 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       return { success: true };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }

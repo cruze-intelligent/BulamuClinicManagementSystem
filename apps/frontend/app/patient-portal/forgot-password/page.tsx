@@ -31,7 +31,7 @@ export default function PatientForgotPasswordPage() {
       }
       setSent(true);
     } catch {
-      setError('Unable to reach the Bulamu API. Please check your connection and try again.');
+      setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
       setLoading(false);
     }

@@ -64,7 +64,7 @@ describe('every document Bulamu produces is branded the same way', () => {
       const pages = pdfPages(pdf);
       const text = pages.join('\n');
       expect(text).toContain('Bulamu');
-      expect(text).toContain('MEDICAL FACILITY OS');
+      expect(text).toContain('PATIENT CARE, ORGANISED.');
       pages.forEach((page, i) => {
         expect(page).toContain('Bulamu is a product of Cruze Intelligent Systems (U) Ltd. bulamu.site');
         expect(page).toContain('Produced 14 October 2026');

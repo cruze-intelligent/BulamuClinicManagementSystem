@@ -4,54 +4,73 @@ import { prisma } from './prisma';
 import { generateFacilityCode, normalizePhoneKey } from './facility';
 import { roleTitle } from './document-signer';
 
-// A demonstration facility for showing Bulamu to prospective clients: every
-// role has an account and enough made-up work to click through. It is marked
-// isDemo, so it never counts in the platform's figures, and its staff are never
-// emailed (their addresses are placeholders). Every name here is invented.
+// Demonstration facilities for showing Bulamu to prospective clients. Every
+// demo is private to the one person it was sent to: its own facility, made-up
+// records to click through, and its own sign-ins for every role. It closes
+// after DEMO_DAYS. It is marked isDemo, so it never counts in the platform's
+// figures and its staff are never emailed (their addresses are placeholders).
+// The recipient's own email address is not stored anywhere: what Bulamu keeps
+// about a demo is only how it was used (see demoUsage). Every name is invented.
 
 export const DEMO_FACILITY_NAME = 'Bulamu Test Facility';
+export const DEMO_DAYS = 14;
+export const DEMO_EMAIL_DOMAIN = 'demo.bulamu.site';
 
 const DAY = 24 * 60 * 60 * 1000;
 
 const STAFF = [
-  { key: 'admin', role: 'ADMIN', name: 'Grace Nankya', email: 'demo.admin@bulamu.site' },
-  { key: 'doctor', role: 'DOCTOR', name: 'Dr Samuel Okello', email: 'demo.doctor@bulamu.site' },
-  { key: 'nurse', role: 'NURSE', name: 'Sr Prossy Namubiru', email: 'demo.nurse@bulamu.site' },
-  { key: 'pharmacist', role: 'PHARMACIST', name: 'Brian Mugisha', email: 'demo.pharmacist@bulamu.site' },
-  { key: 'frontdesk', role: 'STAFF', name: 'Esther Atim', email: 'demo.frontdesk@bulamu.site' },
-  { key: 'labtech', role: 'LAB_TECH', name: 'Ivan Kato', email: 'demo.lab@bulamu.site' },
+  { key: 'admin', role: 'ADMIN', name: 'Grace Nankya' },
+  { key: 'frontdesk', role: 'STAFF', name: 'Esther Atim' },
+  { key: 'doctor', role: 'DOCTOR', name: 'Dr Samuel Okello' },
+  { key: 'labtech', role: 'LAB_TECH', name: 'Ivan Kato' },
+  { key: 'pharmacist', role: 'PHARMACIST', name: 'Brian Mugisha' },
+  { key: 'nurse', role: 'NURSE', name: 'Sr Prossy Namubiru' },
 ] as const;
 
-export type DemoAccount = { role: string; roleTitle: string; name: string; email: string; password: string };
-export type DemoResult = { clinicId: string; facilityCode: string; created: boolean; accounts: DemoAccount[] };
+export type DemoAccount = { role: string; roleTitle: string; name: string; email: string };
+export type DemoResult = { clinicId: string; facilityCode: string; demoCode: string; password: string; expiresAt: Date; accounts: DemoAccount[] };
 
-/** Easy to read aloud or type: no 0/O, 1/l/I. */
+// Easy to read aloud and type, and unlike any real password.
+const WORDS = [
+  'Acacia', 'Amber', 'Banana', 'Cedar', 'Coffee', 'Comet', 'Coral', 'Falcon', 'Harbour', 'Jasmine', 'Lantern', 'Maple',
+  'Meadow', 'Mango', 'Orbit', 'Papaya', 'Pebble', 'Pepper', 'River', 'Savanna', 'Sunrise', 'Tamarind', 'Willow', 'Zebra',
+];
+
 function demoPassword(): string {
-  const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let out = '';
-  for (let i = 0; i < 10; i++) out += chars[randomInt(chars.length)];
-  return `Demo-${out}`;
+  const first = WORDS[randomInt(WORDS.length)];
+  let second = WORDS[randomInt(WORDS.length)];
+  while (second === first) second = WORDS[randomInt(WORDS.length)];
+  return `${first}-${second}-${randomInt(1000, 10000)}`;
+}
+
+/** Six letters that make each demo's sign-ins its own: admin.kvdbmz@demo.bulamu.site. */
+async function newDemoCode(): Promise<string> {
+  const letters = 'abcdefghjkmnpqrstuvwxyz';
+  for (;;) {
+    let code = '';
+    for (let i = 0; i < 6; i++) code += letters[randomInt(letters.length)];
+    const taken = await prisma.user.findFirst({ where: { email: { endsWith: `.${code}@${DEMO_EMAIL_DOMAIN}` } }, select: { id: true } });
+    if (!taken) return code;
+  }
+}
+
+export const demoEmail = (key: string, code: string) => `${key}.${code}@${DEMO_EMAIL_DOMAIN}`;
+
+/** Whether a demo has closed (its time ran out, or it was closed early). */
+export function demoHasEnded(clinic: { isDemo: boolean; demoExpiresAt: Date | null; deletedAt: Date | null }, now: Date = new Date()): boolean {
+  return clinic.isDemo && (!!clinic.deletedAt || (!!clinic.demoExpiresAt && clinic.demoExpiresAt <= now));
 }
 
 /**
- * Creates the demo facility (first time) or issues fresh passwords for its
- * accounts (every later time - the demo data is kept). Returns the logins.
+ * A new demo facility, private to one person: its own records and sign-ins
+ * (one shared password, so switching role is easy). Creating one never
+ * touches any other demo, so logins already sent out keep working.
  */
-export async function createOrRefreshDemoFacility(now: Date = new Date()): Promise<DemoResult> {
-  const existing = await prisma.clinic.findFirst({ where: { isDemo: true, name: DEMO_FACILITY_NAME, deletedAt: null } });
-  const accounts: DemoAccount[] = STAFF.map((s) => ({ role: s.role, roleTitle: roleTitle(s.role), name: s.name, email: s.email, password: demoPassword() }));
-  const hashes = await Promise.all(accounts.map((a) => bcrypt.hash(a.password, 10)));
-
-  if (existing) {
-    for (const [i, account] of accounts.entries()) {
-      await prisma.user.upsert({
-        where: { email: account.email },
-        update: { password: hashes[i], isActive: true, clinicId: existing.id, role: account.role as any, name: account.name },
-        create: { email: account.email, password: hashes[i], name: account.name, role: account.role as any, clinicId: existing.id, tourCompletedAt: null },
-      });
-    }
-    return { clinicId: existing.id, facilityCode: existing.facilityCode, created: false, accounts };
-  }
+export async function createDemoFacility(now: Date = new Date()): Promise<DemoResult> {
+  const demoCode = await newDemoCode();
+  const password = demoPassword();
+  const hash = await bcrypt.hash(password, 10);
+  const expiresAt = new Date(now.getTime() + DEMO_DAYS * DAY);
 
   const phone = '0700 000 900';
   const clinic = await prisma.clinic.create({
@@ -69,27 +88,105 @@ export async function createOrRefreshDemoFacility(now: Date = new Date()): Promi
       registrationStatus: 'APPROVED',
       approvedAt: now,
       isDemo: true,
+      demoExpiresAt: expiresAt,
       subscription: {
         create: {
           status: 'ACTIVE', plan: 'CUSTOM', planNotes: 'Demonstration facility - not billed.',
-          trialEndsAt: now, currentPeriodEnd: new Date(now.getTime() + 3650 * DAY), amount: 0, currency: 'UGX',
+          trialEndsAt: now, currentPeriodEnd: expiresAt, amount: 0, currency: 'UGX',
         },
       },
     },
   });
 
   const users = {} as Record<(typeof STAFF)[number]['key'], { id: string; role: string }>;
-  for (const [i, s] of STAFF.entries()) {
-    const user = await prisma.user.upsert({
-      where: { email: s.email },
-      update: { password: hashes[i], isActive: true, clinicId: clinic.id, role: s.role as any, name: s.name },
-      create: { email: s.email, password: hashes[i], name: s.name, role: s.role as any, clinicId: clinic.id },
-    });
+  const accounts: DemoAccount[] = [];
+  for (const s of STAFF) {
+    const email = demoEmail(s.key, demoCode);
+    const user = await prisma.user.create({ data: { email, password: hash, name: s.name, role: s.role, clinicId: clinic.id } });
     users[s.key] = { id: user.id, role: s.role };
+    accounts.push({ role: s.role, roleTitle: roleTitle(s.role), name: s.name, email });
   }
 
   await seedDemoRecords(clinic.id, users, now);
-  return { clinicId: clinic.id, facilityCode: clinic.facilityCode, created: true, accounts };
+  return { clinicId: clinic.id, facilityCode: clinic.facilityCode, demoCode, password, expiresAt, accounts };
+}
+
+/** Closes every demo whose time has run out: nobody can sign in to it any more. */
+export async function closeExpiredDemos(now: Date = new Date()): Promise<number> {
+  const expired = await prisma.clinic.findMany({
+    where: { isDemo: true, deletedAt: null, demoExpiresAt: { lte: now } },
+    select: { id: true },
+  });
+  if (!expired.length) return 0;
+  const ids = expired.map((c) => c.id);
+  await prisma.$transaction([
+    prisma.user.updateMany({ where: { clinicId: { in: ids } }, data: { isActive: false } }),
+    prisma.clinic.updateMany({ where: { id: { in: ids } }, data: { isActive: false, deletedAt: now } }),
+  ]);
+  return ids.length;
+}
+
+export type DemoUsage = {
+  clinicId: string;
+  facilityCode: string;
+  demoCode: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  open: boolean;
+  signIns: number;
+  failedSignIns: number;
+  daysActive: number;
+  lastSeenAt: string | null;
+  rolesTried: string[];
+  recordsAdded: number;
+  areasUsed: Array<{ area: string; count: number }>;
+};
+
+/**
+ * How each demo has been used - the only thing kept about a demo: sign-ins,
+ * days active, which roles were tried and how many records the visitor added
+ * (by kind). Never who it was sent to.
+ */
+export async function demoUsage(now: Date = new Date(), limit = 50): Promise<DemoUsage[]> {
+  const demos = await prisma.clinic.findMany({
+    where: { isDemo: true },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    select: {
+      id: true, facilityCode: true, createdAt: true, demoExpiresAt: true, deletedAt: true, isDemo: true,
+      users: { select: { email: true, role: true, lastLoginAt: true, lastSeenAt: true } },
+    },
+  });
+  if (!demos.length) return [];
+  const ids = demos.map((d) => d.id);
+  const [logins, activeDays, records] = await Promise.all([
+    prisma.loginEvent.groupBy({ by: ['clinicId', 'outcome'], where: { clinicId: { in: ids } }, _count: true }),
+    prisma.userActivityDay.groupBy({ by: ['clinicId', 'day'], where: { clinicId: { in: ids } } }),
+    // Records the visitor added or changed - not the operator's own setup entry.
+    prisma.auditLog.groupBy({ by: ['clinicId', 'entity'], where: { clinicId: { in: ids }, actorRole: { not: 'SUPER_ADMIN' } }, _count: true }),
+  ]);
+  return demos.map((d) => {
+    const signIns = logins.filter((l) => l.clinicId === d.id && l.outcome === 'SUCCESS').reduce((a, l) => a + l._count, 0);
+    const failedSignIns = logins.filter((l) => l.clinicId === d.id && l.outcome !== 'SUCCESS').reduce((a, l) => a + l._count, 0);
+    const areas = records.filter((r) => r.clinicId === d.id).map((r) => ({ area: r.entity, count: r._count })).sort((a, b) => b.count - a.count);
+    const seen = d.users.map((u) => u.lastSeenAt?.getTime() ?? 0).filter(Boolean);
+    const code = d.users.map((u) => /^[a-z]+\.([a-z]+)@demo\.bulamu\.site$/.exec(u.email)?.[1]).find(Boolean) ?? null;
+    return {
+      clinicId: d.id,
+      facilityCode: d.facilityCode,
+      demoCode: code,
+      createdAt: d.createdAt.toISOString(),
+      expiresAt: d.demoExpiresAt ? d.demoExpiresAt.toISOString() : null,
+      open: !demoHasEnded(d, now),
+      signIns,
+      failedSignIns,
+      daysActive: activeDays.filter((a) => a.clinicId === d.id).length,
+      lastSeenAt: seen.length ? new Date(Math.max(...seen)).toISOString() : null,
+      rolesTried: [...new Set(d.users.filter((u) => u.lastLoginAt).map((u) => roleTitle(u.role)))],
+      recordsAdded: areas.reduce((a, r) => a + r.count, 0),
+      areasUsed: areas,
+    };
+  });
 }
 
 async function seedDemoRecords(clinicId: string, users: Record<string, { id: string; role: string }>, now: Date) {

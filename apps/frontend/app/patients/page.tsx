@@ -48,7 +48,7 @@ export default function PatientsPage() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Patients</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Local-First Clinical Registry</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Everyone registered at your facility</p>
           </div>
           <Link href="/patients/register">
             <Button>+ Register Patient</Button>
@@ -77,7 +77,7 @@ export default function PatientsPage() {
                   <p className="text-sm text-slate-500 dark:text-slate-400">{patient.phone}</p>
                 </div>
                 {patient.syncStatus === 'pending' ? (
-                  <Button size="sm" variant="outline" disabled title="Available once this record has synced to the server">
+                  <Button size="sm" variant="outline" disabled title="Available once this record has been sent - when you're back online">
                     Syncing...
                   </Button>
                 ) : (

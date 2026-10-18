@@ -10,6 +10,7 @@ import { generateDischargeSummaryPdf, generateReferralLetterPdf } from '../lib/p
 import { referralLetterInput } from './referral.routes';
 import { dischargeSummaryInput } from './admission.routes';
 import { facilityLogo } from '../lib/facility-logo';
+import { sendRouteError } from '../lib/http-error';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -130,7 +131,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
 
       return { success: true, account, records };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -326,7 +327,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
 
       return { success: true, appointmentRequest };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 

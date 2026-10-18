@@ -5,6 +5,7 @@ import { recordAudit } from '../lib/audit';
 import { requireRole } from '../middleware/rbac.middleware';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
 import { parsePatientDetails } from '../lib/patient-details';
+import { sendRouteError } from '../lib/http-error';
 
 export async function patientRoutes(fastify: FastifyInstance) {
 
@@ -67,7 +68,7 @@ export async function patientRoutes(fastify: FastifyInstance) {
 
       return { success: true, patient, ...(portalInvitation ? { portalInvitation } : {}) };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -85,7 +86,7 @@ export async function patientRoutes(fastify: FastifyInstance) {
 
       return { success: true, patients, count: patients.length };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -104,7 +105,7 @@ export async function patientRoutes(fastify: FastifyInstance) {
 
       return { success: true, patient };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -144,7 +145,7 @@ export async function patientRoutes(fastify: FastifyInstance) {
 
       return { success: true, patient };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -169,7 +170,7 @@ export async function patientRoutes(fastify: FastifyInstance) {
 
       return { success: true, patient };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 }

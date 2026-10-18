@@ -6,6 +6,7 @@ import { ArrowRight, LockKeyhole } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { savePatientSession } from '@/lib/usePatientAuth';
 import { useWarmUpBackend } from '@/lib/backend-warmup';
@@ -36,7 +37,7 @@ export default function PatientPortalLoginPage() {
         alert(data.error || 'Invalid credentials');
       }
     } catch {
-      alert('Unable to reach the Bulamu API. Please try again shortly.');
+      alert("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -62,7 +63,7 @@ export default function PatientPortalLoginPage() {
           </div>
           <div>
             <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Signing in...' : 'Sign in'}

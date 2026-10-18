@@ -4,10 +4,10 @@ export const dynamic = 'force-static';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Bulamu Medical Facility OS",
+    name: "Bulamu",
     short_name: "Bulamu",
     description:
-      "Offline-first operations for Ugandan medical facilities.",
+      "Patient records, visits, lab, pharmacy and billing for your facility - even without internet.",
     id: "/",
     start_url: "/dashboard/",
     scope: "/",

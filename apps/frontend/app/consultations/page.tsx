@@ -49,10 +49,10 @@ export default function ConsultationsPage() {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Consultation History</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Local-First Clinical Records</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Visits recorded at your facility</p>
           </div>
           <Link href="/consultations/record">
-            <Button>+ Record Encounter</Button>
+            <Button>+ Record visit</Button>
           </Link>
         </div>
 
@@ -60,7 +60,7 @@ export default function ConsultationsPage() {
           <p className="text-slate-500 dark:text-slate-400">Loading consultations...</p>
         ) : consultations.length === 0 ? (
           <Card className="p-8 text-center text-slate-500 dark:text-slate-400">
-            No consultations recorded yet. Click above to record a clinical encounter (works offline).
+            No visits recorded yet. Use Record visit above - it works without internet too.
           </Card>
         ) : (
           <div className="space-y-4">

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { authenticate, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
+import { sendRouteError } from '../lib/http-error';
 
 export async function reproductiveHealthRoutes(fastify: FastifyInstance) {
   // Record a reproductive-health observation (clinician-entered, not patient self-service)
@@ -53,7 +54,7 @@ export async function reproductiveHealthRoutes(fastify: FastifyInstance) {
 
         return { success: true, record };
       } catch (error: any) {
-        return reply.status(400).send({ error: error.message });
+        return sendRouteError(reply, error, 400);
       }
     }
   );
@@ -80,7 +81,7 @@ export async function reproductiveHealthRoutes(fastify: FastifyInstance) {
 
         return { success: true, records };
       } catch (error: any) {
-        return reply.status(500).send({ error: error.message });
+        return sendRouteError(reply, error);
       }
     }
   );
@@ -113,7 +114,7 @@ export async function reproductiveHealthRoutes(fastify: FastifyInstance) {
 
         return { success: true, record };
       } catch (error: any) {
-        return reply.status(400).send({ error: error.message });
+        return sendRouteError(reply, error, 400);
       }
     }
   );

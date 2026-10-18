@@ -279,3 +279,30 @@ describe('sample documents', () => {
     }
   });
 });
+
+describe('sample emails', () => {
+  it('sends one of every email to the operator inbox, each in the Bulamu design - and only a platform administrator can ask', async () => {
+    const clinic = await seedClinic();
+    const admin = await staff(clinic.id, 'ADMIN');
+    expect((await app.inject({ method: 'POST', url: '/super-admin/system/sample-emails', headers: authHeader(admin.token) })).statusCode).toBe(403);
+
+    const hq = await seedClinic({ name: 'Bulamu HQ' });
+    const operator = await staff(hq.id, 'SUPER_ADMIN');
+    sendMailMock.mockClear();
+    const res = await app.inject({ method: 'POST', url: '/super-admin/system/sample-emails', headers: authHeader(operator.token) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().total).toBeGreaterThanOrEqual(15);
+    expect(res.json().sent).toBe(res.json().total);
+
+    const mails = sendMailMock.mock.calls.map(([m]) => m);
+    expect(mails).toHaveLength(res.json().total);
+    for (const mail of mails) {
+      expect(mail.to).toBe(OPERATOR);
+      expect(mail.subject.startsWith('[Sample] ')).toBe(true);
+      expect(mail.html).toContain('cid:bulamu-logo');
+      expect(mail.html).toContain('Patient care, organised.');
+      expect(mail.html).not.toMatch(/undefined|null|NaN|\[object/);
+    }
+    expect(mails.some((m) => /demo is ready/.test(m.subject) && m.html.includes('Your guided tour'))).toBe(true);
+  });
+});

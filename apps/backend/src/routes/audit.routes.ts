@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { buildCsv, sendCsv } from '../lib/csv';
+import { sendRouteError } from '../lib/http-error';
 
 type AuditEntry = {
   id: string;
@@ -81,7 +82,7 @@ export async function auditRoutes(fastify: FastifyInstance) {
       const names = await resolveActorNames(entries);
       return { success: true, entries: withActorNames(entries, names) };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -99,7 +100,7 @@ export async function auditRoutes(fastify: FastifyInstance) {
       const csv = buildCsv(AUDIT_CSV_COLUMNS, withActorNames(withClinic, names));
       return sendCsv(reply, 'bulamu-my-activity.csv', csv);
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -117,7 +118,7 @@ export async function auditRoutes(fastify: FastifyInstance) {
       const names = await resolveActorNames(entries);
       return { success: true, entries: withActorNames(withClinic, names) };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -137,7 +138,7 @@ export async function auditRoutes(fastify: FastifyInstance) {
       const filename = actorUserId ? `bulamu-platform-activity-${actorUserId}.csv` : 'bulamu-platform-activity.csv';
       return sendCsv(reply, filename, csv);
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -159,7 +160,7 @@ export async function auditRoutes(fastify: FastifyInstance) {
       const names = await resolveActorNames(entries);
       return { success: true, entries: withActorNames(entries, names) };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -186,7 +187,7 @@ export async function auditRoutes(fastify: FastifyInstance) {
       const filename = actorUserId ? `bulamu-facility-activity-${actorUserId}.csv` : 'bulamu-facility-activity.csv';
       return sendCsv(reply, filename, csv);
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -207,7 +208,7 @@ export async function auditRoutes(fastify: FastifyInstance) {
 
       return { success: true, conflicts };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }

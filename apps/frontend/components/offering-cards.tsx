@@ -18,7 +18,7 @@ export const SERVICES: Service[] = [
   { title: 'Wards and admissions', icon: BedDouble, roles: 'Nurses and clinicians', summary: 'Inpatients by ward and bed.', features: ['Observations and ward-round notes', 'Transfers between wards', 'Discharge summaries'] },
   { title: 'Referrals', icon: ArrowRightLeft, roles: 'Clinicians and front desk', summary: 'Refer out and receive referrals between facilities.', features: ['Referral letter with clinical summary', 'Accept, decline or complete', 'Register a referred patient in one step'] },
   { title: 'Invoices', icon: Receipt, roles: 'Administrators and doctors', summary: "Your facility's bills to patients - you collect, Bulamu records.", features: ['Fee entered with the consultation', 'Paid and outstanding at a glance', 'Printed invoices with your logo'] },
-  { title: 'Reports', icon: BarChart3, roles: 'Administrators', summary: 'National reporting without retyping.', features: ['HMIS 105 monthly report', 'DHIS2 push', 'FHIR R4 export'] },
+  { title: 'Reports', icon: BarChart3, roles: 'Administrators', summary: 'National reporting without retyping.', features: ['HMIS 105 monthly report', 'Sent straight to DHIS2', 'FHIR export for other health systems'] },
   { title: 'Patient Portal', icon: UserRound, roles: 'Patients', summary: 'Patients see their own records, on their phone.', features: ['Verified lab results and summaries', 'Appointment requests', 'Patient-approved sharing between facilities'] },
   { title: 'Works offline', icon: MonitorSmartphone, roles: 'Everyone', summary: 'Installs like an app and keeps working without internet.', features: ['Records saved on the device', 'Sent when the connection returns', 'Android, iPhone and computers'] },
   { title: 'Branded documents', icon: FileText, roles: 'Everyone', summary: 'Every printout carries your facility and who produced it.', features: ['Your logo on facility documents', 'Signed with name and role', 'QR code and page numbers on every page'] },
@@ -142,7 +142,7 @@ export function PlanCards({ current }: { current?: 'TRIALING' | 'STANDARD' | 'CU
 }
 
 export const ROLE_CARDS: Array<{ title: string; body: string; icon: LucideIcon }> = [
-  { title: 'Administrator', body: 'Set up staff and wards, track invoices and the subscription, and run HMIS 105 / FHIR reports.', icon: ClipboardList },
+  { title: 'Administrator', body: 'Set up staff and wards, track invoices and the subscription, and run the monthly HMIS 105 report.', icon: ClipboardList },
   { title: 'Doctor / Clinical Officer', body: "Record diagnoses, prescriptions, lab orders, admissions and referrals against each patient's history.", icon: Stethoscope },
   { title: 'Nurse / Midwife', body: 'Register patients, record observations on the wards, and capture household outreach visits offline.', icon: CalendarClock },
   { title: 'Lab Technician', body: 'Receive test orders and record results, which a clinician verifies before the patient sees them.', icon: FlaskConical },

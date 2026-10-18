@@ -123,9 +123,9 @@ function RecordConsultationForm() {
   return (
     <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-1 text-slate-800 dark:text-slate-200">Record Clinical Encounter</h1>
+        <h1 className="text-3xl font-bold mb-1 text-slate-800 dark:text-slate-200">Record a visit</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-          {patientLine ? `Patient: ${patientLine}` : 'Offline-first clinical record'}
+          {patientLine ? `Patient: ${patientLine}` : 'Record a visit'}
         </p>
 
         <Card className="p-6">

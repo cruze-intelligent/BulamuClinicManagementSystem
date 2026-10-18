@@ -140,6 +140,8 @@ model Clinic {
   // A demonstration facility (for showing Bulamu to prospective clients): never
   // counted in the platform's figures, and its staff are never emailed.
   isDemo        Boolean  @default(false)
+  // A demo is private to the person it was sent to and closes on this date.
+  demoExpiresAt DateTime?
   logo          ClinicLogo?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -172,6 +174,8 @@ model Subscription {
   plan             SubscriptionPlan @default(STANDARD)
   planNotes        String?
   trialEndsAt      DateTime
+  // Days the platform operator added to the free trial - at most 14 in all.
+  trialExtendedDays Int     @default(0)
   currentPeriodEnd DateTime?
   amount           Int      @default(100000)
   currency         String   @default("UGX")

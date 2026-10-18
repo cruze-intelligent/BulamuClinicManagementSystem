@@ -148,7 +148,7 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
       {!hideSyncStatus && (<button
         type="button"
         onClick={handleManualSync}
-        title={lapsed && pending > 0 ? blockedTitle : online ? 'Click to trigger manual sync' : 'Working offline with local queue'}
+        title={lapsed && pending > 0 ? blockedTitle : online ? 'Send waiting changes now' : 'Working offline - changes are saved on this device'}
         className={`flex min-h-10 items-center gap-2 rounded-md border px-3.5 py-2 text-sm font-medium shadow-md transition-colors ${
           !online
             ? 'border-amber-300 bg-amber-50 text-amber-900'

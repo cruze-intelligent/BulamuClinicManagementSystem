@@ -7,6 +7,14 @@ import { invalidateSubscriptionCache, lapseIfDue } from '../lib/subscription';
 import { applyPesapalStatus } from '../lib/subscription-payments';
 import { generateReceiptPdf } from '../lib/pdf';
 import { getAccessToken, registerIpnUrl, submitOrderRequest, describePesapalError } from '../services/pesapal.service';
+import { REAL_FACILITY } from '../lib/facility';
+import { recordAudit } from '../lib/audit';
+import { sendMail, trialExtendedEmail } from '../lib/mailer';
+import { frontendUrl } from '../lib/operator-alerts';
+import { sendRouteError } from '../lib/http-error';
+
+/** The most days the platform operator may add to one facility's free trial, in all. */
+export const MAX_TRIAL_EXTENSION_DAYS = 14;
 
 function pesapalCredentials() {
   const consumerKey = process.env.PESAPAL_CONSUMER_KEY;
@@ -31,7 +39,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
       }
       return { success: true, subscription };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -103,7 +111,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
 
       return { success: true, redirectUrl: order.redirectUrl };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -158,7 +166,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
       });
       return { success: true, payments };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -198,7 +206,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
       reply.header('Content-Disposition', `attachment; filename="bulamu-receipt-${payment.id.slice(0, 8)}.pdf"`);
       return reply.send(pdf);
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -226,7 +234,73 @@ export async function billingRoutes(fastify: FastifyInstance) {
       invalidateSubscriptionCache(clinicId);
       return { success: true, subscription };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
+    }
+  });
+
+  // Gives a facility on its free trial more days (SUPER_ADMIN only) - at most
+  // MAX_TRIAL_EXTENSION_DAYS in all, however many times it is asked. A trial
+  // that already ran out unpaid opens again from today.
+  fastify.post('/billing/trial/:clinicId/extend', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const { clinicId } = request.params as { clinicId: string };
+    const days = Number((request.body as { days?: unknown } | undefined)?.days);
+    if (!Number.isInteger(days) || days < 1 || days > MAX_TRIAL_EXTENSION_DAYS) {
+      return reply.status(400).send({ error: `Choose between 1 and ${MAX_TRIAL_EXTENSION_DAYS} days` });
+    }
+
+    try {
+      const clinic = await prisma.clinic.findFirst({
+        where: { id: clinicId, ...REAL_FACILITY, registrationStatus: 'APPROVED' },
+        include: { subscription: true, users: { where: { role: 'ADMIN', isActive: true }, select: { email: true } } },
+      });
+      const subscription = clinic?.subscription;
+      if (!clinic || !subscription) return reply.status(404).send({ error: 'Facility not found' });
+
+      const onTrial = subscription.status === 'TRIALING' || (subscription.status === 'PAST_DUE' && !subscription.lastPaymentAt);
+      if (!onTrial) {
+        return reply.status(409).send({ error: 'Only a free trial can be extended - this facility has a paid subscription' });
+      }
+      const remaining = MAX_TRIAL_EXTENSION_DAYS - subscription.trialExtendedDays;
+      if (days > remaining) {
+        return reply.status(409).send({
+          error: remaining <= 0
+            ? `This trial has already been extended by the full ${MAX_TRIAL_EXTENSION_DAYS} days`
+            : `This trial can be extended by at most ${remaining} more day${remaining === 1 ? '' : 's'} (${MAX_TRIAL_EXTENSION_DAYS} in all)`,
+          remaining: Math.max(0, remaining),
+        });
+      }
+
+      const now = new Date();
+      const from = subscription.trialEndsAt > now ? subscription.trialEndsAt : now;
+      const trialEndsAt = new Date(from.getTime() + days * 24 * 60 * 60 * 1000);
+      // Conditional on nothing having changed since it was read, so two quick
+      // clicks can never add up to more than the limit.
+      const { count } = await prisma.subscription.updateMany({
+        where: { id: subscription.id, trialExtendedDays: subscription.trialExtendedDays, status: subscription.status },
+        data: { trialEndsAt, status: 'TRIALING', trialExtendedDays: { increment: days } },
+      });
+      if (count !== 1) return reply.status(409).send({ error: 'The trial was changed a moment ago - reload and try again' });
+      invalidateSubscriptionCache(clinicId);
+
+      const authUser = getAuthUser(request);
+      await recordAudit({
+        entity: 'Subscription', recordId: subscription.id, clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
+        metadata: { trialExtendedByDays: days, trialEndsAt: trialEndsAt.toISOString() },
+      });
+
+      const to = clinic.users.map((u) => u.email).join(', ');
+      const mail = to
+        ? await sendMail({ to, subject: `Your Bulamu free trial has been extended - ${clinic.name}`, html: trialExtendedEmail(clinic.name, days, trialEndsAt, frontendUrl('/auth/login')) })
+        : null;
+      return {
+        success: true,
+        trialEndsAt: trialEndsAt.toISOString(),
+        trialExtendedDays: subscription.trialExtendedDays + days,
+        remaining: remaining - days,
+        emailed: !!mail?.sent,
+      };
+    } catch (error: any) {
+      return sendRouteError(reply, error);
     }
   });
 
@@ -250,7 +324,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
       }
       return { success: true, ipnId: result.ipnId, ipnUrl };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 }

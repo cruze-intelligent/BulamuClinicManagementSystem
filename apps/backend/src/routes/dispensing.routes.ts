@@ -4,6 +4,7 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
 import { notifyIfLowStock } from '../lib/notifications';
+import { sendRouteError } from '../lib/http-error';
 
 const MAX_QUANTITY = 100000;
 const PENDING_LIMIT = 300;
@@ -70,7 +71,7 @@ export async function dispensingRoutes(fastify: FastifyInstance) {
         })),
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -139,7 +140,7 @@ export async function dispensingRoutes(fastify: FastifyInstance) {
       return { success: true, prescription, medicine };
     } catch (error: any) {
       if (error instanceof DispensingError) return reply.status(error.statusCode).send({ error: error.message });
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -182,7 +183,7 @@ export async function dispensingRoutes(fastify: FastifyInstance) {
       return { success: true };
     } catch (error: any) {
       if (error instanceof DispensingError) return reply.status(error.statusCode).send({ error: error.message });
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }

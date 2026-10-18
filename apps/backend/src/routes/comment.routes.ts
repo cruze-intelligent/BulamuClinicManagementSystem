@@ -4,6 +4,7 @@ import { authenticate, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { sendMail, feedbackSubmittedEmail, FEEDBACK_EMAIL, ADMIN_NOTIFY_EMAIL } from '../lib/mailer';
 import { notifyStaff } from '../lib/notifications';
+import { sendRouteError } from '../lib/http-error';
 
 const ENTITY_TYPES = ['FEEDBACK', 'PATIENT'] as const;
 
@@ -77,7 +78,7 @@ export async function commentRoutes(fastify: FastifyInstance) {
 
       return { success: true, comment: { ...comment, authorName: author.name } };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -104,7 +105,7 @@ export async function commentRoutes(fastify: FastifyInstance) {
         comments: comments.map((c) => ({ id: c.id, body: c.body, authorRole: c.authorRole, authorName: c.author.name, createdAt: c.createdAt })),
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -125,7 +126,7 @@ export async function commentRoutes(fastify: FastifyInstance) {
         })),
       };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }

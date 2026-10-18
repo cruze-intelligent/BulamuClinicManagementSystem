@@ -1,11 +1,14 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, ShieldCheck } from 'lucide-react';
+import { CheckCircle2 } from 'lucide-react';
+import { BrandLockup } from '@/components/brand';
 import { SLOW_REQUEST_MESSAGE, useSlowNotice, useWarmUpBackend } from '@/lib/backend-warmup';
 import { FACILITY_TYPES } from '@/lib/facility-types';
 import { Select } from '@/components/ui/select';
@@ -65,8 +68,8 @@ export default function RegisterFacilityPage() {
     } catch (err: any) {
       setError(
         err?.name === 'AbortError'
-          ? 'The server took too long to respond. Your registration may already have been received - check your email for a confirmation before submitting again.'
-          : 'Unable to reach the Bulamu API. Please check your internet connection and try again.'
+          ? 'Bulamu took too long to respond. Your registration may already have been received - check your email for a confirmation before submitting again.'
+          : "We couldn't reach Bulamu. Please check your internet connection and try again."
       );
     } finally {
       clearTimeout(timeout);
@@ -107,20 +110,12 @@ export default function RegisterFacilityPage() {
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-10 text-white">
       <div className="mx-auto max-w-2xl">
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-md bg-emerald-500 text-slate-950 dark:text-slate-50">
-            <ShieldCheck className="size-6" aria-hidden="true" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Bulamu</h1>
-            <p className="text-sm uppercase tracking-wide text-emerald-300">Medical Facility OS</p>
-          </div>
-        </div>
+        <Link href="/" className="inline-block"><BrandLockup tone="dark" size="lg" /></Link>
 
         <Card className="mt-8 rounded-lg border-slate-800 bg-white dark:bg-slate-900 p-6 text-slate-950 dark:text-slate-50 shadow-2xl">
           <h2 className="text-2xl font-semibold tracking-tight">Register your facility</h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Get a 2-week free trial. Your account is reviewed and approved by a Bulamu administrator before go-live.
+            Start with a 14-day free trial. A member of the Bulamu team reviews your details first, and we email you as soon as you can sign in.
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -184,7 +179,7 @@ export default function RegisterFacilityPage() {
                 </div>
                 <div>
                   <Label htmlFor="adminPassword">Password</Label>
-                  <Input id="adminPassword" type="password" minLength={10} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} required />
+                  <PasswordInput id="adminPassword" minLength={10} value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} required />
                   <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">At least 10 characters.</p>
                 </div>
               </div>

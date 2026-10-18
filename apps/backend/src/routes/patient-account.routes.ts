@@ -4,6 +4,7 @@ import { authenticate, assertClinicMatch, getAuthUser } from '../middleware/auth
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { createPortalAccountForPatient, isValidEmail, sendPasswordLink } from '../lib/portal-invite';
+import { sendRouteError } from '../lib/http-error';
 
 // Front desk registers and verifies patients at reception, so they may manage
 // a patient's portal account alongside clinical staff.
@@ -60,7 +61,7 @@ export async function patientAccountRoutes(fastify: FastifyInstance) {
             };
         }
       } catch (error: any) {
-        return reply.status(400).send({ error: error.message });
+        return sendRouteError(reply, error, 400);
       }
     }
   );

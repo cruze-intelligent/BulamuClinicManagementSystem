@@ -7,6 +7,7 @@ import { generateInvoicePdf } from '../lib/pdf';
 import { parseFee } from '../lib/invoices';
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer } from '../lib/document-signer';
+import { sendRouteError } from '../lib/http-error';
 
 // Patient invoices are each facility's own bills to its patients: the facility
 // charges and collects the money, Bulamu only keeps the record.
@@ -42,7 +43,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
 
       return { success: true, invoices };
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 
@@ -54,7 +55,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
     try {
       fee = parseFee(amount);
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
     if (!fee) return reply.status(400).send({ error: 'Enter the amount to charge' });
 
@@ -78,7 +79,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       return { success: true, invoice };
     } catch (error: any) {
       if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'This consultation already has an invoice' });
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -113,7 +114,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
 
       return { success: true, invoice };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -138,7 +139,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       });
       return { success: true, invoice };
     } catch (error: any) {
-      return reply.status(400).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
     }
   });
 
@@ -183,7 +184,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       reply.header('Content-Disposition', `attachment; filename="invoice-${invoice.id.slice(0, 8)}.pdf"`);
       return reply.send(pdf);
     } catch (error: any) {
-      return reply.status(500).send({ error: error.message });
+      return sendRouteError(reply, error);
     }
   });
 }
