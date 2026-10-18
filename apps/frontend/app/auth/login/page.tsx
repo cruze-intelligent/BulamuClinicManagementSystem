@@ -47,6 +47,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // A patient's sign-in typed here: the error points to the Patient Portal.
+  const [patientSignIn, setPatientSignIn] = useState(false);
   const [remember, setRemember] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
@@ -72,6 +74,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setPatientSignIn(false);
     setLoading(true);
 
     const controller = new AbortController();
@@ -94,7 +97,12 @@ export default function LoginPage() {
         else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
         router.push(data.user.role === 'SUPER_ADMIN' ? '/super-admin' : '/dashboard');
       } else {
-        setError(loginErrorMessage(data.reason, data.rejectionReason) || 'Invalid email or password');
+        setPatientSignIn(data.reason === 'PATIENT_ACCOUNT');
+        setError(
+          data.reason === 'PATIENT_ACCOUNT'
+            ? 'That is a patient sign-in. Patients sign in to the Patient Portal, with the same password.'
+            : loginErrorMessage(data.reason, data.rejectionReason) || 'Invalid email or password'
+        );
       }
     } catch (err: any) {
       setError(
@@ -184,7 +192,17 @@ export default function LoginPage() {
                   <span className="block text-xs text-slate-500 dark:text-slate-400">For 30 days. Only on a device that is yours - not a shared computer.</span>
                 </Label>
               </div>
-              {error && <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</p>}
+              {error && (
+                <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                  {error}
+                  {patientSignIn && (
+                    <>
+                      {' '}
+                      <a href="/patient-portal/login" className="font-semibold underline">Go to the Patient Portal</a>
+                    </>
+                  )}
+                </p>
+              )}
               {loading && slow && <p role="status" className="text-sm text-slate-500 dark:text-slate-400">{SLOW_REQUEST_MESSAGE}</p>}
               <Button type="submit" className="h-11 w-full text-base" disabled={loading}>
                 {loading ? 'Signing in...' : 'Sign in'}
@@ -198,7 +216,11 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <p className="mt-6 text-center text-sm">
+          <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
+            Are you a patient?{' '}
+            <a href="/patient-portal/login" className="font-semibold text-emerald-700 hover:underline dark:text-emerald-400">Sign in to your records</a>
+          </p>
+          <p className="mt-3 text-center text-sm">
             <a href="/install" className="text-slate-600 hover:text-emerald-700 hover:underline dark:text-slate-400 dark:hover:text-emerald-400">
               Install Bulamu on this device
             </a>

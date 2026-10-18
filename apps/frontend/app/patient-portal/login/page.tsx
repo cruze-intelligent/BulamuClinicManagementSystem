@@ -15,11 +15,16 @@ export default function PatientPortalLoginPage() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  // A staff sign-in typed here: the error points to the staff page.
+  const [staffSignIn, setStaffSignIn] = useState(false);
   useWarmUpBackend();
   const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    setStaffSignIn(false);
     setLoading(true);
 
     try {
@@ -33,11 +38,16 @@ export default function PatientPortalLoginPage() {
       if (data.success) {
         savePatientSession(data.token, data.patient);
         router.push('/patient-portal/dashboard');
+      } else if (data.reason === 'STAFF_ACCOUNT') {
+        setStaffSignIn(true);
+        setError('That is a staff sign-in. Facility staff sign in on the staff page, with the same password.');
+      } else if (data.reason === 'DEMO_ENDED') {
+        setError('This demo has ended - thank you for trying Bulamu.');
       } else {
-        alert(data.error || 'Invalid credentials');
+        setError(data.error === 'Invalid credentials' || !data.error ? 'That Patient ID, email or phone number and password do not match.' : data.error);
       }
     } catch {
-      alert("We couldn't reach Bulamu. Please check your internet connection and try again.");
+      setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -65,6 +75,17 @@ export default function PatientPortalLoginPage() {
             <Label htmlFor="password">Password</Label>
             <PasswordInput id="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
+          {error && (
+            <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
+              {error}
+              {staffSignIn && (
+                <>
+                  {' '}
+                  <a href="/auth/login" className="font-semibold underline">Go to the staff sign-in</a>
+                </>
+              )}
+            </p>
+          )}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Signing in...' : 'Sign in'}
             <ArrowRight className="size-4" aria-hidden="true" />
@@ -79,6 +100,10 @@ export default function PatientPortalLoginPage() {
 
         <p className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400">
           Your account is created by the facility that registers you. Check your email for a set-password link.
+        </p>
+        <p className="mt-3 text-center text-sm text-slate-500 dark:text-slate-400">
+          Facility staff?{' '}
+          <a href="/auth/login" className="font-medium text-emerald-700 hover:underline">Sign in here</a>
         </p>
       </Card>
     </div>

@@ -101,6 +101,28 @@ describe('demo facilities', () => {
     expect(JSON.stringify(me.json())).toContain('Malaria RDT');
   });
 
+  it('says which page to use when a sign-in is typed on the wrong one, and forgives dashes a phone changes', async () => {
+    const demo = (await create(await operator())).json();
+    const doctor = demo.accounts.find((a: any) => a.role === 'DOCTOR');
+
+    const patientOnStaffPage = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: demo.patient.email, password: demo.password } });
+    expect(patientOnStaffPage.statusCode).toBe(401);
+    expect(patientOnStaffPage.json().reason).toBe('PATIENT_ACCOUNT');
+    const staffInPortal = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: doctor.email, password: demo.password } });
+    expect(staffInPortal.statusCode).toBe(401);
+    expect(staffInPortal.json().reason).toBe('STAFF_ACCOUNT');
+    // Only demo addresses get the hint: a made-up one, or a real account, stays a plain "invalid".
+    const unknown = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: `patient.zzzzzz@demo.bulamu.site`, password: demo.password } });
+    expect(unknown.json().reason).toBeUndefined();
+
+    // A long dash or spaces where the hyphens go, in both places, and the Patient ID works too.
+    const dashed = demo.password.replace(/-/g, ' – ');
+    const spaced = demo.password.replace(/-/g, ' ').toLowerCase();
+    expect((await app.inject({ method: 'POST', url: '/auth/login', payload: { email: doctor.email, password: dashed } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: demo.patient.email, password: spaced } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: demo.patient.portableId.toLowerCase(), password: demo.password } })).statusCode).toBe(200);
+  });
+
   it("a demo's made-up patient can never be found or linked from a real facility", async () => {
     const token = await operator();
     const demo = (await create(token)).json();

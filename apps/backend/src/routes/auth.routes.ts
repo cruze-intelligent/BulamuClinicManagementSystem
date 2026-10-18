@@ -8,7 +8,7 @@ import { facilityTypeLabel } from '../lib/facility';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import { isUniqueConstraintError } from '../lib/prisma';
 import { recordLoginEvent } from '../lib/usage-tracking';
-import { DEMO_EMAIL_DOMAIN, demoHasEnded, tidyDemoPassword } from '../lib/demo-facility';
+import { DEMO_EMAIL_DOMAIN, demoHasEnded, isDemoPatientEmail, tidyDemoPassword } from '../lib/demo-facility';
 import { passwordStamp, REMEMBERED_SESSION, STANDARD_SESSION } from '../lib/session';
 import { sendRouteError } from '../lib/http-error';
 
@@ -127,6 +127,11 @@ export async function authRoutes(fastify: FastifyInstance) {
           ?? (await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, include: { clinic: true } }));
 
       if (!user) {
+        // A demo's patient sign-in typed on the staff page: say where it belongs.
+        if (typeof email === 'string' && isDemoPatientEmail(email)
+          && await prisma.patientAccount.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true } })) {
+          return reply.status(401).send({ error: 'This is a Patient Portal sign-in', reason: 'PATIENT_ACCOUNT' });
+        }
         return reply.status(401).send({ error: 'Invalid credentials' });
       }
       const who = { id: user.id, clinicId: user.clinicId };

@@ -54,8 +54,15 @@ const WORDS = [
  * accounts, whose passwords all have this shape.
  */
 export function tidyDemoPassword(typed: string): string {
-  return typed.trim().split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join('-');
+  // A phone may also turn the hyphen into a long dash, or the person may type spaces instead.
+  return typed.trim().split(/\s*[-‐-―−]\s*|\s+/).map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join('-');
 }
+
+const demoAddress = (email: string) => email.trim().toLowerCase().endsWith(`@${DEMO_EMAIL_DOMAIN}`);
+/** A demo's Patient Portal address (patient.<code>@...), as opposed to its staff ones. */
+export const isDemoPatientEmail = (email: string) => demoAddress(email) && email.trim().toLowerCase().startsWith('patient.');
+/** A demo's staff address, which signs in on the staff page, not in the Patient Portal. */
+export const isDemoStaffEmail = (email: string) => demoAddress(email) && !isDemoPatientEmail(email);
 
 function demoPassword(): string {
   const first = WORDS[randomInt(WORDS.length)];

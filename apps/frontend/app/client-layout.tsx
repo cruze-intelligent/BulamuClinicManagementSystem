@@ -29,7 +29,9 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   // Pages without sidebar
   const noSidebarPages = ['/', '/install', '/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password'];
   const noSidebarPrefixes = ['/legal/', '/patient-portal/'];
-  const showSidebar = !noSidebarPages.includes(normalizedPathname) && !noSidebarPrefixes.some((prefix) => normalizedPathname.startsWith(prefix));
+  // A prefix covers its own page too: /patient-portal is the portal's front door, not a staff page.
+  const showSidebar = !noSidebarPages.includes(normalizedPathname)
+    && !noSidebarPrefixes.some((prefix) => normalizedPathname.startsWith(prefix) || normalizedPathname === prefix.slice(0, -1));
 
   // Checked on every navigation: a session that is missing or has run out goes
   // straight to sign-in rather than leaving pages that can't load anything.

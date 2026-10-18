@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, CheckCircle2, ClipboardList, Pill, WifiOff } from 'lucide-react';
+import { ArrowRight, ClipboardList, Pill, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ContactIcons } from '@/components/contact-icons';
 import { CompanyName } from '@/components/company-credit';
@@ -55,13 +55,32 @@ export default function Home() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
       <section className="relative overflow-hidden bg-[#04211d] text-white">
+        {/* Free photo (Unsplash, Abdulai Sayni), toned and served from this site as small WebP files.
+            Behind everything on a phone; on a wide screen it fills the right side and fades into the headline. */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 lg:left-auto lg:w-[68%]">
+          <img
+            src="/images/hero-stethoscope-1600.webp"
+            srcSet="/images/hero-stethoscope-960.webp 960w, /images/hero-stethoscope-1600.webp 1600w"
+            sizes="(min-width: 1024px) 68vw, 100vw"
+            width={1600}
+            height={900}
+            alt=""
+            className="size-full object-cover object-center opacity-35 lg:opacity-60"
+            decoding="async"
+            fetchPriority="low"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#04211d] via-[#04211d]/40 to-[#04211d]/70 lg:bg-gradient-to-r lg:from-[#04211d] lg:via-[#04211d]/45 lg:to-[#04211d]/10" />
+        </div>
         <div aria-hidden="true" className="pointer-events-none absolute -right-48 -top-40 size-[36rem] rounded-full border border-emerald-400/15" />
         <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-16 size-[24rem] rounded-full border border-emerald-400/15" />
         <div className="relative mx-auto max-w-7xl px-6 py-8">
           <nav className="flex items-center justify-between">
             <Link href="/" aria-label="Bulamu home"><BrandLockup tone="dark" /></Link>
-            <div className="flex items-center gap-4">
-              <Link href="/auth/register" className="hidden text-sm font-medium text-slate-300 hover:text-white sm:inline">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <Link href="/patient-portal/login" className="whitespace-nowrap text-sm font-medium text-slate-300 hover:text-white">
+                Patient Portal
+              </Link>
+              <Link href="/auth/register" className="hidden text-sm font-medium text-slate-300 hover:text-white md:inline">
                 Register your facility
               </Link>
               <Link href="/auth/login">
@@ -70,7 +89,7 @@ export default function Home() {
             </div>
           </nav>
 
-          <div className="grid items-center gap-12 py-14 md:py-20 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
+          <div className="py-14 md:py-24">
           <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-wider text-emerald-300">Clinic management for Uganda</p>
             <h1 className="mt-4 text-5xl font-extrabold leading-[1.05] tracking-tight md:text-7xl">
@@ -103,30 +122,6 @@ export default function Home() {
               ))}
             </ul>
           </div>
-
-          {/* Free photo (Pexels, Tessy Agbonome), served from this site as small WebP files - lazily, so phones (which never show it) never download it. */}
-          <figure className="relative hidden lg:block">
-            <img
-              src="/images/hero-clinician-760.webp"
-              srcSet="/images/hero-clinician-480.webp 480w, /images/hero-clinician-760.webp 760w"
-              sizes="(min-width: 1280px) 26rem, 22rem"
-              width={760}
-              height={912}
-              alt="A smiling clinician reading a patient's file"
-              className="aspect-[5/6] w-full rounded-3xl object-cover shadow-2xl ring-1 ring-white/10"
-              decoding="async"
-              loading="lazy"
-            />
-            <figcaption className="absolute -left-8 bottom-10 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-slate-900 shadow-xl">
-              <span className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                <CheckCircle2 className="size-5" aria-hidden="true" />
-              </span>
-              <span className="text-sm leading-tight">
-                <span className="block font-semibold">Lab result verified</span>
-                <span className="block text-slate-500">Ready in the patient&apos;s record</span>
-              </span>
-            </figcaption>
-          </figure>
           </div>
         </div>
       </section>
@@ -154,6 +149,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center text-sm text-slate-500 md:flex-row md:text-left">
           <p>Bulamu is a product of <CompanyName className="hover:text-emerald-700 hover:underline" />.</p>
           <div className="flex flex-wrap items-center justify-center gap-4">
+            <Link href="/patient-portal/login" className="hover:text-emerald-700 hover:underline">Patient Portal</Link>
             <Link href="/legal/terms" className="hover:text-emerald-700 hover:underline">Terms of Service</Link>
             <Link href="/legal/privacy" className="hover:text-emerald-700 hover:underline">Privacy Policy</Link>
             <Link href="/legal/data-retention" className="hover:text-emerald-700 hover:underline">Data Retention</Link>

@@ -5,7 +5,7 @@ import { hashToken } from '../lib/crypto';
 import { normalizePhoneKey } from '../lib/patient-account';
 import { sendPasswordLink } from '../lib/portal-invite';
 import { sendRouteError } from '../lib/http-error';
-import { DEMO_EMAIL_DOMAIN, tidyDemoPassword } from '../lib/demo-facility';
+import { DEMO_EMAIL_DOMAIN, isDemoStaffEmail, tidyDemoPassword } from '../lib/demo-facility';
 
 const MIN_PASSWORD_LENGTH = 10;
 
@@ -41,6 +41,11 @@ export async function patientAuthRoutes(fastify: FastifyInstance) {
       });
 
       if (!account) {
+        // A demo's staff sign-in typed in the Patient Portal: say where it belongs.
+        if (isDemoStaffEmail(identifier)
+          && await prisma.user.findFirst({ where: { email: { equals: identifier, mode: 'insensitive' } }, select: { id: true } })) {
+          return reply.status(401).send({ error: 'This is a staff sign-in', reason: 'STAFF_ACCOUNT' });
+        }
         return reply.status(401).send({ error: 'Invalid credentials' });
       }
 
