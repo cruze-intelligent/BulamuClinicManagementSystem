@@ -44,6 +44,9 @@ model User {
   labResultsEntered    LabTest[]       @relation("LabResultedBy")
   labResultsVerified   LabTest[]       @relation("LabVerifiedBy")
   consultationsRecorded Consultation[] @relation("ConsultationRecordedBy")
+  paymentsReceived     PatientPayment[] @relation("PaymentReceivedBy")
+  paymentsVoided       PatientPayment[] @relation("PaymentVoidedBy")
+  expensesRecorded     Expense[]        @relation("ExpenseRecordedBy")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -143,6 +146,11 @@ model Clinic {
   // A demo is private to the person it was sent to and closes on this date.
   demoExpiresAt DateTime?
   logo          ClinicLogo?
+  // The last patient receipt number issued; each payment takes the next one,
+  // so a facility's receipts run 1, 2, 3... with no gaps or repeats.
+  lastReceiptNumber Int @default(0)
+  patientPayments   PatientPayment[]
+  expenses          Expense[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -292,6 +300,7 @@ model Patient {
   documents    Document[]
   appointmentRequests AppointmentRequest[]
   admissions   Admission[]
+  invoices     Invoice[]
   deletedAt    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -643,6 +652,8 @@ model Prescription {
   dispensedByUserId String?
   dispensedBy       User?      @relation("PrescriptionDispensedBy", fields: [dispensedByUserId], references: [id], onDelete: SetNull)
   dispensedQuantity Int?
+  // The bill line it was charged on, if any.
+  invoiceItem     InvoiceItem?
   createdAt       DateTime     @default(now())
 
   @@index([consultationId])
@@ -650,18 +661,135 @@ model Prescription {
   @@index([dispensedAt])
 }
 
+// A facility's bill to its patient - the facility charges and collects, Bulamu
+// keeps the record. Most bills belong to a visit; a bill without one covers a
+// walk-in (medicine bought over the counter, a lab test on its own).
+// amount is the sum of the items and amountPaid the sum of the payments that
+// stand (not voided); both are kept in step by the server on every change.
 model Invoice {
-  id              String       @id @default(uuid())
-  consultationId  String       @unique
-  consultation    Consultation @relation(fields: [consultationId], references: [id])
+  id              String        @id @default(uuid())
+  consultationId  String?       @unique
+  consultation    Consultation? @relation(fields: [consultationId], references: [id], onDelete: Restrict)
+  patientId       String
+  patient         Patient       @relation(fields: [patientId], references: [id])
   clinicId        String
   amount          Float
+  amountPaid      Float         @default(0)
   status          InvoiceStatus @default(PENDING)
+  // When the bill was paid in full (empty while anything is still owed).
   paidAt          DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdByUserId String?
+  items           InvoiceItem[]
+  payments        PatientPayment[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([clinicId, status])
+  @@index([patientId])
+}
+
+// One line on a bill. A charge for a lab test or a prescribed medicine points
+// at it, so the same test or medicine can never be billed twice.
+model InvoiceItem {
+  id             String     @id @default(uuid())
+  invoiceId      String
+  invoice        Invoice    @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  kind           ChargeKind
+  description    String
+  quantity       Int        @default(1)
+  unitPrice      Int
+  amount         Int
+  labTestId      String?       @unique
+  labTest        LabTest?      @relation(fields: [labTestId], references: [id], onDelete: SetNull)
+  prescriptionId String?       @unique
+  prescription   Prescription? @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
+  addedByUserId  String?
+  createdAt      DateTime   @default(now())
+
+  @@index([invoiceId])
+}
+
+enum ChargeKind {
+  CONSULTATION
+  LAB
+  MEDICINE
+  PROCEDURE
+  ADMISSION
+  OTHER
+}
+
+// Money a facility received from (or for) a patient against a bill. Each has
+// the facility's next receipt number. A payment is never deleted: one taken by
+// mistake is voided by an administrator, with the reason, and its receipt then
+// reads VOID.
+model PatientPayment {
+  id               String         @id @default(uuid())
+  clinicId         String
+  clinic           Clinic         @relation(fields: [clinicId], references: [id])
+  invoiceId        String
+  invoice          Invoice        @relation(fields: [invoiceId], references: [id])
+  receiptNumber    Int
+  amount           Int
+  // Empty on payments recorded before the method was kept.
+  method           PaymentMethod?
+  // Mobile money transaction ID, card slip, bank reference or insurance claim number.
+  reference        String?
+  // Who paid, when it was not the patient (a relative, an employer).
+  payerName        String?
+  receivedByUserId String?
+  receivedBy       User?          @relation("PaymentReceivedBy", fields: [receivedByUserId], references: [id], onDelete: SetNull)
+  receivedAt       DateTime       @default(now())
+  voidedAt         DateTime?
+  voidedByUserId   String?
+  voidedBy         User?          @relation("PaymentVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  voidReason       String?
+  createdAt        DateTime       @default(now())
+
+  @@unique([clinicId, receiptNumber])
+  @@index([clinicId, receivedAt])
+  @@index([invoiceId])
+}
+
+enum PaymentMethod {
+  CASH
+  MOBILE_MONEY
+  CARD
+  BANK
+  INSURANCE
+}
+
+// Money a facility paid out: stock, salaries, rent, bills - so it can see what
+// came in against what went out. Kept like payments: voided, never deleted.
+model Expense {
+  id               String          @id @default(uuid())
+  clinicId         String
+  clinic           Clinic          @relation(fields: [clinicId], references: [id])
+  category         ExpenseCategory
+  description      String
+  amount           Int
+  // The day the money was paid.
+  spentOn          DateTime
+  method           PaymentMethod?
+  paidTo           String?
+  reference        String?
+  recordedByUserId String?
+  recordedBy       User?           @relation("ExpenseRecordedBy", fields: [recordedByUserId], references: [id], onDelete: SetNull)
+  voidedAt         DateTime?
+  voidedByUserId   String?
+  voidReason       String?
+  createdAt        DateTime        @default(now())
+
+  @@index([clinicId, spentOn])
+}
+
+enum ExpenseCategory {
+  MEDICINES_SUPPLIES
+  SALARIES
+  RENT
+  UTILITIES
+  EQUIPMENT
+  TRANSPORT
+  OTHER
 }
 
 enum InvoiceStatus {
@@ -710,6 +838,8 @@ model LabTest {
   verifiedByUserId String?
   verifiedBy       User?     @relation("LabVerifiedBy", fields: [verifiedByUserId], references: [id], onDelete: SetNull)
   verifiedAt       DateTime?
+  // The bill line it was charged on, if any.
+  invoiceItem      InvoiceItem?
   deletedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

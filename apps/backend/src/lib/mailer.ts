@@ -576,6 +576,29 @@ export function trialExtendedEmail(rawClinicName: string, days: number, trialEnd
   `, { eyebrow: 'Free trial', preheader: `${clinicName}'s free trial now runs until ${formatEmailDate(trialEndsAt)}.` });
 }
 
+/** A facility's receipt to its patient, sent from the payment screen with the PDF attached. */
+export function patientReceiptEmail(input: {
+  clinicName: string; patientName: string; receiptNumber: string; amount: string; method: string; receivedAt: Date; balance: string | null;
+}): string {
+  const clinicName = escapeHtml(input.clinicName);
+  return emailShell(`
+    ${heading(`Your receipt from ${clinicName}`)}
+    ${para(`Dear ${escapeHtml(input.patientName)}, thank you for your payment. Your receipt is attached; keep it as proof of payment.`)}
+    ${factsTable([
+      ['Receipt number', `<strong>${escapeHtml(input.receiptNumber)}</strong>`],
+      ['Amount received', `<strong>${escapeHtml(input.amount)}</strong>`],
+      ['Paid by', escapeHtml(input.method)],
+      ['Date', formatEmailDateTime(input.receivedAt)],
+      ['Balance', input.balance ? escapeHtml(input.balance) : 'Paid in full'],
+    ])}
+    ${note(`If anything on this receipt looks wrong, please contact ${clinicName} directly.`)}
+  `, {
+    eyebrow: 'Receipt',
+    preheader: `${input.amount} received by ${clinicName}. Receipt ${input.receiptNumber}.`,
+    footnote: `Sent by ${clinicName} using Bulamu. Bulamu keeps the facility's records but does not collect or hold patient payments.`,
+  });
+}
+
 /** The guided tour sent with every demo: one action followed through the whole facility. */
 const DEMO_TOUR: Array<{ title: string; body: string }> = [
   { title: 'Start as the administrator', body: 'The Dashboard shows the facility at a glance. Look through Staff, Wards and Invoices, then open Reports for the monthly HMIS 105 figures.' },

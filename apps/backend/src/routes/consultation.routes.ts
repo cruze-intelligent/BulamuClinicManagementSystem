@@ -69,7 +69,12 @@ export async function consultationRoutes(fastify: FastifyInstance) {
           prescriptions: { create: rx },
           // The facility's invoice to the patient, filed under the facility
           // where the visit happened.
-          invoice: fee ? { create: { clinicId: appointment.clinicId, amount: fee } } : undefined,
+          invoice: fee ? {
+            create: {
+              clinicId: appointment.clinicId, patientId, amount: fee, createdByUserId: getAuthUser(request).userId,
+              items: { create: { kind: 'CONSULTATION', description: 'Consultation', quantity: 1, unitPrice: fee, amount: fee, addedByUserId: getAuthUser(request).userId } },
+            },
+          } : undefined,
         },
         include: {
           ...consultationChildren,

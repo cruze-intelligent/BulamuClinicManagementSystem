@@ -288,10 +288,12 @@ export async function syncRoutes(fastify: FastifyInstance) {
               // A fee recorded with the consultation becomes the facility's
               // invoice to the patient - once: a re-sent or edited copy never
               // bills again or changes an invoice that already exists.
-              if (fee) {
-                await tx.invoice.createMany({
-                  data: [{ consultationId: saved.id, clinicId: appointment.clinicId, amount: fee }],
-                  skipDuplicates: true,
+              if (fee && !(await tx.invoice.findUnique({ where: { consultationId: saved.id }, select: { id: true } }))) {
+                await tx.invoice.create({
+                  data: {
+                    consultationId: saved.id, patientId: saved.patientId, clinicId: appointment.clinicId, amount: fee, createdByUserId: authUser.userId,
+                    items: { create: { kind: 'CONSULTATION', description: 'Consultation', quantity: 1, unitPrice: fee, amount: fee, addedByUserId: authUser.userId } },
+                  },
                 });
               }
               // Send the whole record back, children included: the app replaces its

@@ -20,8 +20,9 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
           where: { clinicId, deletedAt: null, date: { gte: today }, status: 'SCHEDULED' }
         }),
         prisma.invoice.count({ where: { clinicId, status: 'PENDING' } }),
-        prisma.invoice.aggregate({
-          where: { clinicId, status: 'PAID' },
+        // Money actually received (payments that stand), not bills raised.
+        prisma.patientPayment.aggregate({
+          where: { clinicId, voidedAt: null },
           _sum: { amount: true }
         })
       ]);

@@ -15,7 +15,7 @@ async function seedInvoice(clinicId: string) {
   const consultation = await prisma.consultation.create({
     data: { appointmentId: appointment.id, patientId: patient.id, diagnosis: 'Malaria', symptoms: 'Fever' },
   });
-  return prisma.invoice.create({ data: { consultationId: consultation.id, clinicId, amount: 5000 } });
+  return prisma.invoice.create({ data: { consultationId: consultation.id, patientId: patient.id, clinicId, amount: 5000 } });
 }
 
 describe('invoice routes', () => {
@@ -70,10 +70,10 @@ describe('invoice routes', () => {
     expect(stillPending?.status).toBe('PENDING');
   });
 
-  it('rejects STAFF from marking invoices paid (role gate)', async () => {
+  it('rejects the lab technician from taking payments (role gate) - money is handled at the desk, consulting room and pharmacy', async () => {
     const clinic = await seedClinic();
     const invoice = await seedInvoice(clinic.id);
-    const { user, password } = await seedUser({ clinicId: clinic.id, role: 'STAFF' });
+    const { user, password } = await seedUser({ clinicId: clinic.id, role: 'LAB_TECH' });
     const { token } = await loginAs(app, user.email, password);
 
     const response = await app.inject({

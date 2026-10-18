@@ -47,6 +47,16 @@ const WORDS = [
   'Meadow', 'Mango', 'Orbit', 'Papaya', 'Pebble', 'Pepper', 'River', 'Savanna', 'Sunrise', 'Tamarind', 'Willow', 'Zebra',
 ];
 
+/**
+ * The demo password as it was meant to be typed: phone keyboards capitalise or
+ * lower-case words and copying from an email can bring a space along, so
+ * "  mango-river-4821" is read as "Mango-River-4821". Only ever tried for demo
+ * accounts, whose passwords all have this shape.
+ */
+export function tidyDemoPassword(typed: string): string {
+  return typed.trim().split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join('-');
+}
+
 function demoPassword(): string {
   const first = WORDS[randomInt(WORDS.length)];
   let second = WORDS[randomInt(WORDS.length)];
@@ -268,10 +278,10 @@ export async function demoUsage(now: Date = new Date(), limit = 50): Promise<Dem
 }
 
 async function seedDemoRecords(clinicId: string, users: Record<string, { id: string; role: string }>, now: Date) {
+  // The given hour (East Africa Time) on the Kampala day `days` from today.
   const at = (days: number, hour = 9) => {
-    const d = new Date(now.getTime() + days * DAY);
-    d.setUTCHours(hour - 3, 0, 0, 0); // East Africa Time
-    return d;
+    const kampala = new Date(now.getTime() + days * DAY + 3 * 60 * 60 * 1000);
+    return new Date(Date.UTC(kampala.getUTCFullYear(), kampala.getUTCMonth(), kampala.getUTCDate(), hour - 3));
   };
   const doctor = users.doctor.id;
   const nurse = users.nurse.id;
@@ -318,11 +328,11 @@ async function seedDemoRecords(clinicId: string, users: Record<string, { id: str
 
   // --- Past visits: consultation, diagnosis, prescriptions, fee, lab -------------------
   const visits = [
-    { patient: 0, days: -6, symptoms: 'Fever and headache for 3 days', dx: [{ code: 'B54', description: 'Malaria, unspecified' }], rx: ['Artemether/Lumefantrine', 'Paracetamol'], fee: 20000, paid: true, lab: { test: 'Malaria RDT', result: 'Positive' } },
-    { patient: 1, days: -5, symptoms: 'Cough for two weeks, night sweats', dx: [{ code: 'J20.9', description: 'Acute bronchitis, unspecified' }], rx: ['Amoxicillin'], fee: 25000, paid: true, lab: { test: 'Sputum GeneXpert', result: 'MTB not detected' } },
-    { patient: 2, days: -3, symptoms: 'Diarrhoea and vomiting since yesterday', dx: [{ code: 'A09', description: 'Gastroenteritis and colitis of unspecified origin' }], rx: ['ORS'], fee: 15000, paid: false, lab: null },
-    { patient: 4, days: -2, symptoms: 'Tiredness, dizziness', dx: [{ code: 'D50.9', description: 'Iron deficiency anaemia, unspecified' }], rx: ['Ferrous sulphate'], fee: 20000, paid: false, lab: { test: 'Haemoglobin', result: '9.4 g/dL', awaitingVerification: true } },
-    { patient: 3, days: -1, symptoms: 'Burning on passing urine', dx: [{ code: 'N39.0', description: 'Urinary tract infection, site not specified' }], rx: ['Metronidazole'], fee: 20000, paid: false, lab: { test: 'Urinalysis', result: null } },
+    { patient: 0, days: -6, symptoms: 'Fever and headache for 3 days', dx: [{ code: 'B54', description: 'Malaria, unspecified' }], rx: ['Artemether/Lumefantrine', 'Paracetamol'], fee: 20000, labFee: 5000, payments: [{ days: -6, hour: 12, amount: 31900, method: 'MOBILE_MONEY', reference: 'MP2610.1432.A71234' }], lab: { test: 'Malaria RDT', result: 'Positive' } },
+    { patient: 1, days: -5, symptoms: 'Cough for two weeks, night sweats', dx: [{ code: 'J20.9', description: 'Acute bronchitis, unspecified' }], rx: ['Amoxicillin'], fee: 25000, labFee: 0, payments: [{ days: -5, hour: 12, amount: 28000, method: 'CASH' }], lab: { test: 'Sputum GeneXpert', result: 'MTB not detected' } },
+    { patient: 2, days: -3, symptoms: 'Diarrhoea and vomiting since yesterday', dx: [{ code: 'A09', description: 'Gastroenteritis and colitis of unspecified origin' }], rx: ['ORS'], fee: 15000, labFee: 0, payments: [{ days: -3, hour: 11, amount: 10000, method: 'CASH' }], lab: null },
+    { patient: 4, days: -2, symptoms: 'Tiredness, dizziness', dx: [{ code: 'D50.9', description: 'Iron deficiency anaemia, unspecified' }], rx: ['Ferrous sulphate'], fee: 20000, labFee: 8000, payments: [{ days: 0, hour: 10, amount: 10000, method: 'MOBILE_MONEY', reference: 'MP2610.0915.K20981' }], lab: { test: 'Haemoglobin', result: '9.4 g/dL', awaitingVerification: true } },
+    { patient: 3, days: -1, symptoms: 'Burning on passing urine', dx: [{ code: 'N39.0', description: 'Urinary tract infection, site not specified' }], rx: ['Metronidazole'], fee: 20000, labFee: 6000, payments: [], lab: { test: 'Urinalysis', result: null } },
   ];
   const DOSES: Record<string, { strength: string; form: string; dosage: string; frequency: string; duration: string; quantity: number }> = {
     'Artemether/Lumefantrine': { strength: '20/120 mg', form: 'tablet', dosage: '4 tablets', frequency: 'twice daily', duration: '3 days', quantity: 24 },
@@ -332,6 +342,9 @@ async function seedDemoRecords(clinicId: string, users: Record<string, { id: str
     'Ferrous sulphate': { strength: '200 mg', form: 'tablet', dosage: '1 tablet', frequency: 'once daily', duration: '30 days', quantity: 30 },
     Metronidazole: { strength: '400 mg', form: 'tablet', dosage: '1 tablet', frequency: 'three times daily', duration: '7 days', quantity: 21 },
   };
+  // Payments are numbered in the order they were taken, once every bill exists.
+  const takings: Array<{ invoiceId: string; at: Date; amount: number; method: 'CASH' | 'MOBILE_MONEY'; reference?: string }> = [];
+  const priceOf = (id: string | null) => medicines.find((m) => m.id === id)?.price ?? 0;
   for (const [i, v] of visits.entries()) {
     const patient = patients[v.patient];
     const appointment = await prisma.appointment.create({
@@ -350,11 +363,12 @@ async function seedDemoRecords(clinicId: string, users: Record<string, { id: str
             ...(v.days <= -5 ? { dispensedAt: at(v.days, 11), dispensedByUserId: users.pharmacist.id, dispensedQuantity: DOSES[name].quantity } : {}),
           })),
         },
-        invoice: { create: { clinicId, amount: v.fee, status: v.paid ? 'PAID' : 'PENDING', paidAt: v.paid ? at(v.days, 11) : null, createdAt: at(v.days, 10) } },
       },
+      include: { prescriptions: true },
     });
+    let labTestId: string | null = null;
     if (v.lab) {
-      await prisma.labTest.create({
+      labTestId = (await prisma.labTest.create({
         data: {
           patientId: patient.id, consultationId: consultation.id, testName: v.lab.test, results: v.lab.result ?? '',
           status: v.lab.result ? 'COMPLETED' : 'PENDING', orderedBy: 'Dr Samuel Okello', orderedByUserId: doctor,
@@ -364,9 +378,64 @@ async function seedDemoRecords(clinicId: string, users: Record<string, { id: str
           ...(v.lab.result ? { resultedByUserId: users.labtech.id, resultedAt: at(v.days, 12) } : {}),
           ...(v.lab.result && !('awaitingVerification' in v.lab) ? { verifiedByUserId: doctor, verifiedAt: at(v.days, 13) } : {}),
         },
-      });
+      })).id;
     }
+    // The bill: the consultation, the lab test (when the facility charges for it) and the medicines.
+    const lines = [
+      { kind: 'CONSULTATION' as const, description: 'Consultation', quantity: 1, unitPrice: v.fee },
+      ...(v.lab && v.labFee ? [{ kind: 'LAB' as const, description: v.lab.test, quantity: 1, unitPrice: v.labFee, labTestId }] : []),
+      ...consultation.prescriptions.filter((rx) => priceOf(rx.medicineId) > 0).map((rx) => ({
+        kind: 'MEDICINE' as const, description: `${rx.medication} ${rx.strength ?? ''}`.trim(), quantity: rx.quantity ?? 1, unitPrice: priceOf(rx.medicineId), prescriptionId: rx.id,
+      })),
+    ];
+    const total = lines.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
+    const invoice = await prisma.invoice.create({
+      data: {
+        clinicId, patientId: patient.id, consultationId: consultation.id, amount: total, createdAt: at(v.days, 10), createdByUserId: doctor,
+        items: { create: lines.map((l) => ({ ...l, amount: l.quantity * l.unitPrice, addedByUserId: doctor, createdAt: at(v.days, 10) })) },
+      },
+    });
+    for (const p of v.payments) takings.push({ invoiceId: invoice.id, at: at(p.days, p.hour), amount: p.amount, method: p.method as 'CASH' | 'MOBILE_MONEY', reference: 'reference' in p ? p.reference : undefined });
   }
+
+  // A walk-in buying paracetamol over the counter this morning - a bill without a visit.
+  const walkIn = await prisma.invoice.create({
+    data: {
+      clinicId, patientId: patients[5].id, amount: 1000, createdAt: at(0, 9), createdByUserId: users.pharmacist.id,
+      items: { create: { kind: 'MEDICINE', description: 'Paracetamol 500 mg', quantity: 20, unitPrice: 50, amount: 1000, addedByUserId: users.pharmacist.id, createdAt: at(0, 9) } },
+    },
+  });
+  takings.push({ invoiceId: walkIn.id, at: at(0, 9), amount: 1000, method: 'CASH' });
+
+  // Nothing is received in the future: this morning's payments, for a demo opened at dawn, are just now.
+  for (const t of takings) if (t.at > now) t.at = new Date(now.getTime() - 60 * 1000);
+  takings.sort((a, b) => a.at.getTime() - b.at.getTime());
+  for (const [n, t] of takings.entries()) {
+    await prisma.patientPayment.create({
+      data: {
+        clinicId, invoiceId: t.invoiceId, receiptNumber: n + 1, amount: t.amount, method: t.method, reference: t.reference ?? null,
+        receivedByUserId: t.invoiceId === walkIn.id ? users.pharmacist.id : users.frontdesk.id, receivedAt: t.at, createdAt: t.at,
+      },
+    });
+  }
+  await prisma.clinic.update({ where: { id: clinicId }, data: { lastReceiptNumber: takings.length } });
+  for (const invoice of await prisma.invoice.findMany({ where: { clinicId }, include: { payments: true } })) {
+    const paid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
+    const last = invoice.payments.map((p) => p.receivedAt.getTime()).sort().pop();
+    await prisma.invoice.update({
+      where: { id: invoice.id },
+      data: { amountPaid: paid, status: paid >= invoice.amount ? 'PAID' : 'PENDING', paidAt: paid >= invoice.amount && last ? new Date(last) : null },
+    });
+  }
+
+  // Money paid out this month, so the month's income can be set against it.
+  await prisma.expense.createMany({
+    data: [
+      { clinicId, category: 'MEDICINES_SUPPLIES', description: 'Restock: antimalarials and antibiotics', amount: 350000, spentOn: at(-8, 12), method: 'BANK', paidTo: 'Joint Medical Store', reference: 'TRF 004512', recordedByUserId: users.admin.id },
+      { clinicId, category: 'UTILITIES', description: 'Electricity (Yaka tokens)', amount: 85000, spentOn: at(-4, 12), method: 'MOBILE_MONEY', paidTo: 'UMEME', recordedByUserId: users.admin.id },
+      { clinicId, category: 'TRANSPORT', description: 'Delivery of lab reagents', amount: 20000, spentOn: at(-1, 12), method: 'CASH', paidTo: 'Boda boda', recordedByUserId: users.admin.id },
+    ],
+  });
 
   // --- Today's and upcoming appointments ------------------------------------------------
   for (const [i, p] of [patients[5], patients[6], patients[7]].entries()) {

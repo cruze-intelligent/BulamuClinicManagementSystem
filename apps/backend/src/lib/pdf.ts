@@ -159,8 +159,6 @@ function drawSignatures(doc: PDFKit.PDFDocument, lines: Array<{ label: string; s
 
 const money = (currency: string, amount: number) => `${currency} ${amount.toLocaleString('en-US')}`;
 
-const INVOICE_STATUS: Record<string, string> = { PENDING: 'Unpaid', PAID: 'Paid', CANCELLED: 'Cancelled' };
-
 /**
  * Shared by every document. `producedBy` is whoever generated this copy - a
  * staff member, or for a patient's own download a plain description - and is
@@ -171,6 +169,11 @@ type SampleOption = { sample?: boolean; producedBy?: Signer | string | null };
 
 export type Signer = { name: string; role: string };
 
+/** One line of a bill, as printed. */
+export type BillLine = { description: string; kind?: string; quantity: number; unitPrice: number; amount: number };
+/** A payment against a bill, as printed. */
+export type BillPayment = { receiptNumber: string; receivedAt: Date; method: string; amount: number; voided?: boolean };
+
 export type InvoicePdfInput = SampleOption & {
   invoiceId: string;
   clinicName: string;
@@ -179,23 +182,89 @@ export type InvoicePdfInput = SampleOption & {
   clinicLogo?: Buffer | null;
   patientName: string;
   patientPhone: string;
-  diagnosis: string;
+  /** The visit's diagnosis, for a bill that belongs to a visit. */
+  diagnosis?: string | null;
   doctorName?: string;
   amount: number;
+  /** What has been paid so far (when left out, a paid bill counts as paid in full). */
+  amountPaid?: number;
   currency?: string;
   status: string;
   createdAt: Date;
   paidAt?: Date | null;
+  /** The lines of the bill; without them it prints as one consultation line. */
+  items?: BillLine[];
+  payments?: BillPayment[];
 };
 
 /**
- * A facility's bill to its patient. Bulamu only keeps the record: the
- * facility issues it and collects the money, and the invoice says so.
+ * A table of bill lines - item, quantity, unit price and amount - with the
+ * total beneath. Starts a new page (with a "continued" line) rather than
+ * running into the footer.
+ */
+function drawBillLines(doc: PDFKit.PDFDocument, lines: BillLine[], currency: string, continued: string) {
+  const cols = { item: 50, qty: 330, unit: 375, amount: 460 };
+  const right = doc.page.width - 50;
+  const header = () => {
+    const y = doc.y;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED);
+    doc.text('Item', cols.item, y, { width: 270 });
+    doc.text('Qty', cols.qty, y, { width: 40, align: 'right' });
+    doc.text('Unit price', cols.unit, y, { width: 80, align: 'right' });
+    doc.text('Amount', cols.amount, y, { width: right - cols.amount, align: 'right' });
+    doc.moveDown(0.4);
+    doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(right, doc.y).stroke();
+    doc.moveDown(0.4);
+  };
+  header();
+  for (const line of lines) {
+    if (doc.y > doc.page.maxY() - 110) {
+      doc.addPage();
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED).text(continued, 50, 50, { width: 495 });
+      doc.y = 80;
+      header();
+    }
+    const y = doc.y;
+    doc.font('Helvetica').fontSize(10).fillColor(INK).text(line.description, cols.item, y, { width: 270 });
+    if (line.kind && line.kind.toLowerCase() !== line.description.toLowerCase()) doc.font('Helvetica').fontSize(8).fillColor(MUTED).text(line.kind, cols.item, doc.y, { width: 270 });
+    const bottom = doc.y;
+    doc.font('Helvetica').fontSize(10).fillColor(INK);
+    doc.text(String(line.quantity), cols.qty, y, { width: 40, align: 'right' });
+    doc.text(line.unitPrice.toLocaleString('en-US'), cols.unit, y, { width: 80, align: 'right' });
+    doc.text(line.amount.toLocaleString('en-US'), cols.amount, y, { width: right - cols.amount, align: 'right' });
+    doc.y = Math.max(bottom, doc.y);
+    doc.moveDown(0.35);
+  }
+  doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(right, doc.y).stroke();
+  doc.moveDown(0.4);
+  const total = lines.reduce((sum, l) => sum + l.amount, 0);
+  const y = doc.y;
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(INK).text('Total', cols.unit - 60, y, { width: 140, align: 'right' });
+  doc.text(money(currency, total), cols.amount - 20, y, { width: right - cols.amount + 20, align: 'right' });
+  doc.x = 50;
+}
+
+/** Unpaid, Part paid, Paid or Cancelled - in the words printed on bills. */
+export function billState(input: { amount: number; amountPaid: number; status: string }): string {
+  if (input.status === 'CANCELLED') return 'Cancelled';
+  if (input.amount > 0 && input.amountPaid >= input.amount) return 'Paid';
+  return input.amountPaid > 0 ? 'Part paid' : 'Unpaid';
+}
+
+/**
+ * A facility's bill to its patient: each item charged, the payments made and
+ * the balance. Bulamu only keeps the record: the facility issues it and
+ * collects the money, and the invoice says so.
  */
 export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer> {
   const { doc, done } = newDocument();
   const currency = input.currency ?? 'UGX';
   drawLetterhead(doc, input.clinicName, `Facility ID ${input.facilityCode}`, input.clinicLogo);
+
+  const cancelled = input.status === 'CANCELLED';
+  const paidSoFar = input.amountPaid ?? (input.status === 'PAID' ? input.amount : 0);
+  const balance = cancelled ? 0 : Math.max(0, input.amount - paidSoFar);
+  const state = billState({ amount: input.amount, amountPaid: paidSoFar, status: input.status });
 
   doc.moveDown(2);
   doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('INVOICE', 50);
@@ -206,29 +275,54 @@ export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer
     ['Issued by', `${input.clinicName}${input.clinicPhone ? ` - ${input.clinicPhone}` : ''}`],
     ['Patient', input.patientName],
     ['Phone', input.patientPhone || '-'],
-    ['For', `Consultation - ${input.diagnosis}`],
-    ['Attending clinician', input.doctorName || '-'],
+    ['Visit', input.diagnosis ? `Consultation - ${input.diagnosis}` : null],
+    ['Attending clinician', input.doctorName || null],
     ['Invoice date', documentDate(input.createdAt)],
-    ['Status', INVOICE_STATUS[input.status] ?? input.status],
-    ['Paid on', input.paidAt ? documentDate(input.paidAt) : null],
+    ['Status', state],
+    ['Paid in full on', input.paidAt && state === 'Paid' ? documentDate(input.paidAt) : null],
   ], 170);
 
-  doc.moveDown(1.5);
+  doc.moveDown(1);
+  const lines = input.items?.length
+    ? input.items
+    : [{ description: input.diagnosis ? `Consultation - ${input.diagnosis}` : 'Consultation', quantity: 1, unitPrice: input.amount, amount: input.amount }];
+  drawBillLines(doc, lines, currency, `Invoice for ${input.patientName} (continued) - #${input.invoiceId.slice(0, 8)}`);
+
+  const payments = input.payments ?? [];
+  if (payments.length) {
+    if (doc.y > doc.page.maxY() - 140) doc.addPage();
+    doc.moveDown(1.2);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text('Payments', 50, doc.y);
+    doc.moveDown(0.3);
+    for (const p of payments) {
+      const y = doc.y;
+      doc.font('Helvetica').fontSize(9).fillColor(p.voided ? MUTED : INK)
+        .text(`Receipt ${p.receiptNumber} - ${documentDate(p.receivedAt)} - ${p.method}${p.voided ? ' - VOID, not counted' : ''}`, 50, y, { width: 330 });
+      doc.text(money(currency, p.amount), 380, y, { width: doc.page.width - 430, align: 'right' });
+      doc.moveDown(0.2);
+    }
+  }
+
+  if (doc.y > doc.page.maxY() - 120) doc.addPage();
+  doc.moveDown(1.2);
   doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
   doc.moveDown(1);
 
-  const paid = input.status === 'PAID';
-  const cancelled = input.status === 'CANCELLED';
   const amountY = doc.y;
-  doc.font('Helvetica').fontSize(11).fillColor(MUTED).text(paid ? 'Amount paid' : cancelled ? 'Amount (cancelled)' : 'Amount due', 50, amountY);
-  doc.font('Helvetica-Bold').fontSize(22).fillColor(BRAND_TEAL_DARK).text(money(currency, input.amount), 50, amountY + 16);
+  const headline = cancelled ? 'Amount (cancelled)' : state === 'Paid' ? 'Amount paid' : 'Balance due';
+  doc.font('Helvetica').fontSize(11).fillColor(MUTED).text(headline, 50, amountY);
+  doc.font('Helvetica-Bold').fontSize(22).fillColor(BRAND_TEAL_DARK).text(money(currency, cancelled || state === 'Paid' ? input.amount : balance), 50, amountY + 16);
   doc
     .font('Helvetica-Bold')
     .fontSize(10)
-    .fillColor(paid ? '#15803d' : cancelled ? MUTED : '#b45309')
-    .text((INVOICE_STATUS[input.status] ?? input.status).toUpperCase(), 0, amountY + 16, { align: 'right', width: doc.page.width - 50 });
+    .fillColor(state === 'Paid' ? '#15803d' : cancelled ? MUTED : '#b45309')
+    .text(state.toUpperCase(), 0, amountY + 16, { align: 'right', width: doc.page.width - 50 });
+  if (state === 'Part paid') {
+    doc.font('Helvetica').fontSize(9).fillColor(MUTED)
+      .text(`${money(currency, paidSoFar)} paid of ${money(currency, input.amount)}`, 0, amountY + 32, { align: 'right', width: doc.page.width - 50 });
+  }
 
-  doc.moveDown(2.5);
+  doc.y = amountY + 56;
   doc
     .font('Helvetica')
     .fontSize(9)
@@ -237,6 +331,109 @@ export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer
       `This invoice is issued by ${input.clinicName}. Pay the facility directly - Bulamu keeps the facility's records but does not collect or hold patient payments.`,
       50, doc.y, { width: doc.page.width - 100 }
     );
+
+  await finishDocument(doc, input);
+  return done;
+}
+
+export type PatientReceiptPdfInput = SampleOption & {
+  receiptNumber: string;
+  clinicName: string;
+  facilityCode: string;
+  clinicPhone?: string | null;
+  clinicLogo?: Buffer | null;
+  patientName: string;
+  patientPhone?: string | null;
+  payerName?: string | null;
+  amount: number;
+  currency?: string;
+  method: string;
+  reference?: string | null;
+  receivedAt: Date;
+  receivedBy?: Signer | null;
+  /** The bill this pays towards. */
+  invoiceId: string;
+  billTotal: number;
+  /** Everything paid on the bill that stands, this payment included. */
+  paidToDate: number;
+  items: BillLine[];
+  voided?: { at: Date; reason: string | null } | null;
+};
+
+/**
+ * The facility's receipt to its patient for money received: numbered, with
+ * how it was paid, who took it, and what is still owed on the bill. A voided
+ * payment's receipt says VOID across every page.
+ */
+export async function generatePatientReceiptPdf(input: PatientReceiptPdfInput): Promise<Buffer> {
+  const { doc, done } = newDocument();
+  const currency = input.currency ?? 'UGX';
+  drawLetterhead(doc, input.clinicName, `Facility ID ${input.facilityCode}`, input.clinicLogo);
+
+  doc.moveDown(2);
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('RECEIPT', 50);
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text(`No. ${input.receiptNumber}`);
+  if (input.voided) {
+    doc.moveDown(0.4);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor('#b91c1c')
+      .text(`VOID - cancelled on ${documentDate(input.voided.at)}${input.voided.reason ? `: ${input.voided.reason}` : ''}`, 50, doc.y, { width: 495 });
+  }
+  doc.moveDown(1.2);
+
+  const balance = Math.max(0, input.billTotal - input.paidToDate);
+  drawRows(doc, [
+    ['Received from', input.payerName ? `${input.payerName}, for ${input.patientName}` : input.patientName],
+    ['Patient phone', input.patientPhone || null],
+    ['Date', documentDateTime(input.receivedAt)],
+    ['Paid by', input.method],
+    ['Reference', input.reference || null],
+    ['Received by', input.receivedBy ? `${input.receivedBy.name}, ${input.receivedBy.role}` : null],
+    ['For invoice', `#${input.invoiceId.slice(0, 8)}`],
+  ], 170);
+
+  doc.moveDown(1);
+  doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+  doc.moveDown(1);
+  const amountY = doc.y;
+  const right = doc.page.width - 50;
+  doc.font('Helvetica').fontSize(11).fillColor(MUTED).text('Amount received', 50, amountY);
+  doc.font('Helvetica-Bold').fontSize(24).fillColor(input.voided ? MUTED : BRAND_TEAL_DARK).text(money(currency, input.amount), 50, amountY + 16);
+  doc.font('Helvetica').fontSize(10).fillColor(MUTED);
+  doc.text(`Invoice total ${money(currency, input.billTotal)}`, 0, amountY + 4, { align: 'right', width: right });
+  doc.text(`Paid to date ${money(currency, input.paidToDate)}`, 0, amountY + 19, { align: 'right', width: right });
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(balance === 0 ? '#15803d' : '#b45309')
+    .text(balance === 0 ? 'PAID IN FULL' : `Balance ${money(currency, balance)}`, 0, amountY + 34, { align: 'right', width: right });
+
+  doc.y = amountY + 64;
+  doc.x = 50;
+  if (input.items.length) {
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text('What the invoice covers', 50, doc.y);
+    doc.moveDown(0.4);
+    drawBillLines(doc, input.items, currency, `Receipt ${input.receiptNumber} (continued)`);
+  }
+
+  if (doc.y > doc.page.maxY() - 140) doc.addPage();
+  doc.moveDown(2);
+  drawSignatures(doc, [{ label: 'Received by - signature and stamp', signer: input.receivedBy ?? null }]);
+  doc.y += 60;
+  doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(
+    `Thank you. Keep this receipt as proof of payment to ${input.clinicName}. Bulamu keeps the facility's records but does not collect or hold patient payments.`,
+    50, doc.y, { width: doc.page.width - 100 }
+  );
+
+  if (input.voided) {
+    const { start, count } = doc.bufferedPageRange();
+    for (let i = start; i < start + count; i++) {
+      doc.switchToPage(i);
+      const centreY = doc.page.height / 2;
+      doc.save();
+      doc.rotate(-35, { origin: [doc.page.width / 2, centreY] });
+      doc.font('Helvetica-Bold').fontSize(90).fillColor('#b91c1c').fillOpacity(0.12)
+        .text('VOID', 0, centreY - 45, { width: doc.page.width, align: 'center', lineBreak: false });
+      doc.restore();
+      doc.fillOpacity(1);
+    }
+  }
 
   await finishDocument(doc, input);
   return done;

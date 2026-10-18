@@ -35,7 +35,7 @@ afterAll(async () => {
   await app?.close();
 });
 
-async function staff(clinicId: string, role: 'ADMIN' | 'DOCTOR' | 'NURSE' | 'STAFF' | 'SUPER_ADMIN', name?: string) {
+async function staff(clinicId: string, role: 'ADMIN' | 'DOCTOR' | 'NURSE' | 'STAFF' | 'LAB_TECH' | 'SUPER_ADMIN', name?: string) {
   const { user, password } = await seedUser({ clinicId, role, ...(name ? { name } : {}) });
   return { user, token: (await loginAs(app, user.email, password)).token };
 }
@@ -53,7 +53,7 @@ describe('facility logos', () => {
     const patient = await prisma.patient.create({ data: { name: 'Achieng Mary', phone: '0700', clinicId: clinic.id } });
     const appointment = await prisma.appointment.create({ data: { patientId: patient.id, doctorId: admin.user.id, clinicId: clinic.id, date: new Date(), time: '09:00' } });
     const consultation = await prisma.consultation.create({ data: { appointmentId: appointment.id, patientId: patient.id, diagnosis: 'Malaria', symptoms: 'Fever' } });
-    const invoice = await prisma.invoice.create({ data: { consultationId: consultation.id, clinicId: clinic.id, amount: 20000 } });
+    const invoice = await prisma.invoice.create({ data: { consultationId: consultation.id, patientId: patient.id, clinicId: clinic.id, amount: 20000 } });
     const pdf = async () => (await app.inject({ method: 'GET', url: `/invoices/${invoice.id}/pdf`, headers: authHeader(admin.token) })).rawPayload;
 
     const before = await pdf();
@@ -141,10 +141,10 @@ describe("patient invoices - the facility's bills, which Bulamu only records", (
   it('adds a charge afterwards, is paid once, and can be cancelled while unpaid', async () => {
     const { clinic, doctor, patient, appointment } = await setup();
     const admin = await staff(clinic.id, 'ADMIN');
-    const nurse = await staff(clinic.id, 'NURSE');
+    const labTech = await staff(clinic.id, 'LAB_TECH');
     const consultation = await prisma.consultation.create({ data: { appointmentId: appointment.id, patientId: patient.id, diagnosis: 'Malaria', symptoms: 'Fever' } });
 
-    expect((await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(nurse.token), payload: { consultationId: consultation.id, amount: 5000 } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(labTech.token), payload: { consultationId: consultation.id, amount: 5000 } })).statusCode).toBe(403);
     const created = await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(doctor.token), payload: { consultationId: consultation.id, amount: '15,000' } });
     expect(created.statusCode).toBe(200);
     expect(created.json().invoice.amount).toBe(15000);
@@ -156,7 +156,7 @@ describe("patient invoices - the facility's bills, which Bulamu only records", (
     expect((await app.inject({ method: 'PATCH', url: `/invoices/${id}/cancel`, headers: authHeader(admin.token) })).statusCode).toBe(409);
 
     const second = await prisma.consultation.create({ data: { appointmentId: (await prisma.appointment.create({ data: { patientId: patient.id, doctorId: doctor.user.id, clinicId: clinic.id, date: new Date(), time: '10:00' } })).id, patientId: patient.id, diagnosis: 'Cough', symptoms: 'Cough' } });
-    const waived = await prisma.invoice.create({ data: { consultationId: second.id, clinicId: clinic.id, amount: 8000 } });
+    const waived = await prisma.invoice.create({ data: { consultationId: second.id, patientId: patient.id, clinicId: clinic.id, amount: 8000 } });
     expect((await app.inject({ method: 'PATCH', url: `/invoices/${waived.id}/cancel`, headers: authHeader(doctor.token) })).statusCode).toBe(403);
     expect((await app.inject({ method: 'PATCH', url: `/invoices/${waived.id}/cancel`, headers: authHeader(admin.token) })).statusCode).toBe(200);
     expect((await app.inject({ method: 'PATCH', url: `/invoices/${waived.id}/pay`, headers: authHeader(admin.token) })).statusCode).toBe(409);

@@ -5,7 +5,7 @@ import { hashToken } from '../lib/crypto';
 import { normalizePhoneKey } from '../lib/patient-account';
 import { sendPasswordLink } from '../lib/portal-invite';
 import { sendRouteError } from '../lib/http-error';
-import { DEMO_EMAIL_DOMAIN } from '../lib/demo-facility';
+import { DEMO_EMAIL_DOMAIN, tidyDemoPassword } from '../lib/demo-facility';
 
 const MIN_PASSWORD_LENGTH = 10;
 
@@ -44,7 +44,11 @@ export async function patientAuthRoutes(fastify: FastifyInstance) {
         return reply.status(401).send({ error: 'Invalid credentials' });
       }
 
-      const validPassword = await bcrypt.compare(password, account.password);
+      let validPassword = await bcrypt.compare(String(password), account.password);
+      // Demo passwords forgive the capitals and spaces a phone adds.
+      if (!validPassword && account.email.endsWith(`@${DEMO_EMAIL_DOMAIN}`) && tidyDemoPassword(String(password)) !== password) {
+        validPassword = await bcrypt.compare(tidyDemoPassword(String(password)), account.password);
+      }
       if (!validPassword) {
         return reply.status(401).send({ error: 'Invalid credentials' });
       }

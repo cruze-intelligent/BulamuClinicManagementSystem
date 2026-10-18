@@ -41,11 +41,12 @@ export async function reportsRoutes(fastify: FastifyInstance) {
             appointment: { clinicId }
           }
         }),
-        prisma.invoice.aggregate({
+        // Money received in the month (payments that stand), whenever it was billed.
+        prisma.patientPayment.aggregate({
           where: {
             clinicId,
-            status: 'PAID',
-            paidAt: { gte: startDate, lte: endDate }
+            voidedAt: null,
+            receivedAt: { gte: startDate, lte: endDate }
           },
           _sum: { amount: true }
         }),

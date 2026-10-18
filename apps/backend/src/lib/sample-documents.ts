@@ -1,6 +1,6 @@
 import { deflateSync } from 'zlib';
 import {
-  generateDischargeSummaryPdf, generateInvoicePdf, generatePrescriptionPdf, generateReceiptPdf, generateReferralLetterPdf,
+  generateDischargeSummaryPdf, generateInvoicePdf, generatePatientReceiptPdf, generatePrescriptionPdf, generateReceiptPdf, generateReferralLetterPdf,
 } from './pdf';
 
 // One of every document Bulamu produces, filled with plainly made-up details
@@ -19,11 +19,19 @@ export async function buildSampleDocuments(now: Date = new Date()): Promise<Samp
   // Facility documents name the staff member who produced the copy; Bulamu's receipts don't.
   const staff = { ...common, producedBy: { name: 'Sample Staff Member', role: 'Administrator' } };
 
+  // A bill as it is itemised today: the visit, a lab test and the medicines.
+  const lines = [
+    { description: 'Consultation', kind: 'Consultation', quantity: 1, unitPrice: 15000, amount: 15000 },
+    { description: 'Malaria RDT', kind: 'Lab test', quantity: 1, unitPrice: 5000, amount: 5000 },
+    { description: 'Artemether/Lumefantrine 20/120 mg', kind: 'Medicine', quantity: 24, unitPrice: 250, amount: 6000 },
+  ];
+
   const documents: Array<[string, string, Promise<Buffer>]> = [
-    ['1-invoice-unpaid.pdf', 'Patient invoice (facility to patient, unpaid) - with the facility logo', generateInvoicePdf({
+    ['1-invoice-unpaid.pdf', 'Patient invoice (facility to patient, part paid) - with the facility logo', generateInvoicePdf({
       ...staff, invoiceId: 'sample-invoice-0001', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo,
       patientName: patient.name, patientPhone: patient.phone, diagnosis: 'Malaria, uncomplicated', doctorName: 'Dr Sample Clinician',
-      amount: 25000, status: 'PENDING', createdAt: now,
+      amount: 26000, amountPaid: 10000, status: 'PENDING', createdAt: now, items: lines,
+      payments: [{ receiptNumber: '000041', receivedAt: now, method: 'Mobile money', amount: 10000 }],
     })],
     ['2-invoice-paid-no-logo.pdf', 'Patient invoice (paid) - a facility without a logo', generateInvoicePdf({
       ...staff, invoiceId: 'sample-invoice-0002', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone,
@@ -64,6 +72,11 @@ export async function buildSampleDocuments(now: Date = new Date()): Promise<Samp
     ['7-free-trial-receipt.pdf', 'Free trial receipt (Bulamu to the facility)', generateReceiptPdf({
       ...common, paymentId: 'sample-payment-0002', clinicName: FACILITY.name, facilityCode: FACILITY.code,
       amount: 0, currency: 'UGX', paidAt: now, periodStart: now, periodEnd: new Date(now.getTime() + 14 * DAY),
+    })],
+    ['8-patient-receipt.pdf', 'Patient receipt (facility to patient, part payment) - with the facility logo', generatePatientReceiptPdf({
+      ...staff, receiptNumber: '000041', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo,
+      patientName: patient.name, patientPhone: patient.phone, amount: 10000, method: 'Mobile money', reference: 'SAMPLE-MOMO-REF', receivedAt: now,
+      receivedBy: { name: 'Sample Staff Member', role: 'Front Desk' }, invoiceId: 'sample-invoice-0001', billTotal: 26000, paidToDate: 10000, items: lines,
     })],
   ];
 

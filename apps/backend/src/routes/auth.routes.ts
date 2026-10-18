@@ -8,7 +8,7 @@ import { facilityTypeLabel } from '../lib/facility';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage } from '../lib/facility';
 import { isUniqueConstraintError } from '../lib/prisma';
 import { recordLoginEvent } from '../lib/usage-tracking';
-import { demoHasEnded } from '../lib/demo-facility';
+import { DEMO_EMAIL_DOMAIN, demoHasEnded, tidyDemoPassword } from '../lib/demo-facility';
 import { passwordStamp, REMEMBERED_SESSION, STANDARD_SESSION } from '../lib/session';
 import { sendRouteError } from '../lib/http-error';
 
@@ -120,11 +120,11 @@ export async function authRoutes(fastify: FastifyInstance) {
     const email = typeof rawEmail === 'string' ? rawEmail.trim() : rawEmail;
 
     try {
-      // Find user
-      const user = await prisma.user.findUnique({
-        where: { email },
-        include: { clinic: true }
-      });
+      // Find user. An address matches whatever its capitals: a phone keyboard
+      // often types the first letter as one.
+      const user = typeof email !== 'string' || !email ? null
+        : (await prisma.user.findUnique({ where: { email }, include: { clinic: true } }))
+          ?? (await prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, include: { clinic: true } }));
 
       if (!user) {
         return reply.status(401).send({ error: 'Invalid credentials' });
@@ -134,7 +134,12 @@ export async function authRoutes(fastify: FastifyInstance) {
       // Verify password first - only reveal account/clinic status to someone
       // who already proved they know the password, so this endpoint can't be
       // used to probe whether an email is registered/pending/suspended.
-      const validPassword = await bcrypt.compare(password, user.password);
+      const typed = typeof password === 'string' ? password : '';
+      let validPassword = await bcrypt.compare(typed, user.password);
+      // Demo passwords forgive the capitals and spaces a phone adds.
+      if (!validPassword && user.clinic.isDemo && user.email.endsWith(`@${DEMO_EMAIL_DOMAIN}`) && tidyDemoPassword(typed) !== typed) {
+        validPassword = await bcrypt.compare(tidyDemoPassword(typed), user.password);
+      }
 
       if (!validPassword) {
         recordLoginEvent(who, 'WRONG_PASSWORD');

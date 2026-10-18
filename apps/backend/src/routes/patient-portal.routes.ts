@@ -95,7 +95,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
                   frequency: true, duration: true, quantity: true, instructions: true, dispensedAt: true,
                 },
               },
-              invoice: { select: { id: true, amount: true, status: true, createdAt: true } },
+              invoice: { select: { id: true, amount: true, amountPaid: true, status: true, createdAt: true } },
             },
           },
           labTests: {

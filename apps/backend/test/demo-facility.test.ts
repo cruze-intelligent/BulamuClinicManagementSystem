@@ -55,6 +55,37 @@ describe('demo facilities', () => {
     expect(await prisma.user.findUnique({ where: { email: 'admin@scholara.site' } })).toBeNull();
   });
 
+  it('every sign-in works the way people actually type it, and every role can get on with its work', async () => {
+    const demo = (await create(await operator())).json();
+    const typedOnAPhone = (pw: string) => `  ${pw.toLowerCase()} `;
+    const firstCapital = (email: string) => email.charAt(0).toUpperCase() + email.slice(1);
+    for (const account of demo.accounts) {
+      const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: ` ${firstCapital(account.email)}`, password: typedOnAPhone(demo.password) } });
+      expect(login.statusCode, account.email).toBe(200);
+      const token = login.json().token;
+      const clinicId = login.json().user.clinicId;
+      expect((await app.inject({ method: 'GET', url: `/dashboard/${clinicId}`, headers: authHeader(token) })).statusCode, account.role).toBe(200);
+      const patients = await app.inject({ method: 'GET', url: `/patients/${clinicId}`, headers: authHeader(token) });
+      expect(patients.statusCode, account.role).toBe(200);
+      expect(patients.json().patients.length).toBeGreaterThanOrEqual(8);
+    }
+    // ...and can add to it: the demo is never held back by a trial or subscription.
+    const desk = demo.accounts.find((a: any) => a.role === 'STAFF');
+    const { token, user } = await loginAs(app, desk.email, demo.password);
+    const added = await app.inject({ method: 'POST', url: '/patients', headers: authHeader(token), payload: { name: 'Walk-in Visitor', phone: '0756000111', clinicId: user.clinicId, sex: 'MALE' } });
+    expect(added.statusCode).toBe(200);
+
+    const portal = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: firstCapital(demo.patient.email), password: typedOnAPhone(demo.password) } });
+    expect(portal.statusCode).toBe(200);
+
+    // Forgiving, not open: a wrong password is still wrong, and real accounts get no such leeway.
+    expect((await app.inject({ method: 'POST', url: '/auth/login', payload: { email: desk.email, password: 'mango-river-0000' } })).statusCode).toBe(401);
+    const real = await seedClinic({ name: 'Real Clinic' });
+    const { user: realUser } = await seedUser({ clinicId: real.id, role: 'DOCTOR', password: 'Mango-River-4821' });
+    expect((await app.inject({ method: 'POST', url: '/auth/login', payload: { email: realUser.email, password: 'mango-river-4821' } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/auth/login', payload: { email: firstCapital(realUser.email), password: 'Mango-River-4821' } })).statusCode).toBe(200);
+  });
+
   it("includes the patient's side: a Patient Portal sign-in that works with the same password", async () => {
     const demo = (await create(await operator())).json();
     expect(demo.patient).toMatchObject({ name: 'Achieng Mary', email: `patient.${demo.demoCode}@demo.bulamu.site` });
@@ -137,7 +168,8 @@ describe('demo facilities', () => {
     expect(await count(prisma.patient, { clinicId: clinic.id })).toBe(8);
     expect(await count(prisma.consultation, { patient: { clinicId: clinic.id } })).toBe(5);
     expect(await count(prisma.prescription, { consultation: { patient: { clinicId: clinic.id } } })).toBeGreaterThan(4);
-    expect(await count(prisma.invoice, { clinicId: clinic.id })).toBe(5);
+    // One bill per visit, and a walk-in sale.
+    expect(await count(prisma.invoice, { clinicId: clinic.id })).toBe(6);
     expect(await count(prisma.labTest, { patient: { clinicId: clinic.id } })).toBe(4);
     // Results entered by the lab technician; one still waiting for a clinician to verify it.
     expect(await count(prisma.labTest, { patient: { clinicId: clinic.id }, resultedBy: { role: 'LAB_TECH' } })).toBe(3);

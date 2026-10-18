@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
-  generateDischargeSummaryPdf, generateInvoicePdf, generatePrescriptionPdf, generateReceiptPdf, generateReferralLetterPdf,
+  generateDischargeSummaryPdf, generateInvoicePdf, generatePatientReceiptPdf, generatePrescriptionPdf, generateReceiptPdf, generateReferralLetterPdf,
 } from '../src/lib/pdf';
 import { buildSampleDocuments } from '../src/lib/sample-documents';
 import { pdfImageCount, pdfPages, pdfText } from './pdf-text';
@@ -100,7 +100,7 @@ describe('who issues and who signs', () => {
     const text = pdfText(await invoice());
     expect(text).toContain('Pay the facility directly');
     expect(text).toMatch(/does not\s+collect or hold patient payments/);
-    expect(text).toContain('Amount due');
+    expect(text).toContain('Balance due');
     expect(pdfText(await invoice({ status: 'PAID', paidAt: WHEN }))).toContain('Amount paid');
   });
 
@@ -113,6 +113,49 @@ describe('who issues and who signs', () => {
     const trial = pdfText(await receipt(0));
     expect(trial).toContain('FREE TRIAL RECEIPT');
     expect(trial).toContain('Amount charged');
+  });
+
+  it('itemises a bill: each line, the payments taken (a voided one not counted) and what is still owed', async () => {
+    const text = pdfText(await invoice({
+      amount: 31000, amountPaid: 10000,
+      items: [
+        { description: 'Consultation', kind: 'Consultation', quantity: 1, unitPrice: 20000, amount: 20000 },
+        { description: 'Artemether/Lumefantrine 20/120 mg', kind: 'Medicine', quantity: 24, unitPrice: 250, amount: 6000 },
+        { description: 'Malaria RDT', kind: 'Lab test', quantity: 1, unitPrice: 5000, amount: 5000 },
+      ],
+      payments: [
+        { receiptNumber: '000007', receivedAt: WHEN, method: 'Mobile money', amount: 10000 },
+        { receiptNumber: '000008', receivedAt: WHEN, method: 'Cash', amount: 5000, voided: true },
+      ],
+    }));
+    expect(text).toContain('Artemether/Lumefantrine 20/120 mg');
+    expect(text).toContain('6,000');
+    expect(text).toContain('UGX 31,000');
+    expect(text).toContain('Receipt 000007 - 14 October 2026 - Mobile money');
+    expect(text).toContain('VOID, not counted');
+    expect(text).toContain('PART PAID');
+    expect(text).toContain('UGX 21,000');
+  });
+
+  it('gives the patient a numbered receipt: how they paid, who took it, and the balance - VOID when voided', async () => {
+    const receiptFor = (extra = {}) => generatePatientReceiptPdf({
+      receiptNumber: '000042', clinicName: 'Mbarara Family Clinic', facilityCode: 'BLM-MBR123', patientName: 'Achieng Mary', patientPhone: '0700 000 001',
+      amount: 10000, method: 'Mobile money', reference: 'MP2610.1432.A71234', receivedAt: WHEN, receivedBy: { name: 'Sarah Nakato', role: 'Front Desk' },
+      invoiceId: 'invoice-0001', billTotal: 26000, paidToDate: 10000, items: [{ description: 'Consultation', quantity: 1, unitPrice: 26000, amount: 26000 }],
+      producedBy: STAFF, ...extra,
+    });
+    const text = pdfText(await receiptFor());
+    expect(text).toContain('RECEIPT');
+    expect(text).toContain('No. 000042');
+    expect(text).toContain('Mbarara Family Clinic');
+    expect(text).toContain('14 October 2026, 01:30 EAT');
+    expect(text).toContain('MP2610.1432.A71234');
+    expect(text).toContain('Sarah Nakato, Front Desk');
+    expect(text).toContain('Balance UGX 16,000');
+    expect(text).not.toContain('VOID');
+    expect(pdfText(await receiptFor({ paidToDate: 26000 }))).toContain('PAID IN FULL');
+    const voided = pdfText(await receiptFor({ voided: { at: WHEN, reason: 'Wrong patient' } }));
+    expect(voided).toContain('VOID - cancelled on 14 October 2026: Wrong patient');
   });
 
   it('signs clinical documents with the responsible person\'s name and role', async () => {
@@ -148,7 +191,7 @@ describe('sample documents for checking', () => {
     expect(documents.map((d) => d.filename)).toEqual([
       'bulamu-sample-1-invoice-unpaid.pdf', 'bulamu-sample-2-invoice-paid-no-logo.pdf', 'bulamu-sample-3-prescription.pdf',
       'bulamu-sample-4-referral-letter.pdf', 'bulamu-sample-5-discharge-summary.pdf', 'bulamu-sample-6-subscription-receipt.pdf',
-      'bulamu-sample-7-free-trial-receipt.pdf',
+      'bulamu-sample-7-free-trial-receipt.pdf', 'bulamu-sample-8-patient-receipt.pdf',
     ]);
     for (const document of documents) {
       for (const page of pdfPages(document.content)) expect(page).toContain('SAMPLE - NOT A REAL');
