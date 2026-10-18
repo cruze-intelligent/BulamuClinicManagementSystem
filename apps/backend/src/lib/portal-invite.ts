@@ -49,6 +49,8 @@ export type PortalAccountOutcome =
 
 type Logger = (message: string) => void;
 
+const inDemo = async (clinicId: string) => !!(await prisma.clinic.findUnique({ where: { id: clinicId }, select: { isDemo: true } }))?.isDemo;
+
 // Creates a patient's portable portal account and emails them the link to set
 // their password. Used both by staff explicitly creating an account and by
 // patient registration (when an email is given). Email delivery is
@@ -67,7 +69,7 @@ export async function createPortalAccountForPatient(input: {
 
   if (patient.patientAccountId) return { status: 'patient_has_account' };
 
-  const duplicate = await findAccountByPhone(phone);
+  const duplicate = await findAccountByPhone(phone, patient.clinicId);
   if (duplicate) return { status: 'phone_in_use', portableId: duplicate.portableId };
 
   try {
@@ -99,6 +101,8 @@ export async function createPortalAccountForPatient(input: {
       metadata: { patientId: patient.id, portableId },
     });
 
+    // A demo never emails anyone: the address a visitor typed may be real.
+    if (await inDemo(patient.clinicId)) return { status: 'created', portableId, setPasswordUrl };
     void sendMail({
       to: email,
       subject: 'Your Bulamu patient account',
@@ -173,6 +177,8 @@ export async function sendPasswordLink(input: {
 }): Promise<{ setPasswordUrl: string }> {
   const log = input.log ?? ((message: string) => console.warn(message));
   const setPasswordUrl = await issueSetPasswordLink(input.patientAccountId, input.kind === 'invitation' ? INVITE_TTL_MS : RESET_TTL_MS);
+  const account = await prisma.patientAccount.findUnique({ where: { id: input.patientAccountId }, select: { createdByClinicId: true } });
+  if (account && (await inDemo(account.createdByClinicId))) return { setPasswordUrl };
 
   void sendMail({
     to: input.email,

@@ -1,7 +1,7 @@
 import { ReferralStatus, ReferralUrgency } from '@prisma/client';
 import { prisma } from './prisma';
 import { recordAudit } from './audit';
-import { REAL_FACILITY } from './facility';
+import { referralPeers } from './facility';
 import { notifyPatient, notifyStaff } from './notifications';
 import { HttpError } from './http-error';
 
@@ -50,7 +50,7 @@ export async function createReferral(
 
   if (input.toClinicId === patient.clinicId) throw new HttpError(400, 'Choose a different facility - a patient cannot be referred to the facility they are already at');
   const toClinic = await prisma.clinic.findFirst({
-    where: { ...REAL_FACILITY, id: input.toClinicId, isActive: true, registrationStatus: 'APPROVED' },
+    where: { AND: [await referralPeers(patient.clinicId), { id: input.toClinicId, registrationStatus: 'APPROVED' }] },
     select: { id: true, name: true },
   });
   if (!toClinic) throw new HttpError(404, 'Destination facility not found');

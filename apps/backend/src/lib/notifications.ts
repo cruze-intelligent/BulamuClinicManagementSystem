@@ -1,6 +1,7 @@
 import { NotificationType, Role } from '@prisma/client';
 import { prisma } from './prisma';
 import { sendMail, notificationEmail } from './mailer';
+import { DEMO_EMAIL_DOMAIN } from './demo-facility';
 
 /**
  * Who is told about what - the single place to read (and change) which
@@ -326,7 +327,9 @@ export async function notifyPatient(input: {
       },
     });
 
-    if (rule.email && !account.mustResetPassword && !account.emailOptOuts.includes(input.type)) {
+    // A demo patient's address is a placeholder: their messages stay in the portal.
+    const demo = account.email.endsWith(`@${DEMO_EMAIL_DOMAIN}`);
+    if (rule.email && !demo && !account.mustResetPassword && !account.emailOptOuts.includes(input.type)) {
       void sendMail({
         to: account.email,
         subject: rule.emailSubject,

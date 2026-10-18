@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import {
-  ArrowRightLeft, BedDouble, CalendarClock, Check, ClipboardList, FileText, FlaskConical, MonitorSmartphone, Package,
+  ArrowRightLeft, BedDouble, CalendarClock, Check, FileText, FlaskConical, MonitorSmartphone, Package,
   Receipt, Stethoscope, Users, UserRound, BarChart3, type LucideIcon,
 } from 'lucide-react';
 
-// Bulamu's services and plans, as cards - on the home page, and the plans on
-// the Billing page too. One list, so they always say the same thing.
+// Bulamu's services and plans - on the home page, and the plans on the Billing
+// page too. One list, so they always say the same thing.
 
 export type Service = { title: string; summary: string; features: string[]; icon: LucideIcon; roles: string };
 
@@ -57,32 +57,22 @@ export const PLANS: Plan[] = [
   },
 ];
 
-export function ServiceCards() {
+/** The services as small tiles - icon, name and one line - for the home page. */
+export function ServiceTiles() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {SERVICES.map((service) => (
-        <div key={service.title} className="flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
-              <service.icon className="size-5" aria-hidden="true" />
-            </div>
-            <h3 className="font-semibold text-slate-950">{service.title}</h3>
-          </div>
-          <p className="mt-3 text-sm text-slate-600">{service.summary}</p>
-          <ul className="mt-4 flex-1 space-y-2">
-            {service.features.map((feature) => (
-              <li key={feature} className="flex items-start gap-2 text-sm text-slate-700">
-                <Check className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden="true" />
-                {feature}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
-            <span className="font-medium text-slate-600">For:</span> {service.roles}
-          </p>
-        </div>
+        <li key={service.title} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-4">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+            <service.icon className="size-[18px]" aria-hidden="true" />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-slate-950">{service.title}</span>
+            <span className="mt-0.5 block text-sm leading-5 text-slate-600">{service.summary}</span>
+          </span>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
@@ -141,12 +131,6 @@ export function PlanCards({ current }: { current?: 'TRIALING' | 'STANDARD' | 'CU
   );
 }
 
-export const ROLE_CARDS: Array<{ title: string; body: string; icon: LucideIcon }> = [
-  { title: 'Administrator', body: 'Set up staff and wards, track invoices and the subscription, and run the monthly HMIS 105 report.', icon: ClipboardList },
-  { title: 'Doctor / Clinical Officer', body: "Record diagnoses, prescriptions, lab orders, admissions and referrals against each patient's history.", icon: Stethoscope },
-  { title: 'Nurse / Midwife', body: 'Register patients, record observations on the wards, and capture household outreach visits offline.', icon: CalendarClock },
-  { title: 'Lab Technician', body: 'Receive test orders and record results, which a clinician verifies before the patient sees them.', icon: FlaskConical },
-  { title: 'Pharmacist', body: 'Dispense prescriptions, keep stock counted, and act on low-stock and expiry alerts.', icon: Package },
-  { title: 'Front desk', body: 'Register patients, book appointments and welcome referred patients.', icon: Users },
-  { title: 'Patient', body: 'See their own records and verified results, request appointments, and decide which facilities may see their history.', icon: UserRound },
-];
+/** Everyone who uses Bulamu, as they would describe themselves. */
+export const ROLES = ['Administrators', 'Doctors', 'Clinical officers', 'Nurses and midwives', 'Lab technicians', 'Pharmacists', 'Front desk', 'Patients'];
+

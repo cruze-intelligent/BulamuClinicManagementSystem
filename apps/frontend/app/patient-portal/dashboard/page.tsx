@@ -13,6 +13,16 @@ import type { PrescriptionView } from '@/lib/prescription';
 import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, openDocumentPreview } from '@/lib/document-preview';
 import { PortalStaysAndReferrals, type PortalReferral, type PortalStay } from '@/components/portal-stays-referrals';
 
+// Statuses in the words a patient would use.
+const APPOINTMENT_STATES: Record<string, string> = { SCHEDULED: 'booked', COMPLETED: 'attended', CANCELLED: 'cancelled', NO_SHOW: 'missed' };
+const INVOICE_STATES: Record<string, string> = { PENDING: 'not yet paid', PAID: 'paid', CANCELLED: 'cancelled' };
+function labTestState(t: { status: string; results: string; verified?: boolean }): string {
+  if (t.status === 'CANCELLED') return 'Cancelled';
+  if (t.verified && t.results) return `Result: ${t.results}`;
+  if (t.status === 'COMPLETED') return 'Being checked by a clinician';
+  return 'Waiting for the result';
+}
+
 const DOCUMENT_CATEGORY_LABELS: Record<string, string> = {
   LAB_RESULT: 'Lab Result',
   CONSENT_FORM: 'Consent Form',
@@ -56,7 +66,7 @@ type PatientRecord = {
     prescriptions: Array<PrescriptionView & { id: string }>;
     invoice: { id: string; amount: number; status: string; createdAt: string } | null;
   }>;
-  labTests: Array<{ id: string; testName: string; results: string; status: string; createdAt: string }>;
+  labTests: Array<{ id: string; testName: string; results: string; status: string; verified?: boolean; createdAt: string }>;
   appointmentRequests: AppointmentRequest[];
   documents: Document[];
   referrals?: PortalReferral[];
@@ -314,7 +324,7 @@ export default function PatientPortalDashboardPage() {
                 {record.appointments.map((a) => (
                   <li key={a.id} className="rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800">
                     <span className="font-medium text-slate-800 dark:text-slate-200">{new Date(a.date).toLocaleDateString()} at {a.time}</span>
-                    <span className="ml-2 text-slate-500 dark:text-slate-400">with Dr. {a.doctor.name} - {a.status}</span>
+                    <span className="ml-2 text-slate-500 dark:text-slate-400">with {a.doctor.name} - {APPOINTMENT_STATES[a.status] ?? a.status}</span>
                   </li>
                 ))}
               </ul>
@@ -355,7 +365,7 @@ export default function PatientPortalDashboardPage() {
                     />
                     {c.invoice && (
                       <p className="mt-1 text-slate-500 dark:text-slate-400">
-                        Invoice: UGX {c.invoice.amount.toLocaleString()} - {c.invoice.status}
+                        Invoice: UGX {c.invoice.amount.toLocaleString()} - {INVOICE_STATES[c.invoice.status] ?? c.invoice.status}
                       </p>
                     )}
                   </li>
@@ -376,7 +386,7 @@ export default function PatientPortalDashboardPage() {
                 {record.labTests.map((t) => (
                   <li key={t.id} className="rounded-md bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800">
                     <span className="font-medium text-slate-800 dark:text-slate-200">{t.testName}</span>
-                    <span className="ml-2 text-slate-500 dark:text-slate-400">{t.status}{t.results ? ` - ${t.results}` : ''}</span>
+                    <span className="ml-2 text-slate-500 dark:text-slate-400">{labTestState(t)}</span>
                   </li>
                 ))}
               </ul>

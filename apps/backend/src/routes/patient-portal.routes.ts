@@ -101,7 +101,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
           labTests: {
             where: { deletedAt: null },
             orderBy: { createdAt: 'desc' },
-            select: { id: true, testName: true, results: true, status: true, createdAt: true },
+            select: { id: true, testName: true, results: true, status: true, createdAt: true, verifiedAt: true },
           },
           appointmentRequests: {
             orderBy: { createdAt: 'desc' },
@@ -127,7 +127,12 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
 
       const records = allRecords
         .filter((r) => authorizedClinicIds.has(r.clinic.id))
-        .map((r) => ({ ...r, documents: r.documents.map(withFormat) }));
+        .map((r) => ({
+          ...r,
+          documents: r.documents.map(withFormat),
+          // A result reaches the patient only once a clinician has verified it.
+          labTests: r.labTests.map(({ verifiedAt, results, ...test }) => ({ ...test, verified: !!verifiedAt, results: verifiedAt ? results : '' })),
+        }));
 
       return { success: true, account, records };
     } catch (error: any) {

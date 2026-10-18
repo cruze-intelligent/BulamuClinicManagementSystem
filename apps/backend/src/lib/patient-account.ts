@@ -27,15 +27,25 @@ export async function generatePortableId(): Promise<string> {
   throw new Error('Could not generate a unique patient portable ID');
 }
 
+/**
+ * The patient accounts a facility may look up at all. Live and demo data never
+ * meet: a demo sees only the made-up accounts created inside it, and a real
+ * facility never sees any demo's.
+ */
+export async function accountScope(clinicId: string) {
+  const clinic = await prisma.clinic.findUnique({ where: { id: clinicId }, select: { isDemo: true } });
+  return clinic?.isDemo ? { createdByClinicId: clinicId } : { createdByClinic: { isDemo: false } };
+}
+
 // A patient may only hold one portable account - staff attempting to create
 // a second one for the same phone number should link the existing account
 // to their facility's Patient row instead (the cross-facility validate
 // flow), not create a duplicate identity.
-export async function findAccountByPhone(phone: string) {
+export async function findAccountByPhone(phone: string, clinicId: string) {
   const phoneKey = normalizePhoneKey(phone);
   if (!phoneKey) return null;
   return prisma.patientAccount.findFirst({
-    where: { phoneKey },
+    where: { phoneKey, ...(await accountScope(clinicId)) },
     select: { id: true, portableId: true, status: true },
   });
 }

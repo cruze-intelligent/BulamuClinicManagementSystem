@@ -4,10 +4,12 @@ import { prisma } from '../lib/prisma';
 import { getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
-import { generateOtp } from '../lib/patient-account';
+import { accountScope, generateOtp } from '../lib/patient-account';
 import { hashToken } from '../lib/crypto';
 import { sendMail, patientAccessOtpEmail } from '../lib/mailer';
 import { notifyPatient } from '../lib/notifications';
+
+
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -29,8 +31,8 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
       const authUser = getAuthUser(request);
       if (!portableId) return reply.status(400).send({ error: 'portableId is required' });
 
-      const account = await prisma.patientAccount.findUnique({
-        where: { portableId },
+      const account = await prisma.patientAccount.findFirst({
+        where: { portableId, ...(await accountScope(authUser.clinicId)) },
         select: {
           id: true,
           status: true,
@@ -68,7 +70,7 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
       const authUser = getAuthUser(request);
       if (!portableId) return reply.status(400).send({ error: 'portableId is required' });
 
-      const account = await prisma.patientAccount.findUnique({ where: { portableId } });
+      const account = await prisma.patientAccount.findFirst({ where: { portableId, ...(await accountScope(authUser.clinicId)) } });
       if (!account || account.status !== 'ACTIVE') {
         return reply.status(404).send({ error: 'No active account found for that Patient ID' });
       }
@@ -131,8 +133,8 @@ export async function patientAccessRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'method must be PIN or OTP' });
       }
 
-      const account = await prisma.patientAccount.findUnique({
-        where: { portableId },
+      const account = await prisma.patientAccount.findFirst({
+        where: { portableId, ...(await accountScope(authUser.clinicId)) },
         include: { patients: { take: 1, orderBy: { createdAt: 'asc' } } },
       });
       if (!account || account.status !== 'ACTIVE') {

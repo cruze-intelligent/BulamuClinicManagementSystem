@@ -4,12 +4,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, FlaskConical, Loader2, RefreshCw, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 
 type Account = { roleTitle: string; name: string; email: string };
-type Sent = { demoCode: string; password: string; expiresAt: string; accounts: Account[]; message: string };
+type Sent = {
+  to: string; ok: boolean; message: string;
+  demoCode?: string; password?: string; expiresAt?: string; accounts?: Account[];
+  patient?: { name: string; email: string; portableId: string };
+};
 type DemoUsage = {
   clinicId: string; demoCode: string | null; createdAt: string; expiresAt: string | null; open: boolean;
   signIns: number; failedSignIns: number; daysActive: number; lastSeenAt: string | null;
@@ -33,9 +36,10 @@ const shortDate = (iso: string | null) =>
  * used - the only thing kept about it (never who it was sent to).
  */
 export function DemoFacilityCard() {
-  const [email, setEmail] = useState('');
+  const [emails, setEmails] = useState('');
+  const [replacesEarlier, setReplacesEarlier] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [sent, setSent] = useState<Sent | null>(null);
+  const [sent, setSent] = useState<Sent[]>([]);
   const [error, setError] = useState('');
   const [registered, setRegistered] = useState<Registered[]>([]);
   const [demos, setDemos] = useState<DemoUsage[] | null>(null);
@@ -60,26 +64,36 @@ export function DemoFacilityCard() {
       .catch(() => setRegistered([]));
   }, [loadDemos]);
 
+  // Every address gets a demo of its own, one after another, so each email
+  // carries sign-ins nobody else has.
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
+    const list = [...new Set(emails.split(/[\s,;]+/).map((a) => a.trim()).filter(Boolean))];
+    if (!list.length) return;
+    if (list.length > 1 && !window.confirm(`Send ${list.length} separate demos, one to each of these addresses?\n\n${list.join('\n')}`)) return;
     setBusy(true);
     setError('');
-    setSent(null);
-    try {
-      const res = await api('/super-admin/system/demo-facility', { method: 'POST', body: JSON.stringify({ email: email.trim() }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) throw new Error(data.error || 'Could not create the demo');
-      const message = data.result?.sent
-        ? `A new demo was created and its sign-ins emailed to ${email.trim()}.`
-        : `The demo was created, but the email did not go out (${data.result?.reason || 'unknown reason'}). Share the sign-ins below another way.`;
-      setSent({ demoCode: data.demoCode, password: data.password, expiresAt: data.expiresAt, accounts: data.accounts, message });
-      setEmail('');
-      void loadDemos();
-    } catch (err: any) {
-      setError(err.message || 'Could not create the demo');
-    } finally {
-      setBusy(false);
+    setSent([]);
+    const results: Sent[] = [];
+    for (const to of list) {
+      try {
+        const res = await api('/super-admin/system/demo-facility', { method: 'POST', body: JSON.stringify({ email: to, replacesEarlier }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) throw new Error(data.error || 'Could not create the demo');
+        results.push({
+          to, ok: !!data.result?.sent,
+          message: data.result?.sent ? 'Demo created and emailed.' : `Demo created, but the email did not go out (${data.result?.reason || 'unknown reason'}) - share the sign-ins below another way.`,
+          demoCode: data.demoCode, password: data.password, expiresAt: data.expiresAt, accounts: data.accounts, patient: data.patient,
+        });
+      } catch (err: any) {
+        results.push({ to, ok: false, message: err.message || 'Could not create the demo' });
+      }
+      setSent([...results]);
     }
+    if (results.every((r) => r.ok)) setEmails('');
+    else setError(`${results.filter((r) => !r.ok).length} of ${results.length} did not go out - see below.`);
+    setBusy(false);
+    void loadDemos();
   };
 
   const close = async (demo: DemoUsage) => {
@@ -100,7 +114,7 @@ export function DemoFacilityCard() {
         <p className="text-xs text-muted-foreground">
           Send anyone (a prospective client, or a registered facility that wants a proper guided tour) a demo of their own: a private
           &quot;Bulamu Test Facility&quot; filled with made-up records, a sign-in for every role and a step-by-step tour. It is open for
-          14 days, never sends emails and never counts in the platform&apos;s figures. Each send is a new demo, so logins already sent
+          14 days, never sends emails, never sees or reaches live data, and never counts in the platform&apos;s figures. Each send is a new demo, so logins already sent
           keep working. Their email address is not kept: only how the demo is used.
         </p>
       </div>
@@ -114,7 +128,7 @@ export function DemoFacilityCard() {
               value=""
               onChange={(e) => {
                 const picked = registered.find((r) => r.id === e.target.value);
-                if (picked?.admin?.email) setEmail(picked.admin.email);
+                if (picked?.admin?.email) setEmails((v) => (v.trim() ? `${v.trim()}\n${picked.admin!.email}` : picked.admin!.email));
               }}
             >
               <option value="">Choose to fill in its administrator...</option>
@@ -123,38 +137,58 @@ export function DemoFacilityCard() {
           </div>
         )}
         <div className="min-w-60 flex-1">
-          <Label htmlFor="demo-email" className="text-xs">Send the demo to</Label>
-          <Input id="demo-email" type="email" required placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Label htmlFor="demo-email" className="text-xs">Send a demo to (one address, or several - one per line)</Label>
+          <textarea
+            id="demo-email" required rows={2} placeholder="name@example.com" value={emails} onChange={(e) => setEmails(e.target.value)}
+            className="mt-1 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+          />
+          <label className="mt-1 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+            <input type="checkbox" checked={replacesEarlier} onChange={(e) => setReplacesEarlier(e.target.checked)} className="size-3.5 accent-emerald-600" />
+            They were sent sign-ins that did not work - say sorry and that these replace them
+          </label>
         </div>
         <Button type="submit" size="sm" disabled={busy}>
           {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
-          {busy ? 'Creating the demo...' : 'Send a new demo'}
+          {busy ? `Creating demos (${sent.length} done)...` : 'Send demo'}
         </Button>
       </form>
 
       {error && (
         <p role="alert" className="flex items-start gap-1.5 text-sm text-red-700 dark:text-red-400"><XCircle className="mt-0.5 size-4 shrink-0" aria-hidden />{error}</p>
       )}
-      {sent && (
-        <div role="status" className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
-          <p className="flex items-start gap-1.5 text-emerald-800 dark:text-emerald-300"><CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden />{sent.message}</p>
-          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
-            Demo <span className="font-mono">{sent.demoCode}</span> - every account uses the password{' '}
-            <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{sent.password}</span> - open until {shortDate(sent.expiresAt)}.
+      {sent.map((r) => (
+        <div key={r.to} role="status" className={`rounded-md border p-3 text-sm ${r.ok ? 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30' : 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30'}`}>
+          <p className={`flex items-start gap-1.5 ${r.ok ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-900 dark:text-amber-200'}`}>
+            {r.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" aria-hidden /> : <XCircle className="mt-0.5 size-4 shrink-0" aria-hidden />}
+            <span><strong>{r.to}</strong>: {r.message}</span>
           </p>
-          <table className="mt-2 w-full text-left text-xs text-slate-700 dark:text-slate-300">
-            <thead><tr className="text-slate-500"><th className="py-1 pr-2 font-medium">Role</th><th className="py-1 font-medium">Sign in with</th></tr></thead>
-            <tbody>
-              {sent.accounts.map((a) => (
-                <tr key={a.email} className="border-t border-emerald-100 dark:border-emerald-900">
-                  <td className="py-1 pr-2">{a.roleTitle}</td>
-                  <td className="py-1 font-mono">{a.email}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {r.accounts && (
+            <>
+              <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+                Demo <span className="font-mono">{r.demoCode}</span> - every account uses the password{' '}
+                <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{r.password}</span> - open until {shortDate(r.expiresAt ?? null)}.
+              </p>
+              <table className="mt-2 w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                <thead><tr className="text-slate-500"><th className="py-1 pr-2 font-medium">Role</th><th className="py-1 font-medium">Sign in with</th></tr></thead>
+                <tbody>
+                  {r.accounts.map((a) => (
+                    <tr key={a.email} className="border-t border-emerald-100 dark:border-emerald-900">
+                      <td className="py-1 pr-2">{a.roleTitle}</td>
+                      <td className="py-1 font-mono">{a.email}</td>
+                    </tr>
+                  ))}
+                  {r.patient && (
+                    <tr className="border-t border-emerald-100 dark:border-emerald-900">
+                      <td className="py-1 pr-2">Patient (Patient Portal)</td>
+                      <td className="py-1 font-mono">{r.patient.email}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
-      )}
+      ))}
 
       <div>
         <div className="flex items-center justify-between">

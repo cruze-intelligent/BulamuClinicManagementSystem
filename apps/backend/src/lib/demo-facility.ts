@@ -3,6 +3,7 @@ import { randomInt } from 'crypto';
 import { prisma } from './prisma';
 import { generateFacilityCode, normalizePhoneKey } from './facility';
 import { roleTitle } from './document-signer';
+import { generatePortableId } from './patient-account';
 
 // Demonstration facilities for showing Bulamu to prospective clients. Every
 // demo is private to the one person it was sent to: its own facility, made-up
@@ -14,7 +15,8 @@ import { roleTitle } from './document-signer';
 
 export const DEMO_FACILITY_NAME = 'Bulamu Test Facility';
 export const DEMO_DAYS = 14;
-export const DEMO_EMAIL_DOMAIN = 'demo.bulamu.site';
+export { DEMO_EMAIL_DOMAIN } from './mailer';
+import { DEMO_EMAIL_DOMAIN } from './mailer';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -28,7 +30,16 @@ const STAFF = [
 ] as const;
 
 export type DemoAccount = { role: string; roleTitle: string; name: string; email: string };
-export type DemoResult = { clinicId: string; facilityCode: string; demoCode: string; password: string; expiresAt: Date; accounts: DemoAccount[] };
+export type DemoPatientAccount = { name: string; email: string; portableId: string };
+export type DemoResult = {
+  clinicId: string; facilityCode: string; demoCode: string; password: string; expiresAt: Date;
+  accounts: DemoAccount[];
+  /** A Patient Portal sign-in, so the patient's side can be shown too. */
+  patient: DemoPatientAccount;
+};
+
+/** The demo patient who gets a Patient Portal sign-in: she has visits, a verified result and a hospital stay. */
+const DEMO_PORTAL_PATIENT = 'Achieng Mary';
 
 // Easy to read aloud and type, and unlike any real password.
 const WORDS = [
@@ -108,7 +119,73 @@ export async function createDemoFacility(now: Date = new Date()): Promise<DemoRe
   }
 
   await seedDemoRecords(clinic.id, users, now);
-  return { clinicId: clinic.id, facilityCode: clinic.facilityCode, demoCode, password, expiresAt, accounts };
+  await seedReferralPartner(clinic.id, users, now);
+
+  // The patient's side: a Patient Portal account for one of the demo patients,
+  // with the same password, ready to use (no first-time password change).
+  const portalPatient = await prisma.patient.findFirstOrThrow({ where: { clinicId: clinic.id, name: DEMO_PORTAL_PATIENT } });
+  const portal = await prisma.patientAccount.create({
+    data: {
+      portableId: await generatePortableId(),
+      email: demoEmail('patient', demoCode),
+      phone: portalPatient.phone,
+      phoneKey: normalizePhoneKey(portalPatient.phone),
+      password: hash,
+      mustResetPassword: false,
+      createdByClinicId: clinic.id,
+      createdByUserId: users.frontdesk.id,
+      patients: { connect: { id: portalPatient.id } },
+    },
+  });
+  const patient = { name: DEMO_PORTAL_PATIENT, email: portal.email, portableId: portal.portableId };
+  return { clinicId: clinic.id, facilityCode: clinic.facilityCode, demoCode, password, expiresAt, accounts, patient };
+}
+
+export const DEMO_PARTNER_NAME = 'Bulamu Referral Hospital';
+
+/**
+ * A made-up hospital that belongs to one demo, so referrals can be shown in
+ * both directions without a demo ever reaching a real facility. It has no
+ * staff, closes with its demo and is not a demo of its own (parentFacilityId).
+ */
+async function seedReferralPartner(clinicId: string, users: Record<string, { id: string; role: string }>, now: Date) {
+  const demo = await prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { demoExpiresAt: true } });
+  const phone = '0700 000 950';
+  const partner = await prisma.clinic.create({
+    data: {
+      facilityCode: await generateFacilityCode(), name: DEMO_PARTNER_NAME, facilityType: 'HOSPITAL', phone, phoneKey: normalizePhoneKey(phone),
+      address: 'Plot 2, Demo Hill, Kampala', district: 'Kampala', isActive: true, registrationStatus: 'APPROVED', approvedAt: now,
+      isDemo: true, demoExpiresAt: demo.demoExpiresAt, parentFacilityId: clinicId,
+    },
+  });
+  const day = (n: number) => new Date(now.getTime() + n * DAY);
+
+  // Sent: Opio Daniel, referred on for a scan and accepted.
+  const opio = await prisma.patient.findFirstOrThrow({ where: { clinicId, name: 'Opio Daniel' } });
+  await prisma.referral.create({
+    data: {
+      patientId: opio.id, fromClinicId: clinicId, toClinicId: partner.id, urgency: 'ROUTINE', status: 'ACCEPTED',
+      reason: 'Abdominal ultrasound for recurrent urinary infections',
+      clinicalSummary: 'Three urinary tract infections in six months. Treated with metronidazole this visit. Please assess for a structural cause.',
+      referredByUserId: users.doctor.id, consentRecordedAt: day(-1), respondedAt: day(-1), responseNote: 'Booked for an ultrasound on Thursday.', createdAt: day(-1),
+    },
+  });
+
+  // Received: a patient referred in from the hospital, waiting for the front desk.
+  const incoming = await prisma.patient.create({
+    data: {
+      clinicId: partner.id, name: 'Kisakye Ruth', phone: '0700 000 951', sex: 'FEMALE', dateOfBirth: new Date('1990-03-09'),
+      district: 'Kampala', allergyStatus: 'NONE_KNOWN', consentGivenAt: day(-2),
+    },
+  });
+  await prisma.referral.create({
+    data: {
+      patientId: incoming.id, fromClinicId: partner.id, toClinicId: clinicId, urgency: 'URGENT', status: 'PENDING',
+      reason: 'Follow-up of hypertension closer to home',
+      clinicalSummary: 'Admitted with blood pressure 190/110, now 140/90 on amlodipine 5 mg daily. Please review in two weeks and continue treatment.',
+      consentRecordedAt: day(0), createdAt: day(0),
+    },
+  });
 }
 
 /** Closes every demo whose time has run out: nobody can sign in to it any more. */
@@ -121,6 +198,7 @@ export async function closeExpiredDemos(now: Date = new Date()): Promise<number>
   const ids = expired.map((c) => c.id);
   await prisma.$transaction([
     prisma.user.updateMany({ where: { clinicId: { in: ids } }, data: { isActive: false } }),
+    prisma.patientAccount.updateMany({ where: { createdByClinicId: { in: ids }, status: 'ACTIVE' }, data: { status: 'SUSPENDED' } }),
     prisma.clinic.updateMany({ where: { id: { in: ids } }, data: { isActive: false, deletedAt: now } }),
   ]);
   return ids.length;
@@ -149,7 +227,7 @@ export type DemoUsage = {
  */
 export async function demoUsage(now: Date = new Date(), limit = 50): Promise<DemoUsage[]> {
   const demos = await prisma.clinic.findMany({
-    where: { isDemo: true },
+    where: { isDemo: true, parentFacilityId: null },
     orderBy: { createdAt: 'desc' },
     take: limit,
     select: {

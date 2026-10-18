@@ -5,8 +5,9 @@ import {
 } from './mailer';
 import { frontendUrl } from './operator-alerts';
 
-// One of every email Bulamu sends, filled with made-up details, so their look
-// and wording can be checked in a real inbox without touching anyone's account.
+// One of every email Bulamu sends, filled with made-up details and with the
+// subject a recipient would see, so their look and wording can be checked in a
+// real inbox without touching anyone's account.
 // Links point at the real site; codes, tokens and addresses are invented.
 
 export type SampleEmail = { subject: string; html: string };
@@ -30,6 +31,7 @@ export function buildSampleEmails(now: Date = new Date()): SampleEmail[] {
           { roleTitle: 'Pharmacist', name: 'Brian Mugisha', email: 'pharmacist.kvdbmz@demo.bulamu.site' },
           { roleTitle: 'Nurse / Midwife', name: 'Sr Prossy Namubiru', email: 'nurse.kvdbmz@demo.bulamu.site' },
         ],
+        patient: { name: 'Achieng Mary', email: 'patient.kvdbmz@demo.bulamu.site', portalUrl: frontendUrl('/patient-portal/login') },
       }),
     },
     { subject: 'We have received your registration - Mbarara Community Clinic', html: registrationReceivedEmail('Grace Nankya', 'Mbarara Community Clinic', 'BLM-7Q4K2D') },
@@ -63,5 +65,5 @@ export function buildSampleEmails(now: Date = new Date()): SampleEmail[] {
       }),
     },
     { subject: '[Bulamu] New feedback - Mbarara Community Clinic', html: feedbackSubmittedEmail('Dr Samuel Okello', 'DOCTOR', 'Mbarara Community Clinic', 'It would help to print the lab request form for samples we send out.\nThank you for the quick fixes last week!') },
-  ].map((mail) => ({ subject: `[Sample] ${mail.subject}`, html: mail.html }));
+  ];
 }

@@ -6,7 +6,7 @@ import { recordAudit } from '../lib/audit';
 import { sendMail, facilityApprovedEmail, facilityRejectedEmail, facilityStatusEmail, facilityRemovedEmail, formatEmailDate, MailResult } from '../lib/mailer';
 import { alertOperator, deliveryNote, frontendUrl } from '../lib/operator-alerts';
 import { generateReceiptPdf } from '../lib/pdf';
-import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage, facilityTypeLabel, REAL_FACILITY } from '../lib/facility';
+import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage, facilityTypeLabel, REAL_FACILITY, referralPeers } from '../lib/facility';
 import { buildCsv, sendCsv } from '../lib/csv';
 import bcrypt from 'bcrypt';
 import { sendRouteError } from '../lib/http-error';
@@ -190,10 +190,10 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
   // Facility directory: non-sensitive listing any authenticated staff member
   // can see, so a clinic can pick a destination when referring a patient.
-  fastify.get('/clinics', { preHandler: [authenticate] }, async (_request, reply) => {
+  fastify.get('/clinics', { preHandler: [authenticate] }, async (request, reply) => {
     try {
       const clinics = await prisma.clinic.findMany({
-        where: { ...REAL_FACILITY, isActive: true },
+        where: await referralPeers(getAuthUser(request).clinicId),
         select: { id: true, name: true, facilityType: true, district: true, subCounty: true, parish: true },
         orderBy: { name: 'asc' },
       });

@@ -5,6 +5,7 @@ import { hashToken } from '../lib/crypto';
 import { normalizePhoneKey } from '../lib/patient-account';
 import { sendPasswordLink } from '../lib/portal-invite';
 import { sendRouteError } from '../lib/http-error';
+import { DEMO_EMAIL_DOMAIN } from '../lib/demo-facility';
 
 const MIN_PASSWORD_LENGTH = 10;
 
@@ -33,7 +34,8 @@ export async function patientAuthRoutes(fastify: FastifyInstance) {
           OR: [
             { portableId: identifier.toUpperCase() },
             { email: { equals: identifier, mode: 'insensitive' } },
-            ...(phoneKey ? [{ phoneKey }] : []),
+            // Demo patients sign in by email or Patient ID; their phone is made up.
+            ...(phoneKey ? [{ phoneKey, createdByClinic: { isDemo: false } }] : []),
           ],
         },
       });
@@ -48,6 +50,7 @@ export async function patientAuthRoutes(fastify: FastifyInstance) {
       }
 
       if (account.status !== 'ACTIVE') {
+        if (account.email.endsWith(`@${DEMO_EMAIL_DOMAIN}`)) return reply.status(403).send({ error: 'This demo has ended', reason: 'DEMO_ENDED' });
         return reply.status(403).send({ error: 'This account is suspended' });
       }
 

@@ -83,8 +83,8 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // One of every email Bulamu sends - made-up details, "[Sample]" in the
-  // subject - to the operator inbox (never an address the caller chooses), so
+  // One of every email Bulamu sends - made-up details, exactly as a recipient
+  // would see it - to the operator inbox (never an address the caller chooses), so
   // their look and wording can be checked in a real inbox.
   fastify.post('/super-admin/system/sample-emails', { preHandler: [requireRole('SUPER_ADMIN')] }, async (_request, reply) => {
     try {
@@ -106,7 +106,7 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
   // Creates a new private demo facility and emails its sign-ins to the address given.
   // The logins are also returned, so they can be shown once on screen.
   fastify.post('/super-admin/system/demo-facility', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
-    const { email } = (request.body ?? {}) as { email?: unknown };
+    const { email, replacesEarlier } = (request.body ?? {}) as { email?: unknown; replacesEarlier?: unknown };
     if (!isValidEmail(email)) return reply.status(400).send({ error: 'Enter the email address to send the demo logins to' });
     try {
       // Every request is a new demo of its own, so logins already sent to
@@ -115,10 +115,12 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
       const demo = await createDemoFacility();
       const result = await sendMail({
         to: email.trim(),
-        subject: 'Thank you for your interest in Bulamu: your demo is ready',
+        subject: replacesEarlier === true ? 'Your Bulamu demo, with new sign-ins that work' : 'Thank you for your interest in Bulamu: your demo is ready',
         html: demoFacilityEmail({
           loginUrl: frontendUrl('/auth/login'), registerUrl: frontendUrl('/auth/register'),
           password: demo.password, expiresAt: demo.expiresAt, accounts: demo.accounts,
+          patient: { name: demo.patient.name, email: demo.patient.email, portalUrl: frontendUrl('/patient-portal/login') },
+          replacesEarlier: replacesEarlier === true,
         }),
       });
       const authUser = getAuthUser(request);
@@ -129,7 +131,7 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
       });
       return {
         success: true, facilityCode: demo.facilityCode, demoCode: demo.demoCode, password: demo.password,
-        expiresAt: demo.expiresAt.toISOString(), accounts: demo.accounts, result,
+        expiresAt: demo.expiresAt.toISOString(), accounts: demo.accounts, patient: demo.patient, result,
       };
     } catch (error: any) {
       return sendRouteError(reply, error);

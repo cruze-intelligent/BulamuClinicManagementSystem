@@ -4,6 +4,10 @@ import { BULAMU_LOGO_PNG } from './brand-logo';
 const BRAND_TEAL = '#0f766e';
 const BRAND_DARK = '#115e59';
 
+/** Demo accounts' addresses: placeholders that must never be emailed. */
+export const DEMO_EMAIL_DOMAIN = 'demo.bulamu.site';
+const isDemoAddress = (to: string) => to.split(',').some((a) => a.trim().toLowerCase().endsWith(`@${DEMO_EMAIL_DOMAIN}`));
+
 // Where Bulamu-operations notifications (new registrations, approvals,
 // payments, access requests...) are sent. Overridable via env (comma-separated
 // for several inboxes); defaults to the standing operator inbox so this keeps
@@ -91,6 +95,12 @@ export async function sendMail(input: {
   html: string;
   attachments?: MailAttachment[];
 }): Promise<MailResult> {
+  if (isDemoAddress(input.to)) {
+    const result: MailResult = { sent: false, reason: 'Demo address - demos never send email' };
+    logDelivery(input, result);
+    return result;
+  }
+
   const client = getTransporter();
   if (!client) {
     const result: MailResult = { sent: false, reason: 'SMTP not configured' };
@@ -572,7 +582,7 @@ const DEMO_TOUR: Array<{ title: string; body: string }> = [
   { title: 'Switch to the front desk', body: 'Register a new patient under Patients, then book them in Appointments with Dr Samuel Okello for today.' },
   { title: 'Then the doctor', body: 'In Consultations, choose Record visit for your new patient: symptoms, a coded diagnosis and a prescription (try amoxicillin for Achieng Mary to see her penicillin allergy warning). Then order a Malaria RDT for them on the Lab Tests page.' },
   { title: 'Now the lab technician', body: 'Lab Tests shows the test the doctor just ordered. Enter the result; it waits for a clinician to verify it before the patient is told.' },
-  { title: 'Finish as the pharmacist', body: 'Dispensing shows the prescription waiting. Dispense it and watch the stock go down in Inventory, next to the low-stock and expiry alerts.' },
+  { title: 'Then the pharmacist', body: 'Dispensing shows the prescription waiting. Dispense it and watch the stock go down in Inventory, next to the low-stock and expiry alerts.' },
 ];
 
 const DEMO_ALSO: Array<[string, string]> = [
@@ -587,17 +597,29 @@ export function demoFacilityEmail(input: {
   password: string;
   expiresAt: Date;
   accounts: Array<{ roleTitle: string; name: string; email: string }>;
+  /** The demo patient's Patient Portal sign-in. */
+  patient?: { name: string; email: string; portalUrl: string };
+  /** For someone whose earlier sign-ins did not work: says sorry and that these replace them. */
+  replacesEarlier?: boolean;
 }): string {
   const expires = formatEmailDateTime(input.expiresAt);
-  const rows = input.accounts.map((a, i) => `
+  const patient = input.patient;
+  const signIns = [
+    ...input.accounts.map((a) => ({ ...a, where: '' })),
+    ...(patient ? [{ roleTitle: 'Patient', name: patient.name, email: patient.email, where: `<div style="margin-top:3px;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:${FAINT}">at the <a href="${patient.portalUrl}" style="color:${BRAND_TEAL}">Patient Portal</a></div>` }] : []),
+  ];
+  const tour = patient
+    ? [...DEMO_TOUR, { title: 'Finish as the patient', body: `Sign in to the <a href="${patient.portalUrl}" style="color:${BRAND_TEAL}">Patient Portal</a> as ${escapeHtml(patient.name)}: her own visits, verified lab results and hospital stay, on her phone. Ask for an appointment there and it appears on the front desk's Appointments page.` }]
+    : DEMO_TOUR;
+  const rows = signIns.map((a, i) => `
       <tr>
-        <td style="padding:10px;vertical-align:top;${i < input.accounts.length - 1 ? 'border-bottom:1px solid #f1f3f5;' : ''}">
+        <td style="padding:10px;vertical-align:top;${i < signIns.length - 1 ? 'border-bottom:1px solid #f1f3f5;' : ''}">
           <div style="font-size:14px;font-weight:600;color:${INK}">${escapeHtml(a.roleTitle)}</div>
           <div style="font-size:12px;color:${FAINT}">${escapeHtml(a.name)}</div>
         </td>
-        <td style="padding:10px;vertical-align:top;${i < input.accounts.length - 1 ? 'border-bottom:1px solid #f1f3f5;' : ''}font-family:${MONO};font-size:13px;color:${BRAND_DARK};word-break:break-all">${escapeHtml(a.email)}</td>
+        <td style="padding:10px;vertical-align:top;${i < signIns.length - 1 ? 'border-bottom:1px solid #f1f3f5;' : ''}font-family:${MONO};font-size:13px;color:${BRAND_DARK};word-break:break-all">${escapeHtml(a.email)}${a.where}</td>
       </tr>`).join('');
-  const steps = DEMO_TOUR.map((step, i) => `
+  const steps = tour.map((step, i) => `
       <tr>
         <td style="vertical-align:top;padding:0 12px 16px 0;width:26px">
           <div style="width:24px;height:24px;line-height:24px;border-radius:12px;background:${BRAND_TEAL};color:#ffffff;font-size:12px;font-weight:700;text-align:center">${i + 1}</div>
@@ -612,8 +634,9 @@ export function demoFacilityEmail(input: {
   return emailShell(`
     ${heading('Thank you for your interest in Bulamu')}
     ${para('Hello,')}
+    ${input.replacesEarlier ? callout(`<strong style="color:${INK}">We are sorry: the sign-ins we sent you earlier did not work.</strong> This email replaces them. The demo below is new, set up just for you, and every sign-in in it has been checked.`) : ''}
     ${para('Thank you for taking the time to look at Bulamu. Rather than a slideshow, we have set up a working demo facility just for you, already filled with patients, visits, prescriptions, lab results, stock, wards and invoices.')}
-    ${para('There is a sign-in for every role, and the short tour below walks you through it, so you can see your facility the way each person in it would: from the front desk to the pharmacy.')}
+    ${para('There is a sign-in for every role, and the short tour below walks you through it, so you can see your facility the way each person in it would: from the front desk to the pharmacy, and the patient at home.')}
     ${action(input.loginUrl, 'Open your demo')}
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid ${TINT_LINE};border-radius:12px;background:${TINT}">

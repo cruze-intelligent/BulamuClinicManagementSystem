@@ -53,6 +53,15 @@ afterEach(() => {
   vi.resetModules();
 });
 
+describe('demo addresses', () => {
+  it('are never emailed: they are placeholders', async () => {
+    const mailer = await loadMailer({ MAIL_TRANSPORT: 'relay' });
+    const result = await mailer.sendMail({ to: 'doctor.kvdbmz@demo.bulamu.site', subject: 'x', html: '<p>x</p>' });
+    expect(result.sent).toBe(false);
+    expect(captured).toHaveLength(0);
+  });
+});
+
 describe('email delivery when SMTP is blocked', () => {
   it('falls back to the website bridge when the mail server cannot be reached, and keeps using it', async () => {
     const mailer = await loadMailer({});

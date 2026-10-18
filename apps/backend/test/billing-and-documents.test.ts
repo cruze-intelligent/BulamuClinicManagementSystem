@@ -298,7 +298,7 @@ describe('sample emails', () => {
     expect(mails).toHaveLength(res.json().total);
     for (const mail of mails) {
       expect(mail.to).toBe(OPERATOR);
-      expect(mail.subject.startsWith('[Sample] ')).toBe(true);
+      expect(mail.subject).not.toMatch(/sample/i);
       expect(mail.html).toContain('cid:bulamu-logo');
       expect(mail.html).toContain('Patient care, organised.');
       expect(mail.html).not.toMatch(/undefined|null|NaN|\[object/);

@@ -55,6 +55,81 @@ describe('demo facilities', () => {
     expect(await prisma.user.findUnique({ where: { email: 'admin@scholara.site' } })).toBeNull();
   });
 
+  it("includes the patient's side: a Patient Portal sign-in that works with the same password", async () => {
+    const demo = (await create(await operator())).json();
+    expect(demo.patient).toMatchObject({ name: 'Achieng Mary', email: `patient.${demo.demoCode}@demo.bulamu.site` });
+    const mail = sendMailMock.mock.calls.map(([m]) => m).find((m) => /your demo is ready/i.test(m.subject));
+    expect(mail.html).toContain(demo.patient.email);
+    expect(mail.html).toContain('Finish as the patient');
+
+    const login = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: demo.patient.email, password: demo.password } });
+    expect(login.statusCode).toBe(200);
+    expect(login.json().mustResetPassword).toBe(false);
+    const me = await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(login.json().token) });
+    expect(me.statusCode).toBe(200);
+    expect(JSON.stringify(me.json())).toContain('Malaria RDT');
+  });
+
+  it("a demo's made-up patient can never be found or linked from a real facility", async () => {
+    const token = await operator();
+    const demo = (await create(token)).json();
+    const real = await seedClinic({ name: 'Real Clinic' });
+    const { user, password } = await seedUser({ clinicId: real.id, role: 'NURSE' });
+    const nurse = (await loginAs(app, user.email, password)).token;
+    const lookup = await app.inject({ method: 'POST', url: '/patients/lookup-account', headers: authHeader(nurse), payload: { portableId: demo.patient.portableId } });
+    expect(lookup.statusCode).toBe(404);
+    // ...and its made-up phone number never blocks a real patient's account.
+    const { findAccountByPhone } = await import('../src/lib/patient-account');
+    const demoPatient = await prisma.patient.findFirstOrThrow({ where: { patientAccount: { email: demo.patient.email } } });
+    expect(await findAccountByPhone(demoPatient.phone, real.id)).toBeNull();
+  });
+
+  it('never meets live data: a demo sees only its own partner hospital, and real facilities never see a demo', async () => {
+    const token = await operator();
+    const demo = (await create(token)).json();
+    const real = await seedClinic({ name: 'Real Hospital' });
+    const { user, password } = await seedUser({ clinicId: real.id, role: 'DOCTOR' });
+    const realDoctor = (await loginAs(app, user.email, password)).token;
+    const demoDoctor = (await loginAs(app, demo.accounts.find((a: any) => a.role === 'DOCTOR').email, demo.password)).token;
+
+    const seenByDemo = (await app.inject({ method: 'GET', url: '/clinics', headers: authHeader(demoDoctor) })).json().clinics.map((c: any) => c.name);
+    expect(seenByDemo).toEqual(['Bulamu Referral Hospital']);
+    const seenByReal = (await app.inject({ method: 'GET', url: '/clinics', headers: authHeader(realDoctor) })).json().clinics.map((c: any) => c.name);
+    expect(seenByReal).toContain('Real Hospital');
+    expect(seenByReal).not.toContain('Bulamu Referral Hospital');
+    expect(seenByReal).not.toContain('Bulamu Test Facility');
+
+    // A made-up patient can never be referred to a real facility.
+    const demoClinicId = (await prisma.user.findUniqueOrThrow({ where: { email: demo.accounts[0].email } })).clinicId;
+    const patient = await prisma.patient.findFirstOrThrow({ where: { clinicId: demoClinicId, name: 'Mukasa Joseph' } });
+    const toReal = await app.inject({
+      method: 'POST', url: '/referrals', headers: authHeader(demoDoctor),
+      payload: { patientId: patient.id, toClinicId: real.id, reason: 'Review', consentConfirmed: true },
+    });
+    expect(toReal.statusCode).toBe(404);
+    expect(await prisma.referral.count({ where: { toClinicId: real.id } })).toBe(0);
+    // ...while the demo's own partner hospital works, both ways.
+    const partner = await prisma.clinic.findFirstOrThrow({ where: { parentFacilityId: demoClinicId } });
+    const toPartner = await app.inject({
+      method: 'POST', url: '/referrals', headers: authHeader(demoDoctor),
+      payload: { patientId: patient.id, toClinicId: partner.id, reason: 'Review', consentConfirmed: true },
+    });
+    expect(toPartner.statusCode).toBe(200);
+    expect(await prisma.referral.count({ where: { toClinicId: demoClinicId, status: 'PENDING' } })).toBe(1);
+
+    // The partner hospital is part of the demo, not a demo of its own.
+    const usage = (await app.inject({ method: 'GET', url: '/super-admin/demos', headers: authHeader(token) })).json().demos;
+    expect(usage).toHaveLength(1);
+  });
+
+  it('says sorry and replaces the earlier sign-ins when asked to', async () => {
+    const res = await app.inject({ method: 'POST', url: '/super-admin/system/demo-facility', headers: authHeader(await operator()), payload: { email: 'prospect@example.org', replacesEarlier: true } });
+    expect(res.statusCode).toBe(200);
+    const mail = sendMailMock.mock.calls.map(([m]) => m).find((m) => m.to === 'prospect@example.org');
+    expect(mail.subject).toBe('Your Bulamu demo, with new sign-ins that work');
+    expect(mail.html).toContain('the sign-ins we sent you earlier did not work');
+  });
+
   it('fills it with enough made-up work to show every part of Bulamu', async () => {
     await create(await operator());
     const clinic = await prisma.clinic.findFirstOrThrow({ where: { isDemo: true } });
@@ -152,6 +227,9 @@ describe('demo facilities', () => {
     expect((await app.inject({ method: 'POST', url: `/super-admin/demos/${otherClinic}/close`, headers: authHeader(token) })).statusCode).toBe(200);
     const closed = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: other.accounts[0].email, password: other.password } });
     expect(closed.json().reason).toBe('DEMO_ENDED');
+    // The demo patient's portal sign-in closes with it.
+    const portal = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: other.patient.email, password: other.password } });
+    expect(portal.json().reason).toBe('DEMO_ENDED');
   });
 
   it("stays out of the platform's figures, and its staff are never emailed", async () => {

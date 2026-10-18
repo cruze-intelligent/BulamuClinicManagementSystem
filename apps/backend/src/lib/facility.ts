@@ -7,6 +7,20 @@ import { prisma } from './prisma';
 // facility (see demo-facility.ts).
 export const REAL_FACILITY = { deletedAt: null, isDemo: false, users: { none: { role: 'SUPER_ADMIN' as const } } };
 
+/**
+ * The facilities another facility may see and refer to. Live and demo data
+ * never meet: a real facility sees real ones only, and a demo sees only its
+ * own made-up partner hospital (and the demo it belongs to).
+ */
+export async function referralPeers(clinicId: string) {
+  const clinic = await prisma.clinic.findUnique({ where: { id: clinicId }, select: { isDemo: true, parentFacilityId: true } });
+  if (!clinic?.isDemo) return { ...REAL_FACILITY, isActive: true };
+  return {
+    deletedAt: null, isDemo: true, isActive: true,
+    OR: [{ parentFacilityId: clinicId }, ...(clinic.parentFacilityId ? [{ id: clinic.parentFacilityId }] : [])],
+  };
+}
+
 // Excludes ambiguous characters (0/O, 1/I/L) so codes are easy to read aloud
 // or copy onto a printed document.
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
