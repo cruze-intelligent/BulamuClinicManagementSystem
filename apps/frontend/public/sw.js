@@ -4,7 +4,7 @@
 // The site is a static export with trailing slashes: /dashboard redirects to
 // /dashboard/. Browsers refuse a cached *redirect* when opening a page, so the
 // shell lists the real (slashed) addresses and nothing redirected is stored.
-const CACHE_NAME = "bulamu-shell-v3";
+const CACHE_NAME = "bulamu-shell-v4";
 const APP_SHELL = [
   "/",
   "/auth/login/",
@@ -27,6 +27,8 @@ const APP_SHELL = [
   "/sync-activity/",
   "/reports/",
   "/billing/",
+  "/invoices/",
+  "/finances/",
   "/super-admin/",
   "/help/",
   "/install/",
@@ -37,6 +39,8 @@ const APP_SHELL = [
   "/icons/icon-512.png",
 ];
 const OFFLINE_PAGE = "/offline/";
+// How long a page may take from the network before the saved copy is shown.
+const SLOW_NETWORK_MS = 3000;
 
 // A redirected response can't be used to open a page - store a clean copy.
 async function storable(response) {
@@ -51,16 +55,22 @@ async function put(cache, key, response) {
   if (clean) await cache.put(key, clean);
 }
 
-// The scripts and styles a page loads, so a page never opened before still
-// works offline. Best effort: a miss here only means that page needs one
-// online visit first.
+// The scripts and styles a page loads - and the fonts its stylesheets load -
+// so a page never opened before still works offline and nothing is downloaded
+// twice. Best effort: a miss here only means that page needs one online visit first.
+const ASSET_PATTERN = /\/_next\/static\/[^"'\s)\\]+/g;
 async function cachePageAssets(cache, html) {
-  const assets = new Set(html.match(/\/_next\/static\/[^"'\s)\\]+/g) || []);
+  const assets = new Set(html.match(ASSET_PATTERN) || []);
   await Promise.all(
     [...assets].map(async (asset) => {
       if (await cache.match(asset)) return;
       try {
-        await put(cache, asset, await fetch(asset));
+        const response = await fetch(asset);
+        if (asset.endsWith(".css") && response.ok) {
+          const css = await response.clone().text();
+          await cachePageAssets(cache, (css.match(ASSET_PATTERN) || []).join(" "));
+        }
+        await put(cache, asset, response);
       } catch {
         // Skipped - fetched and cached on first online use instead.
       }
@@ -103,14 +113,18 @@ self.addEventListener("activate", (event) => {
 
 // /patients/view/?id=... is the same page as /patients/view/ - look the page
 // up without its query, and with or without the trailing slash.
-async function cachedPage(url) {
+async function savedPage(url) {
   const path = url.pathname;
   const candidates = [url.href, path, path.endsWith("/") ? path : `${path}/`];
   for (const candidate of candidates) {
     const hit = await caches.match(candidate, { ignoreSearch: true });
     if (hit) return hit;
   }
-  return caches.match(OFFLINE_PAGE);
+  return null;
+}
+
+async function cachedPage(url) {
+  return (await savedPage(url)) || caches.match(OFFLINE_PAGE);
 }
 
 self.addEventListener("fetch", (event) => {
@@ -122,20 +136,42 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === "navigate") {
-    // Network first, so staff always get the latest version when online.
+    // Network first, so staff get the latest version when online - but on a slow
+    // connection a page this device already has opens from it after a short
+    // wait instead of leaving the screen blank; the fresh copy is still saved
+    // for next time.
     event.respondWith(
-      fetch(request)
-        .then((response) => {
+      (async () => {
+        const network = fetch(request).then((response) => {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => put(cache, url.pathname, copy)).catch(() => {});
           return response;
-        })
-        .catch(() => cachedPage(url))
+        });
+        const slow = new Promise((resolve) => setTimeout(resolve, SLOW_NETWORK_MS, null));
+        const first = await Promise.race([network.catch(() => null), slow]);
+        if (first) return first;
+        const saved = await savedPage(url);
+        if (saved) return saved;
+        return network.catch(() => cachedPage(url));
+      })()
     );
     return;
   }
 
-  // Scripts, styles and icons: from the cache at once, refreshed in the background.
+  // Built files carry a fingerprint in their name and never change: once saved,
+  // they are used as they are - no download again, which saves mobile data.
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(
+      caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => put(cache, request, copy)).catch(() => {});
+        return response;
+      }))
+    );
+    return;
+  }
+
+  // Everything else (icons, page data): from the cache at once, refreshed in the background.
   event.respondWith(
     caches.match(request).then((cached) => {
       const network = fetch(request)

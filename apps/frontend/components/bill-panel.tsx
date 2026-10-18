@@ -133,7 +133,7 @@ export function BillPanel({
     }), (data) => {
       setJustPaid(data.payment);
       // The receipt options are at the top of the panel - bring them into view.
-      panelRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      panelRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' });
       setReference('');
       setPayerName('');
       setOtherPayer(false);

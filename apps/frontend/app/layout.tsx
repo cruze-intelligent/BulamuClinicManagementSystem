@@ -14,6 +14,16 @@ const brandFont = Plus_Jakarta_Sans({ subsets: ["latin"], display: "swap", varia
 // avoids a flash of the wrong theme when the stored preference is "dark".
 const themeInitScript = `(function(){try{var t=localStorage.getItem('bulamu-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}if(t==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();`;
 
+// The API sleeps after a quiet spell and takes up to a minute to wake. Every
+// page wakes it the moment it starts loading - before the app itself has even
+// downloaded - at most once every few minutes per tab, so by the time someone
+// signs in or a page asks for data it is usually up. /health never touches
+// the database.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const wakeApiScript = API_URL
+  ? `(function(){try{var k="bulamu-api-woken",t=+(sessionStorage.getItem(k)||0);if(Date.now()-t<240000)return;sessionStorage.setItem(k,String(Date.now()));fetch(${JSON.stringify(API_URL)}+"/health",{cache:"no-store"}).catch(function(){});}catch(e){}})();`
+  : "";
+
 // Public GA measurement ID - not a secret (Google Analytics tags are always
 // visible in page source), but kept out of local dev traffic below so
 // day-to-day testing doesn't pollute real analytics.
@@ -97,15 +107,21 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Open the connection to the API early: saves the DNS, TCP and TLS set-up (half a second or more on mobile) on the first request. */}
+        {API_URL && <link rel="preconnect" href={API_URL} crossOrigin="anonymous" />}
+        {API_URL && <link rel="dns-prefetch" href={API_URL} />}
+        {wakeApiScript && <script dangerouslySetInnerHTML={{ __html: wakeApiScript }} />}
       </head>
       <body className={`${brandFont.variable} antialiased`}>
         {process.env.NODE_ENV === "production" && (
           <>
             <Script
               src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-              strategy="afterInteractive"
+              // Analytics waits until the page is idle, so it never competes with
+              // the app itself for a slow connection.
+              strategy="lazyOnload"
             />
-            <Script id="ga-init" strategy="afterInteractive">
+            <Script id="ga-init" strategy="lazyOnload">
               {`window.dataLayer = window.dataLayer || [];
                 function gtag(){dataLayer.push(arguments);}
                 gtag('js', new Date());
