@@ -244,7 +244,8 @@ describe('super admin analytics', () => {
     for (let i = 0; i < 3; i++) await get(nurseLogin.token, '/patients/' + a.clinic.id);
     await get(adminLogin.token, '/patients/' + a.clinic.id);
 
-    await vi.waitFor(async () => expect(await prisma.userActivityDay.count()).toBeGreaterThanOrEqual(2), { timeout: 10_000 });
+    // Both staff rows (the operator's own sign-in writes one too, so a plain count could finish early).
+    await vi.waitFor(async () => expect(await prisma.userActivityDay.count({ where: { userId: { in: [a.nurse.id, a.admin.id] } } })).toBe(2), { timeout: 10_000 });
     const today = eastAfricaDay();
     const nurseDays = await prisma.userActivityDay.findMany({ where: { userId: a.nurse.id } });
     expect(nurseDays).toHaveLength(1);
