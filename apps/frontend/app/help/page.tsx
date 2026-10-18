@@ -50,7 +50,22 @@ const faqCategories: FaqCategory[] = [
       {
         question: 'Does Bulamu collect money from our patients?',
         answer:
-          "No. Invoices are your facility's own bills to your patients: a fee entered when recording a consultation creates the invoice, and your facility collects the payment and marks it paid under Invoices. Bulamu only keeps the record. The only payment Bulamu takes is your facility's subscription, through Pesapal.",
+          "No - patients pay your facility as they always have, in cash, by mobile money, card, bank or insurance. Bulamu keeps the record: what each patient was charged and every payment your staff recorded. The only payment Bulamu takes is your facility's subscription, through Pesapal.",
+      },
+      {
+        question: 'How do we keep a full bill for every patient?',
+        answer:
+          "A fee entered when a visit is recorded opens the patient's bill. Under Bills & Payments, open it to add the rest of their care: the lab tests and medicines from the visit and any nights on a ward are listed ready to add (medicines at their stock price; tests and ward nights at the price you last charged). Use New bill for anything outside a visit, such as medicine sold over the counter. A test or medicine can only be billed once.",
+      },
+      {
+        question: 'How do we record a payment and give a receipt?',
+        answer:
+          "Open the bill, choose how the patient paid, and record the amount - all of the balance or part of it, with the mobile money transaction ID or insurance number where there is one. Each payment gets your facility's next receipt number. Print the receipt, or send it by SMS, WhatsApp or email. Front desk, clinicians and pharmacists can record payments; a payment taken by mistake is voided by an administrator, with the reason, and stays on record marked VOID.",
+      },
+      {
+        question: 'How do we balance the cash at the end of the day?',
+        answer:
+          "Each member of staff sees what they received today on Bills & Payments, to hand over. Administrators open Finances: the day's takings by method and by person, every receipt, and the cash that should be in the drawer (cash received less cash paid out). The month view sets money received against expenses, shows what is still owed, and downloads as a spreadsheet for your books.",
       },
       {
         question: 'How do I put our logo on documents?',

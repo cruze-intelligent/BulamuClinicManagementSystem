@@ -103,6 +103,26 @@ describe('itemised bills', () => {
     ]);
   });
 
+  it('charges a ward stay by the night: suggests the nights not yet charged, at the price last used for that ward', async () => {
+    const f = await facility();
+    const ward = await prisma.ward.create({ data: { clinicId: f.clinic.id, name: 'Female Ward', type: 'FEMALE', beds: 10 } });
+    const stay = await prisma.admission.create({
+      data: { clinicId: f.clinic.id, patientId: f.patient.id, wardId: ward.id, reason: 'Severe malaria', admittedByUserId: f.doctor.user.id, admittedAt: new Date(Date.now() - 50 * 60 * 60 * 1000) },
+    });
+    const suggested = (await detail(f.desk.token, f.invoice.id)).suggestions.find((s: any) => s.kind === 'ADMISSION');
+    expect(suggested).toMatchObject({ description: 'Female Ward - ward stay (per night)', quantity: 3, unitPrice: null, admissionId: stay.id });
+
+    const added = await app.inject({ method: 'POST', url: `/invoices/${f.invoice.id}/items`, headers: authHeader(f.desk.token), payload: { ...suggested, quantity: 2, unitPrice: 15000 } });
+    expect(added.json().invoice.amount).toBe(20000 + 30000);
+    // One night still to charge, now at the ward's price.
+    expect((await detail(f.desk.token, f.invoice.id)).suggestions.find((s: any) => s.kind === 'ADMISSION')).toMatchObject({ quantity: 1, unitPrice: 15000 });
+
+    const other = await prisma.patient.create({ data: { name: 'Someone Else', phone: '0700', clinicId: f.clinic.id } });
+    const theirs = await prisma.admission.create({ data: { clinicId: f.clinic.id, patientId: other.id, wardId: ward.id, reason: 'x', admittedByUserId: f.doctor.user.id } });
+    const wrong = await app.inject({ method: 'POST', url: `/invoices/${f.invoice.id}/items`, headers: authHeader(f.desk.token), payload: { kind: 'ADMISSION', description: 'Ward', unitPrice: 1000, admissionId: theirs.id } });
+    expect(wrong.json().error).toBe("That ward stay isn't this patient's");
+  });
+
   it('checks every charge: a description, a whole positive price, a sensible quantity - and only this patient\'s tests', async () => {
     const f = await facility();
     const add = (payload: object) => app.inject({ method: 'POST', url: `/invoices/${f.invoice.id}/items`, headers: authHeader(f.desk.token), payload });

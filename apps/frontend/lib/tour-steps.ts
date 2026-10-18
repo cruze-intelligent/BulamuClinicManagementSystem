@@ -1,6 +1,6 @@
 import {
   ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FlaskConical,
-  HelpCircle, History, Home, MapPinned, Moon, Package, Pill, ShieldCheck, Stethoscope, Users, type LucideIcon,
+  HelpCircle, History, Home, MapPinned, Moon, Package, Pill, Receipt, ShieldCheck, Stethoscope, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /**
@@ -109,6 +109,16 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       body: 'HMIS 105 monthly reporting (with a DHIS2 push), and exports for your records.',
     },
     {
+      target: nav('/invoices'), where: 'Menu', icon: Receipt,
+      title: 'Bills and payments',
+      body: 'Every charge for a patient - visit, lab tests, medicines, ward stay - and every payment your staff record, each with a numbered receipt. Patients pay the facility as usual; Bulamu keeps the record.',
+    },
+    {
+      target: nav('/finances'), where: 'Menu', icon: Wallet,
+      title: 'Finances',
+      body: "Each day's takings by method and by member of staff, the month's money in against money out, and your expenses. Download it all as a spreadsheet for your books.",
+    },
+    {
       target: nav('/billing'), where: 'Menu', icon: CreditCard,
       title: 'Subscription',
       body: 'Your free trial or subscription, payment through Pesapal, and receipts. You are reminded before it ends.',
@@ -206,6 +216,11 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       title: 'Patients',
       body: 'Look a patient up to check their allergies and prescriptions before you dispense.',
     },
+    {
+      target: nav('/invoices'), where: 'Menu', icon: Receipt,
+      title: 'Medicines on the bill',
+      body: "Add dispensed medicines to the patient's bill at their stock price, or open a bill for medicine sold over the counter, and record the payment with a numbered receipt.",
+    },
     ...closing,
   ],
   LAB_TECH: [
@@ -244,6 +259,11 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       target: nav('/chw-visit'), where: 'Menu', icon: MapPinned,
       title: 'Household visits',
       body: 'Record household visits for outreach work, even without internet.',
+    },
+    {
+      target: nav('/invoices'), where: 'Menu', icon: Receipt,
+      title: 'Bills and receipts',
+      body: "Record each payment the patient makes - cash, mobile money, card or insurance, in full or in part - and give them the numbered receipt, printed or by SMS, WhatsApp or email. Your day's total is shown for handing over.",
     },
     ...closing,
   ],

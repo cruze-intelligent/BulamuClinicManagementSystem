@@ -32,6 +32,7 @@ CREATE TABLE "InvoiceItem" (
     "amount" INTEGER NOT NULL,
     "labTestId" TEXT,
     "prescriptionId" TEXT,
+    "admissionId" TEXT,
     "addedByUserId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -106,6 +107,9 @@ CREATE UNIQUE INDEX "InvoiceItem_prescriptionId_key" ON "InvoiceItem"("prescript
 CREATE INDEX "InvoiceItem_invoiceId_idx" ON "InvoiceItem"("invoiceId");
 
 -- CreateIndex
+CREATE INDEX "InvoiceItem_admissionId_idx" ON "InvoiceItem"("admissionId");
+
+-- CreateIndex
 CREATE INDEX "PatientPayment_clinicId_receivedAt_idx" ON "PatientPayment"("clinicId", "receivedAt");
 
 -- CreateIndex
@@ -131,6 +135,9 @@ ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_labTestId_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_prescriptionId_fkey" FOREIGN KEY ("prescriptionId") REFERENCES "Prescription"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "InvoiceItem" ADD CONSTRAINT "InvoiceItem_admissionId_fkey" FOREIGN KEY ("admissionId") REFERENCES "Admission"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "PatientPayment" ADD CONSTRAINT "PatientPayment_clinicId_fkey" FOREIGN KEY ("clinicId") REFERENCES "Clinic"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

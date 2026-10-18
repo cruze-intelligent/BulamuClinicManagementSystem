@@ -611,7 +611,8 @@ const DEMO_TOUR: Array<{ title: string; body: string }> = [
 const DEMO_ALSO: Array<[string, string]> = [
   ['Doctor', 'verify the haemoglobin result waiting on the Lab Tests page; once verified, it is locked.'],
   ['Nurse', 'on Wards, Achieng Mary is admitted to the Female Ward: record her observations and read the ward-round notes.'],
-  ['Administrator', 'Invoices shows paid and outstanding bills; every printout carries the facility\'s name and who produced it.'],
+  ['Front desk', 'on Bills & Payments, Nalubega Faith still owes part of her bill: record the rest by mobile money and print her numbered receipt.'],
+  ['Administrator', 'Finances shows today\'s takings by method and by person, and the month\'s money in against expenses; every printout carries the facility\'s name and who produced it.'],
 ];
 
 export function demoFacilityEmail(input: {

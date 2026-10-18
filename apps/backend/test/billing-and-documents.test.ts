@@ -267,11 +267,11 @@ describe('sample documents', () => {
     const operator = await staff(hq.id, 'SUPER_ADMIN');
     const res = await app.inject({ method: 'POST', url: '/super-admin/system/sample-documents', headers: authHeader(operator.token) });
     expect(res.statusCode).toBe(200);
-    expect(res.json().documents).toHaveLength(7);
+    expect(res.json().documents).toHaveLength(8);
 
     const mail = sendMailMock.mock.calls.map(([m]) => m).find((m) => /Sample documents/.test(m.subject));
     expect(mail.to).toBe(OPERATOR);
-    expect(mail.attachments).toHaveLength(7);
+    expect(mail.attachments).toHaveLength(8);
     for (const attachment of mail.attachments) {
       expect(attachment.contentType).toBe('application/pdf');
       expect(Buffer.from(attachment.content).length).toBeGreaterThan(1000);

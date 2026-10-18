@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ClipboardList, Pill, WifiOff } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ClipboardList, Pill, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ContactIcons } from '@/components/contact-icons';
 import { CompanyName } from '@/components/company-credit';
@@ -70,7 +70,8 @@ export default function Home() {
             </div>
           </nav>
 
-          <div className="max-w-3xl py-14 md:py-20">
+          <div className="grid items-center gap-12 py-14 md:py-20 lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]">
+          <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-wider text-emerald-300">Clinic management for Uganda</p>
             <h1 className="mt-4 text-5xl font-extrabold leading-[1.05] tracking-tight md:text-7xl">
               Patient care, <span className="text-emerald-400">organised.</span>
@@ -101,6 +102,31 @@ export default function Home() {
                 </li>
               ))}
             </ul>
+          </div>
+
+          {/* Free photo (Pexels, Tessy Agbonome), served from this site as small WebP files - lazily, so phones (which never show it) never download it. */}
+          <figure className="relative hidden lg:block">
+            <img
+              src="/images/hero-clinician-760.webp"
+              srcSet="/images/hero-clinician-480.webp 480w, /images/hero-clinician-760.webp 760w"
+              sizes="(min-width: 1280px) 26rem, 22rem"
+              width={760}
+              height={912}
+              alt="A smiling clinician reading a patient's file"
+              className="aspect-[5/6] w-full rounded-3xl object-cover shadow-2xl ring-1 ring-white/10"
+              decoding="async"
+              loading="lazy"
+            />
+            <figcaption className="absolute -left-8 bottom-10 flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-slate-900 shadow-xl">
+              <span className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                <CheckCircle2 className="size-5" aria-hidden="true" />
+              </span>
+              <span className="text-sm leading-tight">
+                <span className="block font-semibold">Lab result verified</span>
+                <span className="block text-slate-500">Ready in the patient&apos;s record</span>
+              </span>
+            </figcaption>
+          </figure>
           </div>
         </div>
       </section>

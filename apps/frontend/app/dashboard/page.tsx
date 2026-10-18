@@ -78,13 +78,13 @@ export default function Dashboard() {
           </Card>
           {hasRole('ADMIN', 'DOCTOR') && (
             <Card className="p-6">
-              <h3 className="text-sm text-muted-foreground">Pending Invoices</h3>
+              <h3 className="text-sm text-muted-foreground">Bills still owed</h3>
               <p className="text-3xl font-bold">{stats.pendingInvoices}</p>
             </Card>
           )}
           {hasRole('ADMIN') && (
             <Card className="p-6">
-              <h3 className="text-sm text-muted-foreground">Total Revenue</h3>
+              <h3 className="text-sm text-muted-foreground">Received from patients, all time</h3>
               <p className="text-3xl font-bold">UGX {stats.totalRevenue.toLocaleString()}</p>
             </Card>
           )}

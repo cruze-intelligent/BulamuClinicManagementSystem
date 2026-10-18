@@ -16,6 +16,12 @@ import { PortalStaysAndReferrals, type PortalReferral, type PortalStay } from '@
 // Statuses in the words a patient would use.
 const APPOINTMENT_STATES: Record<string, string> = { SCHEDULED: 'booked', COMPLETED: 'attended', CANCELLED: 'cancelled', NO_SHOW: 'missed' };
 const INVOICE_STATES: Record<string, string> = { PENDING: 'not yet paid', PAID: 'paid', CANCELLED: 'cancelled' };
+/** Paid, not yet paid, or how much is still owed on a part-paid bill. */
+function invoiceState(invoice: { amount: number; amountPaid?: number; status: string }): string {
+  const paid = invoice.amountPaid ?? 0;
+  if (invoice.status === 'PENDING' && paid > 0) return `part paid - UGX ${(invoice.amount - paid).toLocaleString()} still to pay`;
+  return INVOICE_STATES[invoice.status] ?? invoice.status;
+}
 function labTestState(t: { status: string; results: string; verified?: boolean }): string {
   if (t.status === 'CANCELLED') return 'Cancelled';
   if (t.verified && t.results) return `Result: ${t.results}`;
@@ -64,7 +70,7 @@ type PatientRecord = {
     id: string; diagnosis: string; symptoms: string; createdAt: string;
     diagnoses: DiagnosisView[];
     prescriptions: Array<PrescriptionView & { id: string }>;
-    invoice: { id: string; amount: number; status: string; createdAt: string } | null;
+    invoice: { id: string; amount: number; amountPaid?: number; status: string; createdAt: string } | null;
   }>;
   labTests: Array<{ id: string; testName: string; results: string; status: string; verified?: boolean; createdAt: string }>;
   appointmentRequests: AppointmentRequest[];
@@ -365,7 +371,7 @@ export default function PatientPortalDashboardPage() {
                     />
                     {c.invoice && (
                       <p className="mt-1 text-slate-500 dark:text-slate-400">
-                        Invoice: UGX {c.invoice.amount.toLocaleString()} - {INVOICE_STATES[c.invoice.status] ?? c.invoice.status}
+                        Invoice: UGX {c.invoice.amount.toLocaleString()} - {invoiceState(c.invoice)}
                       </p>
                     )}
                   </li>

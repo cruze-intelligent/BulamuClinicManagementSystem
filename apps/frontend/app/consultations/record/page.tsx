@@ -187,7 +187,7 @@ function RecordConsultationForm() {
             </section>
 
             <section>
-              <StepHeading n={5} title="Consultation fee" hint="Optional. Creates the patient's invoice under Invoices, to be marked paid when your facility collects it. Leave empty if there is no charge." />
+              <StepHeading n={5} title="Consultation fee" hint="Optional. Opens the patient's bill under Bills & Payments, where lab tests, medicines and payments are added. Leave empty if there is no charge." />
               <Label htmlFor="fee" className="sr-only">Consultation fee in UGX</Label>
               <div className="flex max-w-xs items-center gap-2">
                 <span className="text-sm text-slate-500 dark:text-slate-400">UGX</span>

@@ -20,6 +20,15 @@ describe('PasswordInput', () => {
     expect(field.type).toBe('password');
   });
 
+  it("tells phone keyboards not to capitalise or correct it, even while it is shown", () => {
+    render(<PasswordInput aria-label="Password" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
+    const field = screen.getByLabelText('Password');
+    expect(field.getAttribute('autocapitalize')).toBe('none');
+    expect(field.getAttribute('autocorrect')).toBe('off');
+    expect(field.getAttribute('spellcheck')).toBe('false');
+  });
+
   it('never submits the form it sits in', () => {
     let submitted = false;
     render(<form onSubmit={(e) => { e.preventDefault(); submitted = true; }}><PasswordInput aria-label="Password" /></form>);

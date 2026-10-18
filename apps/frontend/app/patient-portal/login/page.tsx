@@ -59,7 +59,7 @@ export default function PatientPortalLoginPage() {
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <Label htmlFor="identifier">Patient ID, email, or phone</Label>
-            <Input id="identifier" value={identifier} onChange={(e) => setIdentifier(e.target.value)} required />
+            <Input id="identifier" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={identifier} onChange={(e) => setIdentifier(e.target.value)} required />
           </div>
           <div>
             <Label htmlFor="password">Password</Label>

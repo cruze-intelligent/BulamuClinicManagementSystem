@@ -430,6 +430,8 @@ model Admission {
   referralId           String?        @unique
   referral             Referral?      @relation(fields: [referralId], references: [id])
   notes                AdmissionNote[]
+  // Bill lines charging for the stay (a long stay may be billed in parts).
+  invoiceItems         InvoiceItem[]
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
@@ -703,10 +705,14 @@ model InvoiceItem {
   labTest        LabTest?      @relation(fields: [labTestId], references: [id], onDelete: SetNull)
   prescriptionId String?       @unique
   prescription   Prescription? @relation(fields: [prescriptionId], references: [id], onDelete: SetNull)
+  // For a ward stay: the admission it charges for (nights charged add up across lines).
+  admissionId    String?
+  admission      Admission?    @relation(fields: [admissionId], references: [id], onDelete: SetNull)
   addedByUserId  String?
   createdAt      DateTime   @default(now())
 
   @@index([invoiceId])
+  @@index([admissionId])
 }
 
 enum ChargeKind {

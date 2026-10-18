@@ -8,13 +8,15 @@ import { Input } from './input';
 /**
  * A password field with an eye button to show or hide what was typed - so a
  * long password can be checked before it is submitted. `className` sizes and
- * spaces the field as a whole.
+ * spaces the field as a whole. Shown, it is a plain text field, so phone
+ * keyboards are told not to capitalise or "correct" it - they would otherwise
+ * turn "mango-river-42" into "Mango-river-42" and the sign-in would fail.
  */
 function PasswordInput({ className, ...props }: Omit<React.ComponentProps<'input'>, 'type'>) {
   const [visible, setVisible] = React.useState(false);
   return (
     <div className={cn('relative', className)}>
-      <Input {...props} type={visible ? 'text' : 'password'} className="pr-10" />
+      <Input autoCapitalize="none" autoCorrect="off" spellCheck={false} {...props} type={visible ? 'text' : 'password'} className="pr-10" />
       <button
         type="button"
         onClick={() => setVisible((v) => !v)}
