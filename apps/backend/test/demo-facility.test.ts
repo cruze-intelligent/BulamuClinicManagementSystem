@@ -132,7 +132,7 @@ describe('demo facilities', () => {
 
   it('fills it with enough made-up work to show every part of Bulamu', async () => {
     await create(await operator());
-    const clinic = await prisma.clinic.findFirstOrThrow({ where: { isDemo: true } });
+    const clinic = await prisma.clinic.findFirstOrThrow({ where: { isDemo: true, parentFacilityId: null } });
     const count = async (model: any, where: object) => model.count({ where });
     expect(await count(prisma.patient, { clinicId: clinic.id })).toBe(8);
     expect(await count(prisma.consultation, { patient: { clinicId: clinic.id } })).toBe(5);
@@ -158,7 +158,7 @@ describe('demo facilities', () => {
     const token = await operator();
     const first = (await create(token, 'first@example.org')).json();
     const second = (await create(token, 'second@example.org')).json();
-    expect(await prisma.clinic.count({ where: { isDemo: true } })).toBe(2);
+    expect(await prisma.clinic.count({ where: { isDemo: true, parentFacilityId: null } })).toBe(2);
     expect(second.demoCode).not.toBe(first.demoCode);
     expect(second.password).not.toBe(first.password);
 
@@ -239,7 +239,7 @@ describe('demo facilities', () => {
     expect(overview.clinicCount).toBe(0);
     expect(overview.patientCount).toBe(0);
 
-    const clinic = await prisma.clinic.findFirstOrThrow({ where: { isDemo: true } });
+    const clinic = await prisma.clinic.findFirstOrThrow({ where: { isDemo: true, parentFacilityId: null } });
     sendMailMock.mockClear();
     await notifyStaff({ type: 'LOW_STOCK', clinicId: clinic.id, title: 't', body: 'b', link: '/inventory', emailSummary: 's' });
     await new Promise((resolve) => setTimeout(resolve, 150));
