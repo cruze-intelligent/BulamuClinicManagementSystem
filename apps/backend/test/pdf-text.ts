@@ -9,8 +9,12 @@ export function pdfPages(pdf: Buffer | Uint8Array | { type: 'Buffer'; data: numb
   // Whatever form the bytes arrive in (a Buffer, a Uint8Array, or a Buffer's JSON).
   const raw = Buffer.from(pdf as any).toString('latin1');
   const pages: string[] = [];
-  const streams = raw.matchAll(/stream\r?\n([\s\S]*?)\r?\nendstream/g);
-  for (const [, body] of streams) {
+  // Read exactly /Length bytes after "stream\n": compressed data can itself end
+  // in a carriage return, which a pattern looking for "\r?\nendstream" would cut off.
+  const streams = raw.matchAll(/\/Length (\d+)[^>]*>>\s*stream\n/g);
+  for (const match of streams) {
+    const start = match.index! + match[0].length;
+    const body = raw.slice(start, start + Number(match[1]));
     let content: string;
     try {
       content = inflateSync(Buffer.from(body, 'latin1')).toString('latin1');
