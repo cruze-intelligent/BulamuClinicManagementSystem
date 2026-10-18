@@ -274,15 +274,18 @@ describe('super admin analytics', () => {
   it('throttles its own writes: a user seen again within minutes causes no new database work', async () => {
     setUsageTrackingEnabled(true);
     const { clinic, nurse } = await facility('Throttle Clinic');
-    trackUserActivity({ id: nurse.id, clinicId: clinic.id }, new Date());
+    // Midday in Kampala, so "eleven minutes later" is always the same day (CI once ran at 23:55 EAT).
+    const noon = new Date();
+    noon.setUTCHours(9, 0, 0, 0);
+    trackUserActivity({ id: nurse.id, clinicId: clinic.id }, noon);
     await vi.waitFor(async () => expect(await prisma.userActivityDay.count()).toBe(1), { timeout: 10_000 });
     const first = (await prisma.user.findUniqueOrThrow({ where: { id: nurse.id } })).lastSeenAt!;
 
-    trackUserActivity({ id: nurse.id, clinicId: clinic.id }, new Date(Date.now() + 60_000)); // a minute later, same day
+    trackUserActivity({ id: nurse.id, clinicId: clinic.id }, new Date(noon.getTime() + 60_000)); // a minute later, same day
     await new Promise((r) => setTimeout(r, 400));
     expect((await prisma.user.findUniqueOrThrow({ where: { id: nurse.id } })).lastSeenAt!.getTime()).toBe(first.getTime());
 
-    trackUserActivity({ id: nurse.id, clinicId: clinic.id }, new Date(Date.now() + 11 * 60_000)); // eleven minutes later
+    trackUserActivity({ id: nurse.id, clinicId: clinic.id }, new Date(noon.getTime() + 11 * 60_000)); // eleven minutes later
     await vi.waitFor(async () => expect((await prisma.user.findUniqueOrThrow({ where: { id: nurse.id } })).lastSeenAt!.getTime()).toBeGreaterThan(first.getTime()), { timeout: 10_000 });
     expect(await prisma.userActivityDay.count()).toBe(1); // still one row for the day
   });
