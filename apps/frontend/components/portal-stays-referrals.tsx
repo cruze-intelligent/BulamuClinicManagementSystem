@@ -10,7 +10,7 @@ export type PortalStay = {
   dischargeDiagnosis: string | null; dischargeSummary: string | null; followUpInstructions: string | null; ward: { name: string };
 };
 
-const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' });
 const STATUS: Record<string, string> = { PENDING: 'Waiting for the facility to reply', ACCEPTED: 'Accepted', DECLINED: 'Declined', COMPLETED: 'Completed', CANCELLED: 'Cancelled' };
 
 const open = (path: string) =>

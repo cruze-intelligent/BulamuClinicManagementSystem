@@ -125,7 +125,7 @@ export default function LoginPage() {
 
         <div className="relative mt-16 max-w-lg">
           <h1 className="text-5xl font-extrabold leading-[1.05] tracking-tight">
-            Patient care,<br /><span className="text-emerald-400">organised.</span>
+            Transforming<br /><span className="text-emerald-400">patient care.</span>
           </h1>
           <p className="mt-5 text-xl font-medium text-slate-100">One home for everything your facility does.</p>
 

@@ -93,7 +93,7 @@ export default function Home() {
           <div className="max-w-3xl">
             <p className="text-sm font-semibold uppercase tracking-wider text-emerald-300">Clinic management for Uganda</p>
             <h1 className="mt-4 text-5xl font-extrabold leading-[1.05] tracking-tight md:text-7xl">
-              Patient care, <span className="text-emerald-400">organised.</span>
+              Transforming<br /><span className="text-emerald-400">patient care.</span>
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-200">
               One home for everything your facility does: patient records, appointments, consultations, lab results, pharmacy,

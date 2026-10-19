@@ -485,3 +485,52 @@ describe('demo facilities show the money side too', () => {
     expect(paid.json().payment.receiptNumber).toBe(String(receipts.length + 1).padStart(6, '0'));
   });
 });
+
+describe("the patient's own bills in the Patient Portal", () => {
+  /** A Patient Portal sign-in for the facility's patient, the way a facility sets one up. */
+  async function portalSignIn(f: Awaited<ReturnType<typeof facility>>, phone = '0700 000 001', email = 'achieng@example.org') {
+    const created = await app.inject({ method: 'POST', url: `/patients/${f.patient.id}/portal-account`, headers: authHeader(f.desk.token), payload: { phone, email } });
+    expect(created.statusCode).toBe(200);
+    const token = new URL(created.json().devSetPasswordUrl).searchParams.get('token')!;
+    await app.inject({ method: 'POST', url: '/patient-auth/set-password', payload: { token, password: 'MyNewPassword123!', phone } });
+    const login = await app.inject({ method: 'POST', url: '/patient-auth/login', payload: { identifier: created.json().portableId, password: 'MyNewPassword123!' } });
+    return login.json().token as string;
+  }
+
+  it('shows every bill line by line with its receipts - visits and walk-ins - and lets the patient download their own receipts only', async () => {
+    const f = await facility();
+    const kept = (await pay(f.desk.token, f.invoice.id, { amount: 10000, method: 'CASH' })).json().payment;
+    const mistaken = (await pay(f.desk.token, f.invoice.id, { amount: 5000, method: 'MOBILE_MONEY', reference: 'MP123' })).json().payment;
+    expect((await app.inject({ method: 'POST', url: `/payments/${mistaken.id}/void`, headers: authHeader(f.admin.token), payload: { reason: 'Entered twice' } })).statusCode).toBe(200);
+    const walkIn = await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(f.desk.token), payload: { patientId: f.patient.id, items: [{ kind: 'OTHER', description: 'Dressing', unitPrice: 3000 }] } });
+    const cancelled = await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(f.desk.token), payload: { patientId: f.patient.id, items: [{ kind: 'OTHER', description: 'Opened by mistake', unitPrice: 500 }] } });
+    expect((await app.inject({ method: 'PATCH', url: `/invoices/${cancelled.json().invoice.id}/cancel`, headers: authHeader(f.admin.token) })).statusCode).toBe(200);
+
+    const token = await portalSignIn(f);
+    const me = (await app.inject({ method: 'GET', url: '/patient-portal/me', headers: authHeader(token) })).json();
+    const bills = me.records[0].invoices;
+    expect(bills.map((b: any) => b.id).sort()).toEqual([f.invoice.id, walkIn.json().invoice.id].sort()); // not the cancelled one
+    const visitBill = bills.find((b: any) => b.id === f.invoice.id);
+    expect(visitBill).toMatchObject({ amount: 20000, amountPaid: 10000, balance: 10000, consultationId: f.consultation.id });
+    expect(visitBill.items).toEqual([expect.objectContaining({ kind: 'CONSULTATION', kindLabel: 'Consultation', amount: 20000 })]);
+    // The voided payment is not one the patient made.
+    expect(visitBill.payments).toEqual([expect.objectContaining({ id: kept.id, receiptNumber: kept.receiptNumber, amount: 10000, method: 'Cash' })]);
+    expect(bills.find((b: any) => b.id === walkIn.json().invoice.id)).toMatchObject({ consultationId: null, balance: 3000 });
+
+    const receipt = await app.inject({ method: 'GET', url: `/patient-portal/payments/${kept.id}/receipt/pdf`, headers: authHeader(token) });
+    expect(receipt.statusCode).toBe(200);
+    expect(receipt.headers['content-type']).toContain('application/pdf');
+    const text = pdfText(receipt.rawPayload);
+    expect(text).toContain(kept.receiptNumber);
+    expect(text).toContain('Achieng Mary');
+    expect(text).toContain('downloaded by the patient');
+    expect((await app.inject({ method: 'GET', url: `/patient-portal/payments/${mistaken.id}/receipt/pdf`, headers: authHeader(token) })).statusCode).toBe(404);
+
+    // Someone else's receipt, at another facility: not found, as if it did not exist.
+    const other = await facility('Other Clinic');
+    const theirs = (await pay(other.desk.token, other.invoice.id, { amount: 1000, method: 'CASH' })).json().payment;
+    expect((await app.inject({ method: 'GET', url: `/patient-portal/payments/${theirs.id}/receipt/pdf`, headers: authHeader(token) })).statusCode).toBe(404);
+    // ...and staff tokens are not patient tokens.
+    expect((await app.inject({ method: 'GET', url: `/patient-portal/payments/${kept.id}/receipt/pdf`, headers: authHeader(f.desk.token) })).statusCode).toBe(401);
+  });
+});

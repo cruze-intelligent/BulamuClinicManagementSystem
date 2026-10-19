@@ -10,7 +10,7 @@ import {
   isPaymentMethod, lockInvoice, parseAmount, parseFee, settleInvoice,
 } from '../lib/invoices';
 import { facilityLogo } from '../lib/facility-logo';
-import { documentProducer, signer } from '../lib/document-signer';
+import { documentProducer, signer, type Signer } from '../lib/document-signer';
 import { sendMail, patientReceiptEmail } from '../lib/mailer';
 import { sendRouteError } from '../lib/http-error';
 
@@ -180,6 +180,45 @@ async function chargeSuggestions(invoice: FullInvoice) {
 
 // Patient invoices are each facility's own bills to its patients: the facility
 // charges and collects the money, Bulamu only keeps the record.
+/** A payment's receipt as a PDF - for staff, and for the patient in the Patient Portal. Callers check access first. */
+export async function buildReceipt(id: string, producedBy: Signer | string | null) {
+  const payment = await prisma.patientPayment.findUnique({
+    where: { id },
+    include: {
+      receivedBy: { select: { name: true, role: true } },
+      clinic: { select: { id: true, name: true, facilityCode: true, phone: true } },
+    },
+  });
+  if (!payment) return null;
+  const invoice = (await loadInvoice(payment.invoiceId))!;
+  // Paid to date as it stood once this payment was taken (later payments not counted).
+  const paidToDate = invoice.payments
+    .filter((p) => !p.voidedAt && (p.receivedAt < payment.receivedAt || p.id === payment.id || (p.receivedAt.getTime() === payment.receivedAt.getTime() && p.receiptNumber <= payment.receiptNumber)))
+    .reduce((sum, p) => sum + p.amount, 0);
+  const pdf = await generatePatientReceiptPdf({
+    receiptNumber: formatReceiptNumber(payment.receiptNumber),
+    clinicName: payment.clinic.name,
+    facilityCode: payment.clinic.facilityCode,
+    clinicPhone: payment.clinic.phone,
+    clinicLogo: await facilityLogo(payment.clinic.id),
+    patientName: invoice.patient.name,
+    patientPhone: invoice.patient.phone,
+    payerName: payment.payerName,
+    amount: payment.amount,
+    method: payment.method ? PAYMENT_METHODS[payment.method] : 'Not recorded',
+    reference: payment.reference,
+    receivedAt: payment.receivedAt,
+    receivedBy: signer(payment.receivedBy),
+    invoiceId: invoice.id,
+    billTotal: invoice.amount,
+    paidToDate: payment.voidedAt ? paidToDate + payment.amount : paidToDate,
+    items: billLines(invoice),
+    voided: payment.voidedAt ? { at: payment.voidedAt, reason: payment.voidReason } : null,
+    producedBy,
+  });
+  return { payment, invoice, pdf };
+}
+
 export async function invoiceRoutes(fastify: FastifyInstance) {
   const billing = { preHandler: [requireRole(...BILLING_ROLES, 'SUPER_ADMIN')] };
   const adminOnly = { preHandler: [requireRole('ADMIN')] };
@@ -516,45 +555,13 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
 
   /** A payment with everything its receipt needs. */
   async function receiptFor(request: FastifyRequest, reply: FastifyReply, id: string) {
-    const payment = await prisma.patientPayment.findUnique({
-      where: { id },
-      include: {
-        receivedBy: { select: { name: true, role: true } },
-        clinic: { select: { id: true, name: true, facilityCode: true, phone: true } },
-      },
-    });
-    if (!payment) {
+    const clinicId = (await prisma.patientPayment.findUnique({ where: { id }, select: { clinicId: true } }))?.clinicId;
+    if (!clinicId) {
       reply.status(404).send({ error: 'Payment not found' });
       return null;
     }
-    if (!assertClinicMatch(request, reply, payment.clinicId)) return null;
-    const invoice = (await loadInvoice(payment.invoiceId))!;
-    // Paid to date as it stood once this payment was taken (later payments not counted).
-    const paidToDate = invoice.payments
-      .filter((p) => !p.voidedAt && (p.receivedAt < payment.receivedAt || p.id === payment.id || (p.receivedAt.getTime() === payment.receivedAt.getTime() && p.receiptNumber <= payment.receiptNumber)))
-      .reduce((sum, p) => sum + p.amount, 0);
-    const pdf = await generatePatientReceiptPdf({
-      receiptNumber: formatReceiptNumber(payment.receiptNumber),
-      clinicName: payment.clinic.name,
-      facilityCode: payment.clinic.facilityCode,
-      clinicPhone: payment.clinic.phone,
-      clinicLogo: await facilityLogo(payment.clinic.id),
-      patientName: invoice.patient.name,
-      patientPhone: invoice.patient.phone,
-      payerName: payment.payerName,
-      amount: payment.amount,
-      method: payment.method ? PAYMENT_METHODS[payment.method] : 'Not recorded',
-      reference: payment.reference,
-      receivedAt: payment.receivedAt,
-      receivedBy: signer(payment.receivedBy),
-      invoiceId: invoice.id,
-      billTotal: invoice.amount,
-      paidToDate: payment.voidedAt ? paidToDate + payment.amount : paidToDate,
-      items: billLines(invoice),
-      voided: payment.voidedAt ? { at: payment.voidedAt, reason: payment.voidReason } : null,
-      producedBy: await documentProducer(getAuthUser(request).userId),
-    });
-    return { payment, invoice, pdf };
+    if (!assertClinicMatch(request, reply, clinicId)) return null;
+    return buildReceipt(id, await documentProducer(getAuthUser(request).userId));
   }
 
   // The printable receipt for a payment.

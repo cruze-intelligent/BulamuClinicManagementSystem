@@ -1,6 +1,6 @@
 import { LegalLayout } from '@/components/legal-layout';
 
-export const metadata = { title: 'Privacy Policy | Bulamu' };
+export const metadata = { title: 'Privacy Policy' };
 
 export default function PrivacyPage() {
   return (

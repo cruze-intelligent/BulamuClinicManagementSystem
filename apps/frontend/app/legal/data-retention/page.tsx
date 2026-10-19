@@ -1,6 +1,6 @@
 import { LegalLayout } from '@/components/legal-layout';
 
-export const metadata = { title: 'Data Retention and Deletion Policy | Bulamu' };
+export const metadata = { title: 'Data Retention and Deletion Policy' };
 
 const SCHEDULE: Array<{ category: string; includes: string; kept: string; after: string }> = [
   {

@@ -11,6 +11,8 @@ import { referralLetterInput } from './referral.routes';
 import { dischargeSummaryInput } from './admission.routes';
 import { facilityLogo } from '../lib/facility-logo';
 import { sendRouteError } from '../lib/http-error';
+import { buildReceipt } from './invoice.routes';
+import { CHARGE_KINDS, PAYMENT_METHODS, formatReceiptNumber } from '../lib/invoices';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -115,6 +117,17 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
             orderBy: { createdAt: 'desc' },
             select: { id: true, reason: true, urgency: true, status: true, responseNote: true, createdAt: true, toClinic: { select: { name: true } } },
           },
+          // Every bill, with what it was for and each payment's receipt - visits and walk-ins
+          // alike. A cancelled bill was a mistake, not a record the patient needs.
+          invoices: {
+            where: { status: { not: 'CANCELLED' } },
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true, amount: true, amountPaid: true, status: true, createdAt: true, consultationId: true,
+              items: { orderBy: { createdAt: 'asc' }, select: { id: true, kind: true, description: true, quantity: true, unitPrice: true, amount: true } },
+              payments: { where: { voidedAt: null }, orderBy: { receivedAt: 'asc' }, select: { id: true, receiptNumber: true, amount: true, method: true, receivedAt: true } },
+            },
+          },
           admissions: {
             orderBy: { admittedAt: 'desc' },
             select: {
@@ -131,7 +144,17 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
           ...r,
           documents: r.documents.map(withFormat),
           // A result reaches the patient only once a clinician has verified it.
-          labTests: r.labTests.map(({ verifiedAt, results, ...test }) => ({ ...test, verified: !!verifiedAt, results: verifiedAt ? results : '' })),
+          labTests: r.labTests.map(({ verifiedAt, results, ...test }) => ({ ...test, verified: !!verifiedAt, verifiedAt, results: verifiedAt ? results : '' })),
+          invoices: r.invoices.map((invoice) => ({
+            ...invoice,
+            balance: Math.max(0, invoice.amount - invoice.amountPaid),
+            items: invoice.items.map((item) => ({ ...item, kindLabel: CHARGE_KINDS[item.kind] })),
+            payments: invoice.payments.map((p) => ({
+              ...p,
+              receiptNumber: formatReceiptNumber(p.receiptNumber),
+              method: p.method ? PAYMENT_METHODS[p.method] : null,
+            })),
+          })),
         }));
 
       return { success: true, account, records };
@@ -213,6 +236,25 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `inline; filename="prescription-${id}.pdf"`);
     return reply.send(built.pdf);
+  });
+
+  // A receipt for one of the patient's own payments, the same document the facility prints.
+  fastify.get('/patient-portal/payments/:id/receipt/pdf', { preHandler: [authenticatePatient] }, async (request, reply) => {
+    const authUser = getPatientAuthUser(request);
+    const { id } = request.params as any;
+    try {
+      const payment = await prisma.patientPayment.findUnique({ where: { id }, select: { voidedAt: true, receiptNumber: true, invoice: { select: { patientId: true } } } });
+      if (!payment || payment.voidedAt || !(await findOwnRecord(authUser.patientAccountId, payment.invoice.patientId))) {
+        return reply.status(404).send({ error: 'Receipt not found' });
+      }
+      const built = await buildReceipt(id, 'downloaded by the patient from the Bulamu Patient Portal');
+      if (!built) return reply.status(404).send({ error: 'Receipt not found' });
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `inline; filename="receipt-${formatReceiptNumber(payment.receiptNumber)}.pdf"`);
+      return reply.send(built.pdf);
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
   });
 
   // The patient's own referral letter, to carry to the facility they were referred to.

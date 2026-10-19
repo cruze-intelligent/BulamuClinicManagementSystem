@@ -3,12 +3,21 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, LogOut, Users } from 'lucide-react';
+import { Bell, FileHeart, LogOut, Users } from 'lucide-react';
 import { BrandMark } from '@/components/brand';
-import { usePatientAuth, clearPatientSession } from '@/lib/usePatientAuth';
+import { clearPatientSession } from '@/lib/usePatientAuth';
+import { tokenExpiry } from '@/lib/staff-session';
 import { useUnreadNotifications } from '@/lib/useUnreadNotifications';
 
 const PUBLIC_PAGES = ['/patient-portal/login', '/patient-portal/set-password', '/patient-portal/forgot-password'];
+// Pages that bring their own full-screen design, without the portal's header.
+const FULL_SCREEN_PAGES = ['/patient-portal/login'];
+
+const NAV = [
+  { href: '/patient-portal/dashboard', label: 'My records', icon: FileHeart },
+  { href: '/patient-portal/notifications', label: 'Notifications', icon: Bell },
+  { href: '/patient-portal/access', label: 'Sharing', icon: Users, title: 'Who can see your records' },
+];
 
 export default function PatientPortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -26,6 +35,13 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
       router.replace('/patient-portal/login');
       return;
     }
+    // A sign-in lasts 12 hours: after that, say so rather than show pages that can't load.
+    const expiry = tokenExpiry(token);
+    if (expiry !== null && expiry <= Date.now()) {
+      clearPatientSession();
+      router.replace('/patient-portal/login?session=expired');
+      return;
+    }
     setAuthChecked(true);
   }, [pathname, isPublicPage, router]);
 
@@ -40,55 +56,55 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
     router.replace('/patient-portal/login');
   };
 
+  if (FULL_SCREEN_PAGES.includes(normalizedPathname)) return <>{children}</>;
   if (!isPublicPage && !authChecked) return null;
+
+  const navClass = (active: boolean) =>
+    `relative flex flex-col items-center gap-0.5 whitespace-nowrap rounded-md px-2 py-1.5 text-[11px] font-medium sm:flex-row sm:gap-1.5 sm:px-3 sm:text-sm ${
+      active
+        ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+        : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
+    }`;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-      <header className="border-b border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex max-w-3xl items-center justify-between">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <Link href={isPublicPage ? '/' : '/patient-portal/dashboard'} className="flex items-center gap-2">
             <BrandMark className="size-8" />
-            <div>
+            <div className={isPublicPage ? '' : 'hidden sm:block'}>
               <span className="block text-sm font-semibold leading-tight text-slate-950 dark:text-slate-50">Bulamu</span>
               <span className="block text-[11px] leading-tight text-slate-500 dark:text-slate-400">Patient Portal</span>
             </div>
           </Link>
           {!isPublicPage && (
-            <div className="flex items-center gap-1">
-              <Link
-                href="/patient-portal/notifications"
-                title="Notifications"
-                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              >
-                <Bell className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Notifications</span>
-                {unreadNotifications > 0 && (
-                  <span aria-label={`${unreadNotifications} unread`} className="rounded-full bg-emerald-600 px-1.5 text-[11px] font-semibold leading-5 text-white">
-                    {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                  </span>
-                )}
-              </Link>
-              <Link
-                href="/patient-portal/access"
-                title="Access to your records"
-                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              >
-                <Users className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Access</span>
-              </Link>
-              <button
-                onClick={handleLogout}
-                title="Sign out"
-                className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-              >
+            <nav aria-label="Patient Portal" className="flex items-center gap-0.5 sm:gap-1">
+              {NAV.map((item) => {
+                const active = normalizedPathname === item.href;
+                return (
+                  <Link key={item.href} href={item.href} title={item.title ?? item.label} aria-current={active ? 'page' : undefined} className={navClass(active)}>
+                    <item.icon className="size-4" aria-hidden="true" />
+                    <span>{item.label}</span>
+                    {item.href.endsWith('/notifications') && unreadNotifications > 0 && (
+                      <span
+                        aria-label={`${unreadNotifications} unread`}
+                        className="absolute -top-0.5 right-0.5 rounded-full bg-emerald-600 px-1.5 text-[10px] font-semibold leading-4 text-white sm:static sm:text-[11px] sm:leading-5"
+                      >
+                        {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+              <button onClick={handleLogout} title="Sign out" className={navClass(false)}>
                 <LogOut className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Sign out</span>
+                <span>Sign out</span>
               </button>
-            </div>
+            </nav>
           )}
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-4 py-6">{children}</main>
+      <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
     </div>
   );
 }

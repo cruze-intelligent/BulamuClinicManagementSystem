@@ -1,6 +1,6 @@
 import { LegalLayout } from '@/components/legal-layout';
 
-export const metadata = { title: 'Refund Policy | Bulamu' };
+export const metadata = { title: 'Refund Policy' };
 
 export default function RefundPolicyPage() {
   return (

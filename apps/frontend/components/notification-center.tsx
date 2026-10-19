@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { shortDate, shortTime } from '@/lib/finance';
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, CheckCheck } from 'lucide-react';
 import { Card } from '@/components/ui/card';
@@ -138,7 +139,7 @@ export function NotificationCenter({ basePath, tokenKey }: { basePath: string; t
                     <p className="font-medium text-slate-900 dark:text-slate-100">{n.title}</p>
                   </div>
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{n.body}</p>
-                  <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{new Date(n.createdAt).toLocaleString()}</p>
+                  <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">{shortDate(n.createdAt)}, {shortTime(n.createdAt)}</p>
                 </div>
                 <div className="flex shrink-0 gap-2">
                   {n.link && (

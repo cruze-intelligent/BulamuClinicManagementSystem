@@ -229,7 +229,7 @@ export function escapeHtml(value: unknown): string {
 // line, an eyebrow and heading, and a footer that says who sent it and why.
 // Inline styles and tables only - that is what email clients render reliably.
 
-export const TAGLINE = 'Patient care, organised.';
+export const TAGLINE = 'Transforming patient care.';
 const SITE = 'https://bulamu.site';
 /** The logo travels inside each email (Content-ID), so it shows even where remote images are blocked. */
 export const LOGO_CID = 'bulamu-logo';

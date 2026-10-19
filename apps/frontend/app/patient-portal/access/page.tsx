@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { portalDate } from '@/lib/patient-portal';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Building2, ShieldCheck } from 'lucide-react';
@@ -84,7 +85,7 @@ export default function PatientPortalAccessPage() {
           <p className="font-medium text-slate-800 dark:text-slate-200">{data.origin.clinic.name}</p>
         </div>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Created your account on {new Date(data.origin.grantedAt).toLocaleDateString()} - this facility's access can't be revoked here.
+          Created your account on {portalDate(data.origin.grantedAt)} - this facility's access can't be revoked here.
         </p>
       </Card>
 
@@ -102,8 +103,8 @@ export default function PatientPortalAccessPage() {
                   <p className="font-medium text-slate-800 dark:text-slate-200">{g.clinic.name}</p>
                 </div>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Verified {new Date(g.grantedAt).toLocaleDateString()} via {g.method === 'PIN' ? 'your password' : 'email code'}
-                  {g.revokedAt ? ` - revoked ${new Date(g.revokedAt).toLocaleDateString()}` : ''}
+                  Verified {portalDate(g.grantedAt)} via {g.method === 'PIN' ? 'your password' : 'email code'}
+                  {g.revokedAt ? ` - revoked ${portalDate(g.revokedAt)}` : ''}
                 </p>
               </div>
               {!g.revokedAt && (

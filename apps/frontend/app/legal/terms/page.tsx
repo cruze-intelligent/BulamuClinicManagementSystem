@@ -1,6 +1,6 @@
 import { LegalLayout } from '@/components/legal-layout';
 
-export const metadata = { title: 'Terms of Service | Bulamu' };
+export const metadata = { title: 'Terms of Service' };
 
 export default function TermsPage() {
   return (

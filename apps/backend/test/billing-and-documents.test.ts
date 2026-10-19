@@ -300,7 +300,7 @@ describe('sample emails', () => {
       expect(mail.to).toBe(OPERATOR);
       expect(mail.subject).not.toMatch(/sample/i);
       expect(mail.html).toContain('cid:bulamu-logo');
-      expect(mail.html).toContain('Patient care, organised.');
+      expect(mail.html).toContain('Transforming patient care.');
       expect(mail.html).not.toMatch(/undefined|null|NaN|\[object/);
     }
     expect(mails.some((m) => /demo is ready/.test(m.subject) && m.html.includes('Your guided tour'))).toBe(true);

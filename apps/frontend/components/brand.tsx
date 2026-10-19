@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-export const TAGLINE = 'Patient care, organised.';
+export const TAGLINE = 'Transforming patient care.';
 
 /** The Bulamu mark - the same drawing as the app icon (public/icons/icon.svg). */
 export function BrandMark({ className }: { className?: string }) {
