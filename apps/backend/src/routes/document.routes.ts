@@ -3,8 +3,9 @@ import { prisma } from '../lib/prisma';
 import { authenticate, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
-import { generateStorageKey, saveFile, getFileStream, deleteFile } from '../lib/storage';
-import { detectDocumentFormat, normalizeFileName, setDownloadHeaders, withFormat, SUPPORTED_FORMATS_MESSAGE } from '../lib/document-format';
+import { generateStorageKey } from '../lib/storage';
+import { removeDocument, sendDocumentFile, storeDocument, withAvailability } from '../lib/document-files';
+import { detectDocumentFormat, normalizeFileName, withFormat, SUPPORTED_FORMATS_MESSAGE } from '../lib/document-format';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_CATEGORIES = ['LAB_RESULT', 'CONSENT_FORM', 'ID_COPY', 'REFERRAL_LETTER', 'OTHER'];
@@ -40,21 +41,18 @@ export async function documentRoutes(fastify: FastifyInstance) {
       const fileName = normalizeFileName(data.filename, format);
 
       const authUser = getAuthUser(request);
-      const storageKey = generateStorageKey(fileName);
-      await saveFile(storageKey, buffer);
-
-      const document = await prisma.document.create({
-        data: {
-          clinicId: patient.clinicId,
-          patientId: patient.id,
-          category: resolvedCategory,
-          fileName,
-          mimeType: format.mimeType,
-          fileSize: buffer.length,
-          storageKey,
-          uploadedByUserId: authUser.userId,
-        },
-      });
+      // The file is kept in the database with its record, so it survives restarts.
+      const created = await storeDocument({
+        clinicId: patient.clinicId,
+        patientId: patient.id,
+        category: resolvedCategory,
+        fileName,
+        mimeType: format.mimeType,
+        fileSize: buffer.length,
+        storageKey: generateStorageKey(fileName),
+        uploadedByUserId: authUser.userId,
+      }, buffer);
+      const [document] = await withAvailability([created]);
 
       await recordAudit({
         entity: 'Document', recordId: document.id, clinicId: document.clinicId,
@@ -83,7 +81,7 @@ export async function documentRoutes(fastify: FastifyInstance) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return { success: true, documents: documents.map(withFormat) };
+    return { success: true, documents: (await withAvailability(documents)).map(withFormat) };
   });
 
   // Download a document's underlying file
@@ -94,8 +92,7 @@ export async function documentRoutes(fastify: FastifyInstance) {
     if (!document) return reply.status(404).send({ error: 'Document not found' });
     if (!assertClinicMatch(request, reply, document.clinicId)) return;
 
-    setDownloadHeaders(reply, document);
-    return reply.send(getFileStream(document.storageKey));
+    return sendDocumentFile(reply, document);
   });
 
   // Delete a document (uploader or ADMIN only)
@@ -111,8 +108,7 @@ export async function documentRoutes(fastify: FastifyInstance) {
       return reply.status(403).send({ error: 'Access denied: only the uploader or an admin can delete this document' });
     }
 
-    await deleteFile(document.storageKey);
-    await prisma.document.delete({ where: { id } });
+    await removeDocument(document);
 
     await recordAudit({
       entity: 'Document', recordId: document.id, clinicId: document.clinicId,

@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { buildApp } from './app';
 import { sweepLapsedSubscriptions } from './lib/subscription';
+import { adoptLegacyFiles } from './lib/storage';
 
 dotenv.config();
 
@@ -17,6 +18,8 @@ const start = async () => {
     console.log(`Bulamu API running on http://localhost:${port}`);
     void sweepLapsedSubscriptions();
     setInterval(() => void sweepLapsedSubscriptions(), LAPSE_SWEEP_INTERVAL_MS).unref();
+    // Documents an earlier version kept on this machine's disk move into the database.
+    void adoptLegacyFiles().catch((error) => console.error('[storage] moving files from disk failed', error));
   } catch (err) {
     console.error(err);
     process.exit(1);

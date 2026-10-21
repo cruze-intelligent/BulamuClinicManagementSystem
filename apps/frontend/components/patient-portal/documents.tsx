@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { DocumentItem } from '@/components/document-item';
-import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, openDocumentPreview } from '@/lib/document-preview';
+import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, downloadError, openDocumentPreview } from '@/lib/document-preview';
 import { gather, portalDate, type PortalRecord } from '@/lib/patient-portal';
 import { EmptyState, TabIntro } from './ui';
 
@@ -56,7 +56,7 @@ export function PortalDocuments({ records, onChanged, onError }: { records: Port
     setBusy(id);
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/patient-portal/documents/${id}/download`, { headers: authHeader() });
-      if (!res.ok) throw new Error();
+      if (!res.ok) throw await downloadError(res);
       const url = URL.createObjectURL(await res.blob());
       const link = document.createElement('a');
       link.href = url;
@@ -65,8 +65,8 @@ export function PortalDocuments({ records, onChanged, onError }: { records: Port
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-    } catch {
-      onError("The document couldn't be downloaded just now. Please try again.");
+    } catch (err: any) {
+      onError(err?.message || "The document couldn't be downloaded just now. Please try again.");
     } finally {
       setBusy(null);
     }
@@ -123,6 +123,7 @@ export function PortalDocuments({ records, onChanged, onError }: { records: Port
               fileSize={d.fileSize}
               format={d.format}
               busy={busy === d.id}
+              missing={d.available === false}
               detail={`${CATEGORY_LABELS[d.category] ?? 'Document'} · ${portalDate(d.createdAt)}${several ? ` · ${d.facility}` : ''}`}
               onView={() => view(d.id)}
               onDownload={() => download(d.id, d.fileName)}

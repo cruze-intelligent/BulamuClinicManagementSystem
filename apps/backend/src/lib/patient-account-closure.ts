@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import { prisma } from './prisma';
 import { generateToken } from './crypto';
-import { deleteFile } from './storage';
+import { removeLegacyCopy } from './storage';
 import { recordAudit } from './audit';
 import { sendMail, patientAccountClosedEmail } from './mailer';
 
@@ -39,6 +39,8 @@ export async function closePatientAccount(patientAccountId: string, log: Logger 
 
   await prisma.$transaction([
     prisma.document.deleteMany({ where: { uploadedByPatientAccountId: patientAccountId } }),
+    // ...and their files' bytes, in the same transaction.
+    prisma.storedFile.deleteMany({ where: { storageKey: { in: uploadedDocuments.map((document) => document.storageKey) } } }),
     prisma.patient.updateMany({ where: { patientAccountId }, data: { patientAccountId: null, email: null } }),
     prisma.patientAccessGrant.updateMany({
       where: { patientAccountId, revokedAt: null },
@@ -68,7 +70,7 @@ export async function closePatientAccount(patientAccountId: string, log: Logger 
     }),
   ]);
 
-  await Promise.all(uploadedDocuments.map((document) => deleteFile(document.storageKey)));
+  await Promise.all(uploadedDocuments.map((document) => removeLegacyCopy(document.storageKey)));
 
   for (const clinicId of clinicIds) {
     await recordAudit({

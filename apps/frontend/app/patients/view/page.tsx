@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import Link from 'next/link';
 import { Upload } from 'lucide-react';
 import { DocumentItem } from '@/components/document-item';
-import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, openDocumentPreview } from '@/lib/document-preview';
+import { shortDate } from '@/lib/finance';
+import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, downloadError, openDocumentPreview } from '@/lib/document-preview';
 import { useAuth } from '@/lib/useAuth';
 import { calculateAgeYears } from '@/lib/age';
 import { roleLabel } from '@/lib/role-labels';
@@ -201,7 +202,7 @@ function PatientHistoryContent() {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/documents/${docId}/download`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error('Download failed');
+      if (!res.ok) throw await downloadError(res);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -211,8 +212,8 @@ function PatientHistoryContent() {
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
-    } catch (error) {
-      alert('Error downloading document');
+    } catch (error: any) {
+      alert(error?.message || 'Error downloading document');
     } finally {
       setDownloadingDocId(null);
     }
@@ -678,10 +679,11 @@ function PatientHistoryContent() {
                   fileSize={doc.fileSize}
                   format={doc.format}
                   busy={downloadingDocId === doc.id || deletingDocId === doc.id}
+                  missing={doc.available === false}
                   detail={
                     <>
                       {DOCUMENT_CATEGORIES.find((c) => c.value === doc.category)?.label || doc.category}
-                      {' · '}{new Date(doc.createdAt).toLocaleDateString()}
+                      {' · '}{shortDate(doc.createdAt)}
                       {doc.uploadedBy?.name ? ` · ${doc.uploadedBy.name}` : ''}
                       {doc.uploadedByPatientAccount ? ` · Uploaded by patient (${doc.uploadedByPatientAccount.portableId})` : ''}
                     </>

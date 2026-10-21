@@ -41,6 +41,8 @@ export type PortalDocument = {
   createdAt: string;
   uploadedByPatientAccountId: string | null;
   format?: DocumentFormat;
+  /** False when the record is here but its file was lost (uploaded before files were kept permanently). */
+  available?: boolean;
 };
 
 export type PortalConsultation = {

@@ -111,15 +111,18 @@ example a Neon branch) is taken first.
 
 ## 6. Known gaps
 
-1. **Uploaded files are not durable on the current hosting.** `lib/storage.ts`
-   writes to the API host's local disk. The Render deployment (free plan) sets
-   no `DOCUMENT_STORAGE_DIR` and mounts no persistent disk, so files are lost
-   on every restart, redeploy and idle spin-down, while the database rows
-   remain (downloads then fail). Until durable storage is in place, the policy's
-   promise to keep documents with the clinical record cannot be honoured for the
-   files themselves. Fix: object storage (for example Cloudflare R2 or S3) behind
-   the same `saveFile` / `getFileStream` / `deleteFile` contract, or a persistent
-   disk on a paid plan with `DOCUMENT_STORAGE_DIR` pointing at it.
+1. **Uploaded files before 21 October 2026 were lost.** Until then
+   `lib/storage.ts` wrote to the API host's local disk, which the Render
+   deployment wipes on every restart, redeploy and idle spin-down. Since then
+   each file is kept in the database (`StoredFile`), written and deleted in the
+   same transaction as its `Document` row and checked against its SHA-256 on
+   every read, so files are as durable as the records and are in the database's
+   backups. Earlier files whose disk copy was already gone cannot be recovered:
+   their documents are marked "file lost - upload it again" for staff and the
+   patient, and the System page counts them. Watch the database size as uploads
+   grow (10 MB per file at most); if it nears the plan's limit, move the bytes
+   to object storage (for example Cloudflare R2) behind the same `saveFile` /
+   `readFile` / `deleteFile` contract.
 2. **No scheduled erasure job.** Section 5 is a manual procedure. Consider a
    reviewed, scheduled job once volumes justify it.
 3. **Retention periods are unconfirmed** by legal counsel (see the note at the

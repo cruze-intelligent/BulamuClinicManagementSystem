@@ -78,7 +78,7 @@ type SystemReport = {
     largestTables: Array<{ name: string; bytes: number; rows: number }>;
     totals: { facilities: number; users: number; patients: number; consultations: number; auditEntries: number };
   };
-  storage: { documents: number; documentBytes: number; persistent: boolean };
+  storage: { documents: number; documentBytes: number; persistent: boolean; missing?: number };
   configuration: Array<{ key: string; label: string; ok: boolean; hint: string }>;
   runtime: Runtime;
   mail?: MailStatus;
@@ -473,8 +473,8 @@ export default function SuperAdminAnalyticsPage() {
                         </li>
                       ))}
                     </ul>
-                    {!system.storage.persistent && (
-                      <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden />Uploaded documents are on temporary storage and can be lost when the server restarts.</p>
+                    {!!system.storage.missing && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-1"><AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" aria-hidden />{formatNumber(system.storage.missing)} document{system.storage.missing === 1 ? ' has' : 's have'} lost {system.storage.missing === 1 ? 'its file' : 'their files'}: uploaded before files were kept permanently. Each shows &quot;upload it again&quot; to its facility and patient.</p>
                     )}
                   </Card>
 

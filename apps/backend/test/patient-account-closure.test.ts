@@ -146,8 +146,14 @@ describe('patient portal account closure', () => {
   it('keeps the facilities\' clinical records, unlinked from the account, and deletes only the patient\'s own uploads', async () => {
     const { patientToken, account, patientId, patientBId } = await establishedPatient();
     expect(await prisma.document.count({ where: { patientId } })).toBe(2);
+    const keys = (await prisma.document.findMany({ where: { patientId } })).map((d) => d.storageKey);
+    expect(await prisma.storedFile.count({ where: { storageKey: { in: keys } } })).toBe(2);
 
     await close(patientToken, PASSWORD);
+
+    // The patient's own uploads are gone byte for byte; the facility's lab file stays.
+    const kept = await prisma.document.findMany({ where: { patientId }, select: { storageKey: true } });
+    expect((await prisma.storedFile.findMany({ where: { storageKey: { in: keys } } })).map((f) => f.storageKey)).toEqual(kept.map((d) => d.storageKey));
 
     for (const id of [patientId, patientBId]) {
       const patient = await prisma.patient.findUniqueOrThrow({ where: { id } });

@@ -899,6 +899,18 @@ model Document {
   @@index([uploadedByPatientAccountId])
 }
 
+// The bytes of an uploaded document, kept in the database so they survive
+// restarts and redeploys (the API host's own disk is wiped on every one).
+// Keyed by Document.storageKey; written and deleted in the same transaction
+// as its Document row. sha256 is checked on every read.
+model StoredFile {
+  storageKey String   @id
+  data       Bytes
+  size       Int
+  sha256     String
+  createdAt  DateTime @default(now())
+}
+
 enum DocumentCategory {
   LAB_RESULT
   CONSENT_FORM

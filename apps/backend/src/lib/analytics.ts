@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
+import { storageSummary } from './storage';
 import { eastAfricaDay } from './usage-tracking';
 import { REAL_FACILITY } from './facility';
 
@@ -512,7 +513,7 @@ export async function buildSystemReport() {
     prisma.$queryRaw<Array<{ applied: number; latest: string | null }>>`
       SELECT count(*)::int AS applied, (SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1) AS latest
       FROM _prisma_migrations WHERE finished_at IS NOT NULL`,
-    prisma.document.aggregate({ _count: true, _sum: { fileSize: true } }),
+    storageSummary(),
     Promise.all([prisma.clinic.count(), prisma.user.count(), prisma.patient.count(), prisma.consultation.count(), prisma.auditLog.count()]),
   ]);
 
@@ -536,10 +537,12 @@ export async function buildSystemReport() {
       totals: { facilities: counts[0], users: counts[1], patients: counts[2], consultations: counts[3], auditEntries: counts[4] },
     },
     storage: {
-      documents: documents._count,
-      documentBytes: documents._sum.fileSize ?? 0,
-      // Uploaded files are only durable when a persistent directory is configured.
-      persistent: has('DOCUMENT_STORAGE_DIR'),
+      documents: documents.documents,
+      documentBytes: documents.bytes,
+      // Files are kept in the database with their records, so they survive restarts.
+      persistent: true,
+      // Documents whose file was lost before that (uploaded to the old temporary disk).
+      missing: documents.missing,
     },
     // Whether each integration is configured - never the values themselves.
     configuration: [
@@ -547,7 +550,7 @@ export async function buildSystemReport() {
       { key: 'payments', label: 'Payments (Pesapal)', ok: has('PESAPAL_CONSUMER_KEY') && has('PESAPAL_CONSUMER_SECRET'), hint: 'Subscription payments' },
       { key: 'paymentNotices', label: 'Payment notifications (Pesapal IPN)', ok: has('PESAPAL_IPN_ID'), hint: 'Confirms payments automatically' },
       { key: 'paymentsLive', label: 'Live payments (real money)', ok: process.env.PESAPAL_ENV === 'live', hint: process.env.PESAPAL_ENV === 'live' ? 'Pesapal live - facilities are charged for real' : 'Pesapal test mode - no real money is collected; set PESAPAL_ENV=live' },
-      { key: 'documents', label: 'Durable document storage', ok: has('DOCUMENT_STORAGE_DIR'), hint: 'Uploaded files survive a restart' },
+      { key: 'documents', label: 'Durable document storage', ok: true, hint: 'Uploaded files are kept in the database with their records and survive restarts' },
       { key: 'frontend', label: 'Frontend address', ok: has('FRONTEND_URL'), hint: 'Links in emails and cross-origin access' },
     ],
   };

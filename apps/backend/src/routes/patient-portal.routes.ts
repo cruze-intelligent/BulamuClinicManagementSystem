@@ -1,11 +1,12 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticatePatient, getPatientAuthUser } from '../middleware/patient-auth.middleware';
-import { generateStorageKey, saveFile, getFileStream, deleteFile } from '../lib/storage';
+import { generateStorageKey, storedKeys } from '../lib/storage';
+import { removeDocument, sendDocumentFile, storeDocument, withAvailability } from '../lib/document-files';
 import { recordAudit } from '../lib/audit';
 import { notifyStaff } from '../lib/notifications';
 import { buildPrescriptionPdf } from '../lib/consultation-records';
-import { detectDocumentFormat, normalizeFileName, setDownloadHeaders, withFormat, SUPPORTED_FORMATS_MESSAGE } from '../lib/document-format';
+import { detectDocumentFormat, normalizeFileName, withFormat, SUPPORTED_FORMATS_MESSAGE } from '../lib/document-format';
 import { generateDischargeSummaryPdf, generateReferralLetterPdf } from '../lib/pdf';
 import { referralLetterInput } from './referral.routes';
 import { dischargeSummaryInput } from './admission.routes';
@@ -111,7 +112,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
           },
           documents: {
             orderBy: { createdAt: 'desc' },
-            select: { id: true, category: true, fileName: true, mimeType: true, fileSize: true, createdAt: true, uploadedByPatientAccountId: true },
+            select: { id: true, category: true, fileName: true, mimeType: true, fileSize: true, createdAt: true, uploadedByPatientAccountId: true, storageKey: true },
           },
           referrals: {
             orderBy: { createdAt: 'desc' },
@@ -138,11 +139,12 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
         },
       });
 
-      const records = allRecords
-        .filter((r) => authorizedClinicIds.has(r.clinic.id))
+      const visible = allRecords.filter((r) => authorizedClinicIds.has(r.clinic.id));
+      const stored = await storedKeys(visible.flatMap((r) => r.documents.map((d) => d.storageKey)));
+      const records = visible
         .map((r) => ({
           ...r,
-          documents: r.documents.map(withFormat),
+          documents: r.documents.map(({ storageKey, ...d }) => ({ ...withFormat(d), available: stored.has(storageKey) })),
           // A result reaches the patient only once a clinician has verified it.
           labTests: r.labTests.map(({ verifiedAt, results, ...test }) => ({ ...test, verified: !!verifiedAt, verifiedAt, results: verifiedAt ? results : '' })),
           invoices: r.invoices.map((invoice) => ({
@@ -189,21 +191,18 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     if (!format) return reply.status(415).send({ error: SUPPORTED_FORMATS_MESSAGE });
     const fileName = normalizeFileName(data.filename, format);
 
-    const storageKey = generateStorageKey(fileName);
-    await saveFile(storageKey, buffer);
-
-    const document = await prisma.document.create({
-      data: {
-        clinicId: record.clinicId,
-        patientId: record.id,
-        category: 'PATIENT_UPLOAD',
-        fileName,
-        mimeType: format.mimeType,
-        fileSize: buffer.length,
-        storageKey,
-        uploadedByPatientAccountId: authUser.patientAccountId,
-      },
-    });
+    // The file is kept in the database with its record, so it survives restarts.
+    const created = await storeDocument({
+      clinicId: record.clinicId,
+      patientId: record.id,
+      category: 'PATIENT_UPLOAD',
+      fileName,
+      mimeType: format.mimeType,
+      fileSize: buffer.length,
+      storageKey: generateStorageKey(fileName),
+      uploadedByPatientAccountId: authUser.patientAccountId,
+    }, buffer);
+    const [document] = await withAvailability([created]);
 
     await recordAudit({
       entity: 'Document', recordId: document.id, clinicId: document.clinicId,
@@ -307,8 +306,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     const record = await findOwnRecord(authUser.patientAccountId, document.patientId);
     if (!record) return reply.status(404).send({ error: 'Document not found' });
 
-    setDownloadHeaders(reply, document);
-    return reply.send(getFileStream(document.storageKey));
+    return sendDocumentFile(reply, document);
   });
 
   // Delete a document - only one the patient themselves uploaded; documents
@@ -323,8 +321,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
       return reply.status(403).send({ error: 'Access denied' });
     }
 
-    await deleteFile(document.storageKey);
-    await prisma.document.delete({ where: { id } });
+    await removeDocument(document);
 
     await recordAudit({
       entity: 'Document', recordId: document.id, clinicId: document.clinicId,

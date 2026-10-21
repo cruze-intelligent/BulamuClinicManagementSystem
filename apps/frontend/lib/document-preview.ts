@@ -11,12 +11,18 @@ export const DOCUMENT_TYPES_HELP = 'PDF, images, Word, Excel, PowerPoint, text/C
  * (they are never public links), so the tab is opened first - inside the click,
  * where browsers allow it - and pointed at the downloaded copy afterwards.
  */
+/** The server's own explanation of a failed download (a lost file says so), or a plain fallback. */
+export async function downloadError(res: Response): Promise<Error> {
+  const body = await res.json().catch(() => null);
+  return new Error(body?.error || 'Unable to open this document.');
+}
+
 export async function openDocumentPreview(downloadUrl: string, token: string | null) {
   const tab = window.open('', '_blank');
   if (!tab) throw new Error('Your browser blocked the new tab. Allow pop-ups for this site, or use Download.');
   try {
     const res = await fetch(downloadUrl, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) throw new Error('Unable to open this document.');
+    if (!res.ok) throw await downloadError(res);
     const blob = await res.blob();
     const objectUrl = URL.createObjectURL(blob);
     tab.location.href = objectUrl;
