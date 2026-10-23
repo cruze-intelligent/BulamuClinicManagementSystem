@@ -37,6 +37,8 @@ import { patientAccessRoutes } from './routes/patient-access.routes';
 import { notificationRoutes } from './routes/notification.routes';
 import { patientAccountClosureRoutes } from './routes/patient-account-closure.routes';
 import { SERVER_ERROR_MESSAGE } from './lib/http-error';
+import { allowedOrigins, clientIp, clientIpSource, release } from './lib/connection';
+import { prisma } from './lib/prisma';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const isProduction = process.env.NODE_ENV === 'production';
@@ -74,7 +76,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   // stays small and no identifier ever lands in it. Health checks and CORS
   // pre-flights are not real traffic.
   server.addHook('onResponse', (request, reply, done) => {
-    if (request.method !== 'OPTIONS' && request.url !== '/health') {
+    if (request.method !== 'OPTIONS' && !request.url.startsWith('/health')) {
       recordRequest({
         method: request.method,
         route: request.routeOptions?.url ?? 'unmatched',
@@ -99,8 +101,11 @@ export async function buildApp(): Promise<FastifyInstance> {
     }
   });
 
+  // Only Bulamu's own site (bulamu.site and www.bulamu.site) may call the API
+  // from a browser; any other site is given no permission at all.
+  const origins = allowedOrigins();
   await server.register(cors, {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, callback) => callback(null, !!origin && origins.has(origin)),
   });
 
   await server.register(jwt, {
@@ -120,10 +125,44 @@ export async function buildApp(): Promise<FastifyInstance> {
     global: false,
     max: process.env.NODE_ENV === 'test' ? 100000 : 20,
     timeWindow: '1 minute',
+    // Each visitor is counted by their own address, never the proxy's (lib/connection.ts).
+    keyGenerator: clientIp,
   });
 
+  // Render's health check: answers at once, without the database, so a slow
+  // database wake-up never gets the server restarted. Says which commit runs,
+  // so a deploy can confirm Render is serving it.
   server.get('/health', async () => {
-    return { status: 'ok', service: 'Bulamu API' };
+    return { status: 'ok', service: 'Bulamu API', release: release() };
+  });
+
+  // The whole path, for monitoring and the site's early wake-up call: whether
+  // the API reaches its database, and how fast. Reveals no data; the database
+  // is asked only "SELECT 1".
+  server.get('/health/connection', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const started = process.hrtime.bigint();
+    let database: 'ok' | 'unreachable' = 'ok';
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        prisma.$queryRaw`SELECT 1`,
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 10_000); }),
+      ]);
+    } catch {
+      database = 'unreachable';
+    } finally {
+      clearTimeout(timer);
+    }
+    const databaseMs = Math.round(Number(process.hrtime.bigint() - started) / 1e5) / 10;
+    reply.header('Cache-Control', 'no-store');
+    return reply.status(database === 'ok' ? 200 : 503).send({
+      status: database === 'ok' ? 'ok' : 'degraded',
+      release: release(),
+      uptimeSeconds: Math.round(process.uptime()),
+      database,
+      databaseMs,
+      clientIpSource: clientIpSource(request),
+    });
   });
 
   await server.register(clinicRoutes);

@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 
 // The API runs on a hosting tier that puts it to sleep after ~15 minutes
 // without traffic, and the first request afterwards can take up to a minute
-// while it wakes. Pinging /health as soon as a sign-in or registration page
-// opens means the server is usually awake by the time the form is submitted.
+// while it wakes. Pinging /health/connection as soon as a sign-in or registration
+// page opens means the server - and its database - is usually awake by the time
+// the form is submitted.
 export function warmUpBackend() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   if (!apiUrl) return;
-  fetch(`${apiUrl}/health`, { cache: 'no-store' }).catch(() => {});
+  fetch(`${apiUrl}/health/connection`, { cache: 'no-store' }).catch(() => {});
 }
 
 export function useWarmUpBackend() {

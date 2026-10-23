@@ -17,11 +17,11 @@ const themeInitScript = `(function(){try{var t=localStorage.getItem('bulamu-them
 // The API sleeps after a quiet spell and takes up to a minute to wake. Every
 // page wakes it the moment it starts loading - before the app itself has even
 // downloaded - at most once every few minutes per tab, so by the time someone
-// signs in or a page asks for data it is usually up. /health never touches
-// the database.
+// signs in or a page asks for data it is usually up. /health/connection also
+// wakes the database (which sleeps too) with a single "SELECT 1".
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
 const wakeApiScript = API_URL
-  ? `(function(){try{var k="bulamu-api-woken",t=+(sessionStorage.getItem(k)||0);if(Date.now()-t<240000)return;sessionStorage.setItem(k,String(Date.now()));fetch(${JSON.stringify(API_URL)}+"/health",{cache:"no-store"}).catch(function(){});}catch(e){}})();`
+  ? `(function(){try{var k="bulamu-api-woken",t=+(sessionStorage.getItem(k)||0);if(Date.now()-t<240000)return;sessionStorage.setItem(k,String(Date.now()));fetch(${JSON.stringify(API_URL)}+"/health/connection",{cache:"no-store"}).catch(function(){});}catch(e){}})();`
   : "";
 
 // Public GA measurement ID - not a secret (Google Analytics tags are always

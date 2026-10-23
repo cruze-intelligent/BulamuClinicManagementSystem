@@ -100,9 +100,43 @@ jobs:
     runs-on: ubuntu-latest
     needs: [deploy-frontend, deploy-render]
     steps:
+      # Render deploys from git on its own; this waits until it is really
+      # serving the commit just pushed, and fails loudly if it never does.
+      - name: Confirm Render is running this commit
+        run: |
+          want="${GITHUB_SHA::7}"
+          got=""
+          for i in $(seq 1 40); do
+            got=$(curl -s -m 90 https://bulamu-backend.onrender.com/health | jq -r '.release // empty' 2>/dev/null || true)
+            if [ "$got" = "$want" ]; then echo "Render is running $want"; break; fi
+            echo "Render is running ${got:-an older version}; waiting for $want ($i/40)"
+            sleep 30
+          done
+          if [ "$got" != "$want" ]; then
+            echo "::error::Render did not start serving $want within 20 minutes. Check the Render dashboard: the auto-deploy branch (ras) and the build log."
+            exit 1
+          fi
+
+      # The path a real visitor takes, end to end (yes/no answers and timings only).
+      - name: Check the connection
+        run: |
+          api=https://bulamu-backend.onrender.com
+          conn=$(curl -s -m 90 "$api/health/connection")
+          echo "API -> database: $(echo "$conn" | jq -c '{status, database, databaseMs, clientIpSource}')"
+          [ "$(echo "$conn" | jq -r .database)" = "ok" ] || { echo "::error::The API cannot reach its database."; exit 1; }
+          [ "$(echo "$conn" | jq -r .clientIpSource)" = "cf-connecting-ip" ] || echo "::warning::The API cannot see visitors' own addresses, so sign-in limits are shared between visitors."
+          allow() { curl -s -o /dev/null -D - -X OPTIONS -H "Origin: $1" -H "Access-Control-Request-Method: POST" "$api/auth/login" | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}'; }
+          for origin in https://bulamu.site https://www.bulamu.site; do
+            [ "$(allow $origin)" = "$origin" ] || { echo "::error::The API refuses calls from $origin."; exit 1; }
+          done
+          [ -z "$(allow https://evil.example)" ] || { echo "::error::The API accepts calls from other websites."; exit 1; }
+          echo "Cross-site access: bulamu.site and www.bulamu.site allowed, other sites refused"
+          www=$(curl -s -o /dev/null -w "%{http_code} %{redirect_url}" -m 60 https://www.bulamu.site/)
+          echo "www.bulamu.site: $www"
+          case "$www" in "301 https://bulamu.site/"*) ;; *) echo "::warning::www.bulamu.site does not redirect to bulamu.site.";; esac
+
       - name: Measure the API and the site
         run: |
-          sleep 120
           probe() { curl -s -o /dev/null -w "%{http_code}  connect %{time_connect}s  first byte %{time_starttransfer}s  total %{time_total}s" -m 120 "$1"; }
           echo "API /health (may include waking up):  $(probe https://bulamu-backend.onrender.com/health)"
           for i in 1 2 3; do echo "API /health (awake), try $i:           $(probe https://bulamu-backend.onrender.com/health)"; done
