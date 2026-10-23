@@ -81,6 +81,13 @@ describe('telling visitors apart behind Render\'s proxy', () => {
 });
 
 describe('health checks', () => {
+  it('the API\'s own address says what it is and points to the app, not "not found"', async () => {
+    const a = await appWith({ FRONTEND_URL: 'https://bulamu.site' });
+    const res = await a.inject({ method: 'GET', url: '/' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ service: 'Bulamu API', status: 'ok', app: 'https://bulamu.site' });
+  });
+
   it('/health answers at once with the commit Render is running, without touching the database', async () => {
     const a = await appWith({ RENDER: 'true', RENDER_GIT_COMMIT: '64bf5e4d1a2b3c4d5e6f' });
     const spy = vi.spyOn(prisma, '$queryRaw');

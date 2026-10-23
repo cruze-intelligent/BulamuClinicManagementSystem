@@ -132,6 +132,15 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Render's health check: answers at once, without the database, so a slow
   // database wake-up never gets the server restarted. Says which commit runs,
   // so a deploy can confirm Render is serving it.
+  // Someone opening the API's own address in a browser: say what it is and
+  // where the app is, rather than "Route GET:/ not found".
+  server.get('/', async () => ({
+    service: 'Bulamu API',
+    status: 'ok',
+    message: 'This is the Bulamu API. Bulamu itself is at the address below.',
+    app: process.env.FRONTEND_URL || 'https://bulamu.site',
+  }));
+
   server.get('/health', async () => {
     return { status: 'ok', service: 'Bulamu API', release: release() };
   });

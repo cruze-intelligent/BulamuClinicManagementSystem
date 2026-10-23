@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import Script from "next/script";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import ClientLayout from "./client-layout";
@@ -111,24 +110,22 @@ export default function RootLayout({
         {API_URL && <link rel="preconnect" href={API_URL} crossOrigin="anonymous" />}
         {API_URL && <link rel="dns-prefetch" href={API_URL} />}
         {wakeApiScript && <script dangerouslySetInnerHTML={{ __html: wakeApiScript }} />}
-      </head>
-      <body className={`${brandFont.variable} antialiased`}>
+        {/* Google's own snippet, in <head> of the page itself: Search Console
+            verifies the site by finding it there (a tag added later by
+            JavaScript is invisible to it). async - it downloads alongside the
+            page and never holds up showing it. */}
         {process.env.NODE_ENV === "production" && (
           <>
-            <Script
-              src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-              // Analytics waits until the page is idle, so it never competes with
-              // the app itself for a slow connection.
-              strategy="lazyOnload"
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`} />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_MEASUREMENT_ID}');`,
+              }}
             />
-            <Script id="ga-init" strategy="lazyOnload">
-              {`window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', '${GA_MEASUREMENT_ID}');`}
-            </Script>
           </>
         )}
+      </head>
+      <body className={`${brandFont.variable} antialiased`}>
         <ThemeProvider>
           <SidebarProvider>
             <ClientLayout>
