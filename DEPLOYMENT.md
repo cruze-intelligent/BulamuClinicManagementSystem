@@ -50,7 +50,7 @@ start; only the backend call the page makes on load will feel that delay.
    JWT_SECRET=<long random secret>
    INTEGRATION_ENCRYPTION_KEY=<a different long random secret>
    FRONTEND_URL=<your Vercel frontend URL, set after step C>
-   BACKEND_URL=<this Render service's own URL, e.g. https://bulamu-backend.onrender.com>
+   BACKEND_URL=<this Render service's own URL, e.g. https://bulamu-backend.onrender.com - Pesapal's IPN was registered with it>
    PESAPAL_CONSUMER_KEY=<from Pesapal - sandbox key to start>
    PESAPAL_CONSUMER_SECRET=<from Pesapal - sandbox secret to start>
    PESAPAL_ENV=sandbox
@@ -81,6 +81,11 @@ matches Hostinger's shared/business hosting plans.
    # apps/frontend/.env.production.local
    NEXT_PUBLIC_API_URL=https://<your-backend>.onrender.com
    ```
+   Production uses the custom domain `https://api.bulamu.site` (a CNAME to
+   `bulamu-backend.onrender.com`, added under the service's Custom Domains):
+   some Ugandan networks' DNS refuses every `*.onrender.com` name, which left
+   sign-in failing with "We couldn't reach Bulamu". Keep the Render subdomain
+   enabled as well - Pesapal's payment notifications still use it.
 2. Build from the repo root:
    ```bash
    npm ci

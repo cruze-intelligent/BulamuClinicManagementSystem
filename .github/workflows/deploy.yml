@@ -18,7 +18,7 @@ jobs:
 
       - name: Build frontend static export
         env:
-          NEXT_PUBLIC_API_URL: https://bulamu-backend.onrender.com
+          NEXT_PUBLIC_API_URL: https://api.bulamu.site
           NEXT_PUBLIC_SITE_URL: https://bulamu.site
           NEXT_PUBLIC_GA_MEASUREMENT_ID: G-3BR26WNYPE
           NEXT_PUBLIC_COMPANY_URL: https://cruzeintelligentsystems.com
@@ -55,7 +55,7 @@ jobs:
           SSH_USER: ${{ secrets.HOSTINGER_USERNAME }}
         continue-on-error: true
         run: |
-          ssh -i ~/.ssh/hostinger_key -p "$PORT" -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST"             '( crontab -l 2>/dev/null | grep -v "bulamu-keep-warm"; echo "*/10 * * * * curl -s -m 90 -o /dev/null https://bulamu-backend.onrender.com/health # bulamu-keep-warm" ) | crontab - && echo "keep-warm timer installed" || echo "crontab not available on this plan - add the ping in hPanel > Advanced > Cron Jobs instead"'
+          ssh -i ~/.ssh/hostinger_key -p "$PORT" -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST"             '( crontab -l 2>/dev/null | grep -v "bulamu-keep-warm"; echo "*/10 * * * * curl -s -m 90 -o /dev/null https://api.bulamu.site/health # bulamu-keep-warm" ) | crontab - && echo "keep-warm timer installed" || echo "crontab not available on this plan - add the ping in hPanel > Advanced > Cron Jobs instead"'
 
   migrate-database:
     runs-on: ubuntu-latest
@@ -107,7 +107,7 @@ jobs:
           want="${GITHUB_SHA::7}"
           got=""
           for i in $(seq 1 40); do
-            got=$(curl -s -m 90 https://bulamu-backend.onrender.com/health | jq -r '.release // empty' 2>/dev/null || true)
+            got=$(curl -s -m 90 https://api.bulamu.site/health | jq -r '.release // empty' 2>/dev/null || true)
             if [ "$got" = "$want" ]; then echo "Render is running $want"; break; fi
             echo "Render is running ${got:-an older version}; waiting for $want ($i/40)"
             sleep 30
@@ -120,7 +120,7 @@ jobs:
       # The path a real visitor takes, end to end (yes/no answers and timings only).
       - name: Check the connection
         run: |
-          api=https://bulamu-backend.onrender.com
+          api=https://api.bulamu.site
           conn=$(curl -s -m 90 "$api/health/connection")
           echo "API -> database: $(echo "$conn" | jq -c '{status, database, databaseMs, clientIpSource}')"
           [ "$(echo "$conn" | jq -r .database)" = "ok" ] || { echo "::error::The API cannot reach its database."; exit 1; }
@@ -138,7 +138,7 @@ jobs:
       - name: Measure the API and the site
         run: |
           probe() { curl -s -o /dev/null -w "%{http_code}  connect %{time_connect}s  first byte %{time_starttransfer}s  total %{time_total}s" -m 120 "$1"; }
-          echo "API /health (may include waking up):  $(probe https://bulamu-backend.onrender.com/health)"
-          for i in 1 2 3; do echo "API /health (awake), try $i:           $(probe https://bulamu-backend.onrender.com/health)"; done
+          echo "API /health (may include waking up):  $(probe https://api.bulamu.site/health)"
+          for i in 1 2 3; do echo "API /health (awake), try $i:           $(probe https://api.bulamu.site/health)"; done
           echo "Site home page:                        $(probe https://bulamu.site/)"
           echo "Site sign-in page:                     $(probe https://bulamu.site/auth/login/)"
