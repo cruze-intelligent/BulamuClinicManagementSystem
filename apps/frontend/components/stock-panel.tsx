@@ -73,7 +73,7 @@ export function StockPanel({ item, mode, canChange, onClose, onChanged }: {
 
   useEffect(() => {
     if (mode !== 'history') return;
-    call(`/inventory/${item.id}/history`).then((d) => setHistory({ movements: d.movements, batches: d.batches })).catch((e) => setError(e.message));
+    call(`/inventory/${item.id}/history`).then((d) => setHistory({ movements: d.movements ?? [], batches: d.batches ?? [] })).catch((e) => setError(e.message));
   }, [mode, item.id]);
 
   useEffect(() => {
