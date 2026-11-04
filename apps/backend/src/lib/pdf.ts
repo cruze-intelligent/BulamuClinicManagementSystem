@@ -391,7 +391,7 @@ export async function generatePatientReceiptPdf(input: PatientReceiptPdfInput): 
     [input.referenceLabel || 'Reference', input.reference || null],
     ['Received by', input.receivedBy ? `${input.receivedBy.name}, ${input.receivedBy.role}` : null],
     ['For invoice', `#${input.invoiceId.slice(0, 8)}`],
-  ], 170);
+  ], 190);
 
   doc.moveDown(1);
   doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
