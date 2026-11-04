@@ -202,7 +202,7 @@ export function DemoFacilityCard() {
         ) : demos.length === 0 ? (
           <p className="mt-2 text-xs text-muted-foreground">No demos sent yet.</p>
         ) : (
-          <div className="mt-2 overflow-x-auto">
+          <div className="relative mt-2 overflow-x-auto [contain:inline-size]">
             <table className="w-full min-w-[640px] text-left text-xs" data-testid="demo-usage">
               <thead className="text-slate-500 dark:text-slate-400">
                 <tr>

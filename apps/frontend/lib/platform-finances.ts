@@ -13,6 +13,10 @@ const STATUS_LABELS: Record<string, string> = {
   FAILED: 'Failed',
   REVERSED: 'Reversed',
 };
+
+/** "1 payment", "3 payments". */
+export const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 export const paymentStatusLabel = (status: string) => STATUS_LABELS[status] ?? status;
 
 /** "November 2026" (long) or "Nov 26" (short, for chart labels), from "2026-11". */

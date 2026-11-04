@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { monthLabel, paymentStatusLabel, periodText, receivedChange } from './platform-finances';
+import { count, monthLabel, paymentStatusLabel, periodText, receivedChange } from './platform-finances';
 
 describe("the operator's finances page", () => {
   it('names months for headings and chart labels', () => {
@@ -12,6 +12,13 @@ describe("the operator's finances page", () => {
     expect(receivedChange(50000, 100000)).toBe(-0.5);
     expect(receivedChange(100000, 0)).toBeNull();
     expect(receivedChange(0, 0)).toBe(0);
+  });
+
+  it('counts in plain English', () => {
+    expect(count(1, 'payment')).toBe('1 payment');
+    expect(count(3, 'payment')).toBe('3 payments');
+    expect(count(1, 'facility', 'facilities')).toBe('1 facility');
+    expect(count(0, 'facility', 'facilities')).toBe('0 facilities');
   });
 
   it('says what each payment state means in plain words', () => {

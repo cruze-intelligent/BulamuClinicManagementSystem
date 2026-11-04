@@ -6,10 +6,10 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/useAuth';
 import { downloadWithAuth } from '@/lib/download';
-import { StatTile, TimeSeriesChart } from '@/components/analytics-charts';
+import { BarList, StatTile, TimeSeriesChart } from '@/components/analytics-charts';
 import { compactNumber } from '@/lib/analytics-format';
 import { kampalaToday, shortDate } from '@/lib/finance';
-import { STANDING_LABELS, monthLabel, paymentStatusLabel, periodText, receivedChange } from '@/lib/platform-finances';
+import { STANDING_LABELS, count, monthLabel, paymentStatusLabel, periodText, receivedChange } from '@/lib/platform-finances';
 
 type Facility = {
   id: string; name: string; facilityCode: string; isActive: boolean; plan: 'STANDARD' | 'CUSTOM'; status: string;
@@ -126,25 +126,33 @@ export default function SuperAdminFinancesPage() {
             <StatTile
               label={`Received in ${monthLabel(data.months.thisMonth, 'long')}`} value={compactNumber(data.received.thisMonth.amount)}
               change={receivedChange(data.received.thisMonth.amount, data.received.lastMonth.amount)}
-              hint={`${data.received.thisMonth.payments} payments`}
+              hint={count(data.received.thisMonth.payments, 'payment')}
             />
-            <StatTile label={`Received in ${monthLabel(data.months.lastMonth, 'long')}`} value={compactNumber(data.received.lastMonth.amount)} hint={`${data.received.lastMonth.payments} payments`} />
-            <StatTile label="This year" value={compactNumber(data.received.thisYear.amount)} hint={`${data.received.thisYear.payments} payments`} />
-            <StatTile label="Monthly recurring" value={compactNumber(data.monthlyRecurring.amount)} hint={`${data.monthlyRecurring.facilities} paying facilities`} />
-            <StatTile label="Overdue" value={compactNumber(data.expected.overdue.amount)} hint={`${data.expected.overdue.facilities.length} facilities`} />
-            <StatTile label="Received in all" value={compactNumber(data.received.allTime.amount)} hint={`${data.received.allTime.payments} payments`} />
+            <StatTile label={`Received in ${monthLabel(data.months.lastMonth, 'long')}`} value={compactNumber(data.received.lastMonth.amount)} hint={count(data.received.lastMonth.payments, 'payment')} />
+            <StatTile label="This year" value={compactNumber(data.received.thisYear.amount)} hint={count(data.received.thisYear.payments, 'payment')} />
+            <StatTile label="Monthly recurring" value={compactNumber(data.monthlyRecurring.amount)} hint={count(data.monthlyRecurring.facilities, 'paying facility', 'paying facilities')} />
+            <StatTile label="Overdue" value={compactNumber(data.expected.overdue.amount)} hint={count(data.expected.overdue.facilities.length, 'facility', 'facilities')} />
+            <StatTile label="Received in all" value={compactNumber(data.received.allTime.amount)} hint={count(data.received.allTime.payments, 'payment')} />
           </section>
 
-          <TimeSeriesChart
-            title={`Received each month (${data.currency})`}
-            points={data.monthly.map((m) => ({ date: m.month, value: m.amount }))}
-            label={(month) => monthLabel(month, 'short')}
-            period="in the last 12 months"
-          />
+          <section className="grid gap-4 lg:grid-cols-2" aria-label="Income">
+            <TimeSeriesChart
+              title={`Received each month (${data.currency})`}
+              points={data.monthly.map((m) => ({ date: m.month, value: m.amount }))}
+              label={(month) => monthLabel(month, 'short')}
+              period="in the last 12 months"
+            />
+            <BarList
+              title={`Paid in all, by facility (${data.currency})`}
+              rows={[...data.facilities].filter((f) => f.totalPaid > 0).sort((a, b) => b.totalPaid - a.totalPaid).slice(0, 8)
+                .map((f) => ({ label: f.name, value: f.totalPaid, note: count(f.payments, 'payment') }))}
+              empty="No payments yet."
+            />
+          </section>
           {(data.received.reversed.payments > 0 || data.received.pendingCheckouts > 0) && (
             <p className="text-xs text-muted-foreground">
-              {data.received.reversed.payments > 0 && <>{money(data.received.reversed.amount)} in {data.received.reversed.payments} payment(s) was reversed by Pesapal (refunds or chargebacks) and is not counted. </>}
-              {data.received.pendingCheckouts > 0 && <>{data.received.pendingCheckouts} checkout(s) were started but not finished.</>}
+              {data.received.reversed.payments > 0 && <>{money(data.received.reversed.amount)} in {count(data.received.reversed.payments, 'payment')} was reversed by Pesapal (refunds or chargebacks) and is not counted. </>}
+              {data.received.pendingCheckouts > 0 && <>{count(data.received.pendingCheckouts, 'checkout was', 'checkouts were')} started but not finished.</>}
             </p>
           )}
 
@@ -168,7 +176,7 @@ export default function SuperAdminFinancesPage() {
               <h2 className="text-lg font-semibold">Facility accounts</h2>
               <p className="text-xs text-muted-foreground">Each approved facility&apos;s plan, where it stands and what it has paid Bulamu.</p>
             </div>
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto [contain:inline-size]">
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="border-y bg-slate-50 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                   <tr>
@@ -191,7 +199,7 @@ export default function SuperAdminFinancesPage() {
                       <td className="p-3 text-right tabular-nums">{money(f.amount)}</td>
                       <td className="p-3 whitespace-nowrap">{f.coveredUntil ? shortDate(f.coveredUntil) : '-'}</td>
                       <td className="p-3 whitespace-nowrap">{f.lastPaymentAt ? shortDate(f.lastPaymentAt) : 'Never'}</td>
-                      <td className="p-3 text-right tabular-nums">{money(f.totalPaid)}<div className="text-xs text-muted-foreground">{f.payments} payments</div></td>
+                      <td className="p-3 text-right tabular-nums">{money(f.totalPaid)}<div className="text-xs text-muted-foreground">{count(f.payments, 'payment')}</div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -206,7 +214,7 @@ export default function SuperAdminFinancesPage() {
                 Newest first{data.payments.length >= data.paymentsShown ? ` - the latest ${data.paymentsShown}; the spreadsheet has every one` : ''}. Free-trial receipts are not payments and are left out.
               </p>
             </div>
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto [contain:inline-size]">
               <table className="w-full min-w-[860px] text-left text-sm">
                 <thead className="border-y bg-slate-50 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                   <tr>
