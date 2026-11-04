@@ -63,8 +63,8 @@ describe('every notification reaches the people it is meant for', () => {
       await prisma.notification.deleteMany();
       sendMailMock.mockClear();
 
-      await app.inject({ method: 'PATCH', url: `/inventory/${id}`, headers: authHeader(users.PHARMACIST.token), payload: { quantity: 0 } });
-      await app.inject({ method: 'PATCH', url: `/inventory/${id}`, headers: authHeader(users.PHARMACIST.token), payload: { quantity: 0 } });
+      await app.inject({ method: 'POST', url: `/inventory/${id}/count`, headers: authHeader(users.PHARMACIST.token), payload: { counted: 0, note: 'All used' } });
+      await app.inject({ method: 'POST', url: `/inventory/${id}/count`, headers: authHeader(users.PHARMACIST.token), payload: { counted: 0 } });
 
       expect(await types(users.PHARMACIST.id)).toEqual(['OUT_OF_STOCK']);
       expect(await types(users.ADMIN.id)).toEqual(['OUT_OF_STOCK']);

@@ -10,6 +10,7 @@ import {
   PAYMENT_DETAILS, isPaymentMethod, lockInvoice, paymentDetails, paymentMethodText, parseAmount, parseFee, settleInvoice,
 } from '../lib/invoices';
 import { facilityLogo } from '../lib/facility-logo';
+import { StockError, returnStock, takeStock } from '../lib/stock';
 import { documentProducer, signer, type Signer } from '../lib/document-signer';
 import { sendMail, patientReceiptEmail } from '../lib/mailer';
 import { sendRouteError } from '../lib/http-error';
@@ -53,7 +54,7 @@ function billLines(invoice: FullInvoice): BillLine[] {
   return [{ description: label, quantity: 1, unitPrice: invoice.amount, amount: invoice.amount }];
 }
 
-type ChargeInput = { kind: ChargeKind; description: string; quantity: number; unitPrice: number; labTestId: string | null; prescriptionId: string | null; admissionId: string | null };
+type ChargeInput = { kind: ChargeKind; description: string; quantity: number; unitPrice: number; labTestId: string | null; prescriptionId: string | null; admissionId: string | null; medicineId?: string | null };
 
 /** Reads one charge from a form. Throws with a message for the person typing it. */
 function parseCharge(body: any): ChargeInput {
@@ -70,11 +71,18 @@ function parseCharge(body: any): ChargeInput {
     labTestId: typeof body?.labTestId === 'string' && body.labTestId ? body.labTestId : null,
     prescriptionId: typeof body?.prescriptionId === 'string' && body.prescriptionId ? body.prescriptionId : null,
     admissionId: typeof body?.admissionId === 'string' && body.admissionId ? body.admissionId : null,
+    medicineId: typeof body?.medicineId === 'string' && body.medicineId ? body.medicineId : null,
   };
 }
 
-/** A lab test, prescription or ward stay being billed must be this patient's. */
-async function checkChargeLinks(charge: ChargeInput, patientId: string): Promise<string | null> {
+/** A lab test, prescription or ward stay being billed must be this patient's; medicine sold from stock, this facility's. */
+async function checkChargeLinks(charge: ChargeInput, patientId: string, clinicId: string): Promise<string | null> {
+  if (charge.medicineId) {
+    if (charge.kind !== 'MEDICINE') return 'Only a medicine charge can be taken from stock';
+    if (charge.prescriptionId) return 'Prescribed medicine comes off stock when it is dispensed, not when it is billed';
+    const item = await prisma.medicine.findFirst({ where: { id: charge.medicineId, clinicId, deletedAt: null }, select: { id: true } });
+    if (!item) return "That medicine isn't in this facility's stock";
+  }
   if (charge.labTestId) {
     const test = await prisma.labTest.findFirst({ where: { id: charge.labTestId, patientId, deletedAt: null }, select: { id: true } });
     if (!test) return "That lab test isn't this patient's";
@@ -99,8 +107,17 @@ const chargeData = (charge: ChargeInput, userId: string) => ({
   labTestId: charge.labTestId,
   prescriptionId: charge.prescriptionId,
   admissionId: charge.admissionId,
+  medicineId: charge.medicineId ?? null,
   addedByUserId: userId,
 });
+
+/** Medicine sold from stock comes off the shelf as its line is added to a bill. */
+async function takeSoldStock(tx: Prisma.TransactionClient, items: Array<{ id: string; medicineId: string | null; prescriptionId: string | null; quantity: number }>, clinicId: string, userId: string) {
+  for (const item of items) {
+    if (!item.medicineId || item.prescriptionId) continue;
+    await takeStock(tx, { medicineId: item.medicineId, quantity: item.quantity, kind: 'SOLD', invoiceItemId: item.id, clinicId, userId });
+  }
+}
 
 async function loadInvoice(id: string) {
   return prisma.invoice.findUnique({ where: { id }, include: INVOICE_INCLUDE });
@@ -319,7 +336,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
         clinicId = patient.clinicId;
       }
       for (const charge of charges) {
-        const problem = await checkChargeLinks(charge, patientId);
+        const problem = await checkChargeLinks(charge, patientId, clinicId);
         if (problem) return reply.status(400).send({ error: problem });
       }
 
@@ -329,7 +346,9 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
             consultationId, patientId, clinicId, createdByUserId: authUser.userId,
             amount: 0, items: { create: charges.map((c) => chargeData(c, authUser.userId)) },
           },
+          include: { items: { select: { id: true, medicineId: true, prescriptionId: true, quantity: true } } },
         });
+        await takeSoldStock(tx, invoice.items, clinicId, authUser.userId);
         return settleInvoice(tx, invoice.id);
       });
       await recordAudit({
@@ -339,6 +358,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       });
       return { success: true, invoice: present((await loadInvoice(created.id))!) };
     } catch (error: any) {
+      if (error instanceof StockError) return reply.status(error.statusCode).send({ error: error.message });
       if (isUniqueConstraintError(error)) {
         return reply.status(409).send({ error: body.consultationId ? 'This consultation already has an invoice' : 'One of these is already on an invoice' });
       }
@@ -362,13 +382,14 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       if (!existing) return reply.status(404).send({ error: 'Invoice not found' });
       if (!assertClinicMatch(request, reply, existing.clinicId)) return;
       if (existing.status === 'CANCELLED') return reply.status(409).send({ error: 'This invoice was cancelled - open a new one' });
-      const problem = await checkChargeLinks(charge, existing.patientId);
+      const problem = await checkChargeLinks(charge, existing.patientId, existing.clinicId);
       if (problem) return reply.status(400).send({ error: problem });
 
       await prisma.$transaction(async (tx) => {
         await lockInvoice(tx, id);
         await ensureItemised(tx, existing);
-        await tx.invoiceItem.create({ data: { invoiceId: id, ...chargeData(charge, authUser.userId) } });
+        const item = await tx.invoiceItem.create({ data: { invoiceId: id, ...chargeData(charge, authUser.userId) } });
+        await takeSoldStock(tx, [item], existing.clinicId, authUser.userId);
         await settleInvoice(tx, id);
       });
       await recordAudit({
@@ -377,6 +398,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       });
       return { success: true, invoice: present((await loadInvoice(id))!) };
     } catch (error: any) {
+      if (error instanceof StockError) return reply.status(error.statusCode).send({ error: error.message });
       if (isUniqueConstraintError(error)) return reply.status(409).send({ error: 'That is already on an invoice' });
       return sendRouteError(reply, error, 400);
     }
@@ -388,7 +410,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
     const { id, itemId } = request.params as any;
     const authUser = getAuthUser(request);
     try {
-      const existing = await prisma.invoice.findUnique({ where: { id }, include: { items: { select: { id: true, amount: true, kind: true } } } });
+      const existing = await prisma.invoice.findUnique({ where: { id }, include: { items: { select: { id: true, amount: true, kind: true, quantity: true, medicineId: true, prescriptionId: true } } } });
       if (!existing) return reply.status(404).send({ error: 'Invoice not found' });
       if (!assertClinicMatch(request, reply, existing.clinicId)) return;
       const item = existing.items.find((i) => i.id === itemId);
@@ -400,6 +422,10 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
         const fresh = await tx.invoice.findUniqueOrThrow({ where: { id }, include: { _count: { select: { items: true } } } });
         if (fresh._count.items <= 1) return 'last';
         if (fresh.amount - item.amount < fresh.amountPaid) return 'paid';
+        // Medicine sold from stock was charged by mistake: it goes back on the shelf.
+        if (item.medicineId && !item.prescriptionId) {
+          await returnStock(tx, { medicineId: item.medicineId, quantity: item.quantity, kind: 'SALE_REVERSED', invoiceItemId: item.id, clinicId: existing.clinicId, userId: authUser.userId });
+        }
         await tx.invoiceItem.delete({ where: { id: itemId } });
         await settleInvoice(tx, id);
         return 'ok';
@@ -514,12 +540,24 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       if (existing.status === 'PAID') return reply.status(409).send({ error: "A paid invoice can't be cancelled" });
       if (existing.amountPaid > 0) return reply.status(409).send({ error: 'Payments have been taken on this invoice - void them first' });
 
-      const invoice = await prisma.invoice.update({ where: { id }, data: { status: 'CANCELLED' } });
       const authUser = getAuthUser(request);
+      // Medicine sold from stock on this bill goes back on the shelf only when
+      // the caller says it did (a waived bill's medicine was still handed out).
+      const restock = (request.body as any)?.restock === true;
+      const invoice = await prisma.$transaction(async (tx) => {
+        await lockInvoice(tx, id);
+        if (restock) {
+          const sold = await tx.invoiceItem.findMany({ where: { invoiceId: id, medicineId: { not: null }, prescriptionId: null } });
+          for (const item of sold) {
+            await returnStock(tx, { medicineId: item.medicineId!, quantity: item.quantity, kind: 'SALE_REVERSED', invoiceItemId: item.id, clinicId: existing.clinicId, userId: authUser.userId });
+          }
+        }
+        return tx.invoice.update({ where: { id }, data: { status: 'CANCELLED' } });
+      });
       await recordAudit({
         entity: 'Invoice', recordId: invoice.id, clinicId: invoice.clinicId,
         action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
-        metadata: { status: 'CANCELLED', amount: invoice.amount },
+        metadata: { status: 'CANCELLED', amount: invoice.amount, ...(restock ? { restocked: true } : {}) },
       });
       return { success: true, invoice };
     } catch (error: any) {

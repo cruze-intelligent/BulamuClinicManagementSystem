@@ -496,18 +496,23 @@ export async function runPeriodicChecks(clinicId: string, now: Date = new Date()
 async function checkExpiringStock(clinicId: string, now: Date, log?: Logger) {
   const medicines = await prisma.medicine.findMany({
     where: { clinicId, deletedAt: null, quantity: { gt: 0 }, expiryDate: { not: null, lte: new Date(now.getTime() + EXPIRY_WARNING_DAYS * DAY_MS) } },
-    select: { id: true, name: true, quantity: true, unit: true, expiryDate: true },
+    select: { id: true, name: true, quantity: true, unit: true, expiryDate: true, batches: { where: { quantity: { gt: 0 } }, select: { quantity: true, expiryDate: true } } },
   });
   for (const medicine of medicines) {
     const expiry = medicine.expiryDate!;
     const expired = expiry.getTime() <= now.getTime();
+    // Only the batches that expire on that date - later deliveries are still good.
+    // (Stock recorded before batches were kept counts as one batch.)
+    const affected = medicine.batches.length
+      ? medicine.batches.filter((b) => b.expiryDate && b.expiryDate.getTime() <= expiry.getTime()).reduce((sum, b) => sum + b.quantity, 0)
+      : medicine.quantity;
     await notifyStaff({
       type: 'STOCK_EXPIRING',
       clinicId,
       title: expired ? `Expired stock: ${medicine.name}` : `Expiring soon: ${medicine.name}`,
       body: expired
-        ? `${medicine.quantity} ${medicine.unit} of ${medicine.name} expired on ${shortDate(expiry)}. Remove it from stock so it is not dispensed.`
-        : `${medicine.quantity} ${medicine.unit} of ${medicine.name} expire on ${shortDate(expiry)}.`,
+        ? `${affected} ${medicine.unit} of ${medicine.name} expired on ${shortDate(expiry)}. Bulamu will not dispense or sell them - remove them from stock under Inventory.`
+        : `${affected} ${medicine.unit} of ${medicine.name} expire on ${shortDate(expiry)}.`,
       link: '/inventory',
       emailSummary: expired
         ? 'Some medicines in stock have expired and should be removed so they are not dispensed. Open the Inventory page to see which.'

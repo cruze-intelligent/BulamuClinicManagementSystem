@@ -708,6 +708,10 @@ model InvoiceItem {
   // For a ward stay: the admission it charges for (nights charged add up across lines).
   admissionId    String?
   admission      Admission?    @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  // Medicine sold from stock without a prescription (over the counter): taken
+  // off the shelf when the line is added, put back if the line is removed.
+  // Prescribed medicine is taken off stock when dispensed, not here.
+  medicineId     String?
   addedByUserId  String?
   createdAt      DateTime   @default(now())
 
@@ -808,6 +812,9 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+// A stock item. `quantity` is what is on the shelf - always the sum of its
+// batches - and `expiryDate` the soonest expiry among batches still holding
+// stock. Both change only through stock movements (lib/stock.ts).
 model Medicine {
   id          String   @id @default(uuid())
   clinicId    String
@@ -818,11 +825,74 @@ model Medicine {
   price       Float
   expiryDate  DateTime?
   prescriptions Prescription[]
+  batches     MedicineBatch[]
+  movements   StockMovement[]
   deletedAt   DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([clinicId])
+}
+
+// One delivery of a medicine, with its own expiry date. Dispensing and sales
+// take from the batch that expires first; expired batches are never used.
+model MedicineBatch {
+  id         String    @id @default(uuid())
+  medicineId String
+  medicine   Medicine  @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  clinicId   String
+  quantity   Int
+  // Empty for stock that does not expire (or whose expiry was not recorded).
+  expiryDate DateTime?
+  supplier   String?
+  reference  String?
+  receivedAt DateTime  @default(now())
+
+  @@index([medicineId])
+}
+
+// Every change to what is on the shelf, never edited or deleted: who, when,
+// how many, why, and the balance afterwards.
+model StockMovement {
+  id             String            @id @default(uuid())
+  clinicId       String
+  medicineId     String
+  medicine       Medicine          @relation(fields: [medicineId], references: [id], onDelete: Cascade)
+  kind           StockMovementKind
+  // Positive when stock came in, negative when it went out.
+  change         Int
+  balanceAfter   Int
+  // For removals: DAMAGED, EXPIRED, LOST, RETURNED or OTHER.
+  reason         String?
+  note           String?
+  supplier       String?
+  reference      String?
+  // For a delivery: the expiry date of the batch received.
+  expiryDate     DateTime?
+  unitCost       Int?
+  // Which batches the stock came from or went back to: [{ batchId, quantity }].
+  batches        Json?
+  prescriptionId String?
+  invoiceItemId  String?
+  userId         String?
+  createdAt      DateTime          @default(now())
+
+  @@index([medicineId, createdAt])
+  @@index([clinicId, createdAt])
+  @@index([prescriptionId])
+  @@index([invoiceItemId])
+}
+
+enum StockMovementKind {
+  OPENING
+  RECEIVED
+  DISPENSED
+  DISPENSE_REVERSED
+  SOLD
+  SALE_REVERSED
+  REMOVED
+  COUNTED
+  DISCONTINUED
 }
 
 model LabTest {

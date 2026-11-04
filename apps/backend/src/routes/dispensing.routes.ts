@@ -5,6 +5,7 @@ import { assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { recordAudit } from '../lib/audit';
 import { notifyIfLowStock } from '../lib/notifications';
 import { sendRouteError } from '../lib/http-error';
+import { StockError, returnStock, takeStock } from '../lib/stock';
 
 const MAX_QUANTITY = 100000;
 const PENDING_LIMIT = 300;
@@ -100,25 +101,11 @@ export async function dispensingRoutes(fastify: FastifyInstance) {
       }
 
       const { medicine, previousQuantity } = await prisma.$transaction(async (tx) => {
-        let stock: { id: string; clinicId: string; name: string; quantity: number; unit: string; reorderLevel: number } | null = null;
-        let before = 0;
-
-        if (existing.medicineId && quantity) {
-          const item = await tx.medicine.findFirst({ where: { id: existing.medicineId, clinicId: authUser.clinicId, deletedAt: null } });
-          if (item) {
-            // Conditional decrement: only succeeds while enough is on the shelf.
-            const taken = await tx.medicine.updateMany({
-              where: { id: item.id, quantity: { gte: quantity } },
-              data: { quantity: { decrement: quantity } },
-            });
-            if (taken.count === 0) {
-              const current = await tx.medicine.findUnique({ where: { id: item.id }, select: { quantity: true } });
-              throw new DispensingError(409, `Not enough ${item.name} in stock: ${current?.quantity ?? 0} ${item.unit} available, ${quantity} needed`);
-            }
-            before = item.quantity;
-            stock = await tx.medicine.findUniqueOrThrow({ where: { id: item.id } });
-          }
-        }
+        // Off the shelf from the batch that expires first - never expired stock,
+        // never below zero. A medicine that is not a stock item has nothing to take.
+        const taken = existing.medicineId && quantity
+          ? await takeStock(tx, { medicineId: existing.medicineId, quantity, kind: 'DISPENSED', prescriptionId: id, clinicId: existing.consultation.appointment.clinicId, userId: authUser.userId })
+          : null;
 
         // Only one request can move it from waiting to dispensed.
         const marked = await tx.prescription.updateMany({
@@ -127,7 +114,7 @@ export async function dispensingRoutes(fastify: FastifyInstance) {
         });
         if (marked.count === 0) throw new DispensingError(409, 'This prescription has already been dispensed');
 
-        return { medicine: stock, previousQuantity: stock ? before : null };
+        return { medicine: taken?.medicine ?? null, previousQuantity: taken ? taken.previousQuantity : null };
       });
 
       await recordAudit({
@@ -139,7 +126,7 @@ export async function dispensingRoutes(fastify: FastifyInstance) {
       const prescription = await prisma.prescription.findUniqueOrThrow({ where: { id }, include: { dispensedBy: { select: { name: true } } } });
       return { success: true, prescription, medicine };
     } catch (error: any) {
-      if (error instanceof DispensingError) return reply.status(error.statusCode).send({ error: error.message });
+      if (error instanceof DispensingError || error instanceof StockError) return reply.status(error.statusCode).send({ error: error.message });
       return sendRouteError(reply, error);
     }
   });
@@ -164,9 +151,10 @@ export async function dispensingRoutes(fastify: FastifyInstance) {
 
       await prisma.$transaction(async (tx) => {
         if (existing.medicineId && existing.dispensedQuantity) {
-          await tx.medicine.updateMany({
-            where: { id: existing.medicineId, clinicId: authUser.clinicId },
-            data: { quantity: { increment: existing.dispensedQuantity } },
+          // Back into the batches it came from.
+          await returnStock(tx, {
+            medicineId: existing.medicineId, quantity: existing.dispensedQuantity, kind: 'DISPENSE_REVERSED', prescriptionId: id,
+            clinicId: existing.consultation.appointment.clinicId, userId: authUser.userId,
           });
         }
         const cleared = await tx.prescription.updateMany({

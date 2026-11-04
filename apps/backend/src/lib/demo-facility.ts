@@ -17,6 +17,7 @@ export const DEMO_FACILITY_NAME = 'Bulamu Test Facility';
 export const DEMO_DAYS = 14;
 export { DEMO_EMAIL_DOMAIN } from './mailer';
 import { DEMO_EMAIL_DOMAIN } from './mailer';
+import { createStockItem } from './stock';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -302,9 +303,11 @@ async function seedDemoRecords(clinicId: string, users: Record<string, { id: str
     { name: 'Ferrous sulphate 200 mg', quantity: 500, unit: 'tablets', reorderLevel: 100, price: 30, expiryDays: 500 },
     { name: 'Metronidazole 400 mg', quantity: 320, unit: 'tablets', reorderLevel: 100, price: 80, expiryDays: 350 },
   ];
-  const medicines = await Promise.all(stock.map((m) => prisma.medicine.create({
-    data: { clinicId, name: m.name, quantity: m.quantity, unit: m.unit, reorderLevel: m.reorderLevel, price: m.price, expiryDate: new Date(now.getTime() + m.expiryDays * DAY) },
-  })));
+  // Each with its opening stock recorded, as a real facility's would be.
+  const medicines = await Promise.all(stock.map((m) => prisma.$transaction((tx) => createStockItem(tx, {
+    clinicId, userId: users.pharmacist.id, name: m.name, unit: m.unit, reorderLevel: m.reorderLevel, price: m.price,
+    quantity: m.quantity, expiryDate: new Date(now.getTime() + m.expiryDays * DAY),
+  }))));
   const medicineId = (name: string) => medicines.find((m) => m.name.startsWith(name))?.id ?? null;
 
   // --- Patients -------------------------------------------------------------------

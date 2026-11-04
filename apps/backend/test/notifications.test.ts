@@ -75,7 +75,7 @@ describe('notifications', () => {
       return response.json().medicine.id as string;
     }
     const setQuantity = (token: string, id: string, quantity: number) =>
-      app.inject({ method: 'PATCH', url: `/inventory/${id}`, headers: authHeader(token), payload: { quantity } });
+      app.inject({ method: 'POST', url: `/inventory/${id}/count`, headers: authHeader(token), payload: { counted: quantity, note: 'Stock count' } });
 
     it('tells only the pharmacist and admin - in-app and by a generic email - when stock falls to its reorder level', async () => {
       const { users } = await facility();

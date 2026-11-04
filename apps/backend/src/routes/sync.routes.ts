@@ -5,6 +5,7 @@ import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/aut
 import { recordConflictIfStale } from '../lib/conflict';
 import { recordAudit } from '../lib/audit';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
+import { STOCK_ROLES, createStockItem, discontinueStockItem, parseCount, parseExpiry, parseItemDetails } from '../lib/stock';
 import { notifyDoctorOfAppointment, notifyIfLowStock, notifyLabOrdered, notifyNewPrescription } from '../lib/notifications';
 import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
 import { consultationChildren, linkStockItems } from '../lib/consultation-records';
@@ -481,6 +482,11 @@ export async function syncRoutes(fastify: FastifyInstance) {
             actorUserId: authUser.userId, actorRole: authUser.role, metadata: { event: 'ALLERGIES_UPDATED', status: valid.value.status },
           });
         } else if (entity === 'inventory') {
+          // Stock is changed by pharmacists and administrators only - offline too.
+          if (!(STOCK_ROLES as readonly string[]).includes(authUser.role)) {
+            fastify.log.warn(`Rejected inventory mutation ${mutationId}: ${authUser.role} cannot change stock`);
+            continue;
+          }
           const existing = await prisma.medicine.findUnique({ where: { id: payload.id } });
           if (existing && !isSuperAdmin && existing.clinicId !== authUser.clinicId) {
             fastify.log.warn(`Rejected inventory mutation ${mutationId}: record belongs to another clinic`);
@@ -489,43 +495,43 @@ export async function syncRoutes(fastify: FastifyInstance) {
 
           if (action === 'delete') {
             if (!existing || existing.deletedAt) continue;
-            record = await prisma.medicine.update({ where: { id: payload.id }, data: { deletedAt: new Date() } });
-          } else {
-            if (existing) {
-              const stale = await recordConflictIfStale({
-                entity: 'Medicine', recordId: payload.id, clinicId: existing.clinicId, mutationId,
-                incomingUpdatedAt, currentUpdatedAt: existing.updatedAt,
-              });
-              if (stale) continue;
-            }
-            const clinicIdForRecord = existing ? existing.clinicId : scopedClinicId;
-
-            record = await prisma.medicine.upsert({
-              where: { id: payload.id },
-              update: {
-                name: payload.name,
-                quantity: Number(payload.quantity),
-                unit: payload.unit,
-                reorderLevel: Number(payload.reorderLevel),
-                price: Number(payload.price),
-                expiryDate: payload.expiryDate ? new Date(payload.expiryDate) : null,
-                updatedAt: incomingUpdatedAt,
-              },
-              create: {
-                id: payload.id,
-                clinicId: clinicIdForRecord,
-                name: payload.name,
-                quantity: Number(payload.quantity),
-                unit: payload.unit,
-                reorderLevel: Number(payload.reorderLevel),
-                price: Number(payload.price),
-                expiryDate: payload.expiryDate ? new Date(payload.expiryDate) : null,
-                createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
-                updatedAt: incomingUpdatedAt,
-              },
+            record = await prisma.$transaction((tx) => discontinueStockItem(tx, { medicineId: existing.id, note: null, clinicId: existing.clinicId, userId: authUser.userId }));
+          } else if (existing) {
+            // Details only. What is on the shelf changes by receiving, removing or
+            // counting stock - online, where each change is recorded - never by an
+            // offline copy overwriting the count.
+            const stale = await recordConflictIfStale({
+              entity: 'Medicine', recordId: payload.id, clinicId: existing.clinicId, mutationId,
+              incomingUpdatedAt, currentUpdatedAt: existing.updatedAt,
             });
-
-            await notifyIfLowStock(record, existing ? existing.quantity : null, (message) => fastify.log.warn(message));
+            if (stale) continue;
+            let details;
+            try {
+              details = parseItemDetails(payload, true);
+            } catch {
+              fastify.log.warn(`Rejected inventory mutation ${mutationId}: invalid details`);
+              continue;
+            }
+            record = await prisma.medicine.update({ where: { id: existing.id }, data: { ...details, updatedAt: incomingUpdatedAt } });
+          } else {
+            // Added while offline: a new item, with its opening stock recorded.
+            let details;
+            let quantity;
+            let expiryDate;
+            try {
+              details = parseItemDetails(payload);
+              quantity = parseCount(payload.quantity ?? 0, 'The quantity on the shelf');
+              expiryDate = parseExpiry(payload.expiryDate);
+            } catch {
+              fastify.log.warn(`Rejected inventory mutation ${mutationId}: invalid stock item`);
+              continue;
+            }
+            const created = await prisma.$transaction((tx) => createStockItem(tx, {
+              ...(details as Required<typeof details>), id: payload.id, quantity, expiryDate, clinicId: scopedClinicId, userId: authUser.userId,
+              createdAt: payload.createdAt ? new Date(payload.createdAt) : undefined,
+            }));
+            record = created;
+            await notifyIfLowStock(created, null, (message) => fastify.log.warn(message));
           }
         }
 
