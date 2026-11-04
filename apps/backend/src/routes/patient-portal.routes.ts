@@ -13,7 +13,7 @@ import { dischargeSummaryInput } from './admission.routes';
 import { facilityLogo } from '../lib/facility-logo';
 import { sendRouteError } from '../lib/http-error';
 import { buildReceipt } from './invoice.routes';
-import { CHARGE_KINDS, PAYMENT_METHODS, formatReceiptNumber } from '../lib/invoices';
+import { CHARGE_KINDS, formatReceiptNumber, paymentMethodText } from '../lib/invoices';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -126,7 +126,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
             select: {
               id: true, amount: true, amountPaid: true, status: true, createdAt: true, consultationId: true,
               items: { orderBy: { createdAt: 'asc' }, select: { id: true, kind: true, description: true, quantity: true, unitPrice: true, amount: true } },
-              payments: { where: { voidedAt: null }, orderBy: { receivedAt: 'asc' }, select: { id: true, receiptNumber: true, amount: true, method: true, receivedAt: true } },
+              payments: { where: { voidedAt: null }, orderBy: { receivedAt: 'asc' }, select: { id: true, receiptNumber: true, amount: true, method: true, provider: true, receivedAt: true } },
             },
           },
           admissions: {
@@ -154,7 +154,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
             payments: invoice.payments.map((p) => ({
               ...p,
               receiptNumber: formatReceiptNumber(p.receiptNumber),
-              method: p.method ? PAYMENT_METHODS[p.method] : null,
+              method: p.method ? paymentMethodText(p.method, p.provider) : null,
             })),
           })),
         }));

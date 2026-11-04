@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { useAuth } from '@/lib/useAuth';
 import { downloadWithAuth } from '@/lib/download';
+import { FinanceReportExport } from '@/components/finance-report-export';
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, categoryLabel, kampalaToday, methodLabel, parseShillings, shortDate, shortTime, ugx } from '@/lib/finance';
 
 type MethodTotal = { method: string; label: string; total: number; count: number };
@@ -40,7 +41,7 @@ async function get(path: string) {
   return data;
 }
 
-const TABS = [['day', "Day's takings"], ['month', 'The month'], ['expenses', 'Expenses']] as const;
+const TABS = [['day', "Day's takings"], ['month', 'The month'], ['expenses', 'Expenses'], ['reports', 'Reports']] as const;
 
 export default function FinancesPage() {
   const { hasRole } = useAuth();
@@ -74,6 +75,7 @@ export default function FinancesPage() {
         {tab === 'day' && <DayTakings />}
         {tab === 'month' && <MonthSummary />}
         {tab === 'expenses' && <Expenses />}
+        {tab === 'reports' && <FinanceReportExport clinicId={clinicId()} />}
       </div>
     </div>
   );

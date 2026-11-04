@@ -55,7 +55,7 @@ describe('a bill', () => {
     const changed = vi.fn();
     const paid = bill({
       amountPaid: 10000, balance: 16000, state: 'Part paid',
-      payments: [{ id: 'pay-1', receiptNumber: '000042', amount: 10000, method: 'MOBILE_MONEY', reference: 'MP123', payerName: null, receivedAt: '2026-10-18T07:05:00Z', receivedBy: { name: 'Sarah Nakato', role: 'STAFF' }, voidedAt: null, voidReason: null }],
+      payments: [{ id: 'pay-1', receiptNumber: '000042', amount: 10000, method: 'MOBILE_MONEY', provider: 'MTN Mobile Money', reference: 'MP123', payerName: null, receivedAt: '2026-10-18T07:05:00Z', receivedBy: { name: 'Sarah Nakato', role: 'STAFF' }, voidedAt: null, voidReason: null }],
     });
     const fetchMock = server({
       'GET /invoices/detail/bill-1': () => ({ success: true, invoice: bill(), suggestions: [] }),
@@ -65,20 +65,30 @@ describe('a bill', () => {
     await screen.findByText('Artemether/Lumefantrine 20/120 mg');
 
     expect((screen.getByLabelText('Amount received (UGX)') as HTMLInputElement).value).toBe('26000');
+    // Cash, the default, asks for nothing more.
+    expect(screen.queryByLabelText('Network')).toBeNull();
     fireEvent.click(screen.getByLabelText('Mobile money'));
-    fireEvent.change(screen.getByLabelText('Transaction ID'), { target: { value: 'MP123' } });
     fireEvent.change(screen.getByLabelText('Amount received (UGX)'), { target: { value: '10,000' } });
+    // Mobile money needs its network and transaction ID before anything is sent.
+    fireEvent.submit(screen.getByLabelText('Amount received (UGX)').closest('form')!);
+    expect(screen.getByRole('alert').textContent).toContain('Choose the mobile money network (MTN or Airtel)');
+    fireEvent.change(screen.getByLabelText('Network'), { target: { value: 'MTN Mobile Money' } });
+    fireEvent.submit(screen.getByLabelText('Amount received (UGX)').closest('form')!);
+    expect(screen.getByRole('alert').textContent).toContain('Enter the transaction ID from the mobile money message');
+    expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/payments') && init?.method === 'POST')).toBe(false);
+    fireEvent.change(screen.getByLabelText('Transaction ID'), { target: { value: 'MP123' } });
     fireEvent.click(screen.getByRole('button', { name: 'Record UGX 10,000 received' }));
 
     await waitFor(() => expect(screen.getByText('UGX 10,000 received - receipt 000042')).toBeTruthy());
     const sent = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/payments') && init?.method === 'POST')!;
-    expect(JSON.parse(String(sent[1]!.body))).toEqual({ amount: 10000, method: 'MOBILE_MONEY', reference: 'MP123' });
+    expect(JSON.parse(String(sent[1]!.body))).toEqual({ amount: 10000, method: 'MOBILE_MONEY', provider: 'MTN Mobile Money', reference: 'MP123' });
     expect(changed).toHaveBeenCalled();
     expect(screen.getByText(/UGX 16,000 is still owed/)).toBeTruthy();
+    expect(screen.getByText(/Mobile money - MTN Mobile Money/)).toBeTruthy();
 
     const sms = screen.getByRole('link', { name: /SMS/ }).getAttribute('href')!;
     expect(sms.startsWith('sms:+256772123456?body=')).toBe(true);
-    expect(decodeURIComponent(sms)).toContain('receipt 000042 for Achieng Mary. UGX 10,000 received by mobile money');
+    expect(decodeURIComponent(sms)).toContain('receipt 000042 for Achieng Mary. UGX 10,000 received by MTN Mobile Money');
     expect(screen.getByRole('link', { name: /WhatsApp/ }).getAttribute('href')).toMatch(/^https:\/\/wa\.me\/256772123456\?text=/);
     expect(screen.getByRole('button', { name: 'Print receipt' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Print receipt 000042' })).toBeTruthy();

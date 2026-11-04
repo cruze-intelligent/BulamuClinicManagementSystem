@@ -64,7 +64,7 @@ export default function FacilityPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) throw new Error(data.error || 'The logo could not be saved');
       await loadLogo();
-      setMessage({ ok: true, text: 'Logo saved. It now appears on your invoices, prescriptions, referral letters and discharge summaries.' });
+      setMessage({ ok: true, text: 'Logo saved. It now appears on your invoices, receipts, prescriptions, referral letters, discharge summaries and financial reports.' });
     } catch (error: any) {
       setMessage({ ok: false, text: error.message });
     } finally {
@@ -113,7 +113,7 @@ export default function FacilityPage() {
         <Card className="mt-4 p-5">
           <h2 className="text-lg font-semibold">Logo on your documents</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Printed at the top of your invoices, prescriptions, referral letters and discharge summaries, beside your facility name.
+            Printed at the top of your invoices, receipts, prescriptions, referral letters, discharge summaries and financial reports, beside your facility name.
             Use a PNG or JPEG under 500 KB; a wide logo on a white or transparent background looks best.
           </p>
 

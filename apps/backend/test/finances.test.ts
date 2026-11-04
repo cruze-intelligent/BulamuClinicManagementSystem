@@ -3,7 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { buildTestApp, seedClinic, seedUser, loginAs, authHeader } from './helpers';
 import { resetDb } from './db';
 import { prisma } from '../src/lib/prisma';
-import { pdfText } from './pdf-text';
+import { pdfImageCount, pdfText } from './pdf-text';
 
 const sendMailMock = vi.hoisted(() => vi.fn());
 vi.mock('../src/lib/mailer', async (importOriginal) => {
@@ -163,6 +163,29 @@ describe('itemised bills', () => {
 });
 
 describe('payments and receipts', () => {
+  it('asks for the network and transaction ID with mobile money, the insurer and member number with insurance - and nothing more with cash', async () => {
+    const f = await facility();
+    const error = async (payload: object) => (await pay(f.desk.token, f.invoice.id, { amount: 1000, ...payload })).json().error;
+    expect(await error({ method: 'MOBILE_MONEY', reference: 'MP1' })).toBe('Choose the mobile money network (MTN or Airtel)');
+    expect(await error({ method: 'MOBILE_MONEY', provider: 'MTN Mobile Money' })).toBe('Enter the transaction ID from the mobile money message');
+    expect(await error({ method: 'INSURANCE', reference: 'JUB-1' })).toBe('Choose the insurer');
+    expect(await error({ method: 'INSURANCE', provider: 'Jubilee Health Insurance', reference: '  ' })).toBe('Enter the member or claim number');
+
+    const insured = (await pay(f.desk.token, f.invoice.id, { amount: 1000, method: 'INSURANCE', provider: 'Jubilee Health Insurance', reference: 'JUB-778812' })).json().payment;
+    expect(insured).toMatchObject({ method: 'INSURANCE', provider: 'Jubilee Health Insurance', reference: 'JUB-778812' });
+    // An insurer that is not on Bulamu's list can be typed.
+    const other = (await pay(f.desk.token, f.invoice.id, { amount: 1000, method: 'INSURANCE', provider: 'Kampala Community Health Scheme', reference: 'KCHS-9' })).json().payment;
+    expect(other.provider).toBe('Kampala Community Health Scheme');
+    // Cash keeps no network or reference, even if one is sent along.
+    const cash = (await pay(f.desk.token, f.invoice.id, { amount: 1000, method: 'CASH', provider: 'MTN Mobile Money', reference: 'X1' })).json().payment;
+    expect(cash).toMatchObject({ method: 'CASH', provider: null, reference: null });
+
+    const receipt = pdfText((await app.inject({ method: 'GET', url: `/payments/${insured.id}/receipt/pdf`, headers: authHeader(f.desk.token) })).rawPayload);
+    expect(receipt).toContain('Insurance - Jubilee Health Insurance');
+    expect(receipt).toContain('Member or claim number');
+    expect(receipt).toContain('JUB-778812');
+  });
+
   it('takes part payments with numbered receipts until the bill is paid in full - never more than is owed', async () => {
     const f = await facility();
     expect((await pay(f.desk.token, f.invoice.id, { amount: 5000 })).json().error).toBe('Choose how the patient paid');
@@ -173,8 +196,8 @@ describe('payments and receipts', () => {
     expect(first.json().payment.receiptNumber).toBe('000001');
     expect(first.json().invoice).toMatchObject({ status: 'PENDING', state: 'Part paid', amountPaid: 8000, balance: 12000, paidAt: null });
 
-    const second = await pay(f.desk.token, f.invoice.id, { amount: 12000, method: 'MOBILE_MONEY', reference: ' MP2610.1432.A71234 ', payerName: 'Okello John' });
-    expect(second.json().payment).toMatchObject({ receiptNumber: '000002', method: 'MOBILE_MONEY', reference: 'MP2610.1432.A71234', payerName: 'Okello John' });
+    const second = await pay(f.desk.token, f.invoice.id, { amount: 12000, method: 'MOBILE_MONEY', provider: 'MTN Mobile Money', reference: ' MP2610.1432.A71234 ', payerName: 'Okello John' });
+    expect(second.json().payment).toMatchObject({ receiptNumber: '000002', method: 'MOBILE_MONEY', provider: 'MTN Mobile Money', reference: 'MP2610.1432.A71234', payerName: 'Okello John' });
     expect(second.json().invoice).toMatchObject({ status: 'PAID', state: 'Paid', balance: 0 });
     expect(second.json().invoice.paidAt).not.toBeNull();
     expect((await pay(f.desk.token, f.invoice.id, { amount: 1, method: 'CASH' })).json().error).toBe('This invoice is already paid');
@@ -248,11 +271,11 @@ describe('payments and receipts', () => {
 
   it('prints the receipt with the facility, number, method, who took it and the balance - and emails it to the patient', async () => {
     const f = await facility();
-    const taken = (await pay(f.desk.token, f.invoice.id, { amount: 15000, method: 'MOBILE_MONEY', reference: 'MP-123' })).json().payment;
+    const taken = (await pay(f.desk.token, f.invoice.id, { amount: 15000, method: 'MOBILE_MONEY', provider: 'Airtel Money', reference: 'MP-123' })).json().payment;
     const pdf = await app.inject({ method: 'GET', url: `/payments/${taken.id}/receipt/pdf`, headers: authHeader(f.desk.token) });
     expect(pdf.headers['content-disposition']).toContain('receipt-000001.pdf');
     const text = pdfText(pdf.rawPayload);
-    for (const expected of ['Mbarara Family Clinic', 'No. 000001', 'Mobile money', 'MP-123', 'Sarah Nakato, Front Desk', 'Balance UGX 5,000', 'Achieng Mary']) {
+    for (const expected of ['Mbarara Family Clinic', 'No. 000001', 'Mobile money - Airtel Money', 'Transaction ID', 'MP-123', 'Sarah Nakato, Front Desk', 'Balance UGX 5,000', 'Achieng Mary']) {
       expect(text).toContain(expected);
     }
 
@@ -329,7 +352,7 @@ describe('daily takings, the month and expenses', () => {
     const f = await facility();
     const sale = (await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(f.pharmacist.token), payload: { patientId: f.patient.id, items: [{ kind: 'MEDICINE', description: 'ORS', quantity: 10, unitPrice: 500 }] } })).json().invoice;
     const cash = (await pay(f.desk.token, f.invoice.id, { amount: 12000, method: 'CASH' })).json().payment;
-    const momo = (await pay(f.desk.token, f.invoice.id, { amount: 8000, method: 'MOBILE_MONEY', reference: 'MP1' })).json().payment;
+    const momo = (await pay(f.desk.token, f.invoice.id, { amount: 8000, method: 'MOBILE_MONEY', provider: 'MTN Mobile Money', reference: 'MP1' })).json().payment;
     const pharmacy = (await pay(f.pharmacist.token, sale.id, { amount: 5000, method: 'CASH' })).json().payment;
     const mistake = (await pay(f.pharmacist.token, sale.id, { amount: 0 + 1, method: 'CARD' })).json();
     // (The sale was already paid in full, so that last one is refused.)
@@ -453,6 +476,114 @@ describe('daily takings, the month and expenses', () => {
   });
 });
 
+describe('financial reports to download', () => {
+  // 23:30 in Kampala on 17 October; the last payment falls early on the 18th.
+  const ON_THE_17TH = new Date('2026-10-17T20:30:00Z');
+  const ON_THE_18TH = new Date('2026-10-17T21:30:00Z');
+  const report = (token: string, clinicId: string, query: string) =>
+    app.inject({ method: 'GET', url: `/finances/${clinicId}/report?${query}`, headers: authHeader(token) });
+
+  /** Cash, mobile money (later voided) and a pharmacy sale on the 17th, cash on the 18th, and two kinds of spending. */
+  async function month() {
+    const f = await facility();
+    const sale = (await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(f.pharmacist.token), payload: { patientId: f.patient.id, items: [{ kind: 'MEDICINE', description: 'ORS', quantity: 10, unitPrice: 500 }] } })).json().invoice;
+    const cash = (await pay(f.desk.token, f.invoice.id, { amount: 12000, method: 'CASH' })).json().payment;
+    const momo = (await pay(f.desk.token, f.invoice.id, { amount: 8000, method: 'MOBILE_MONEY', provider: 'MTN Mobile Money', reference: 'MP1' })).json().payment;
+    const pharmacy = (await pay(f.pharmacist.token, sale.id, { amount: 5000, method: 'CASH' })).json().payment;
+    await prisma.patientPayment.updateMany({ where: { id: { in: [cash.id, momo.id, pharmacy.id] } }, data: { receivedAt: ON_THE_17TH } });
+    const review = await app.inject({ method: 'POST', url: `/invoices/${f.invoice.id}/items`, headers: authHeader(f.desk.token), payload: { kind: 'OTHER', description: 'Review', unitPrice: 3000 } });
+    const later = (await pay(f.desk.token, review.json().invoice.id, { amount: 3000, method: 'CASH' })).json().payment;
+    await prisma.patientPayment.update({ where: { id: later.id }, data: { receivedAt: ON_THE_18TH } });
+    await prisma.invoiceItem.updateMany({ data: { createdAt: ON_THE_17TH } });
+    await app.inject({ method: 'POST', url: `/payments/${momo.id}/void`, headers: authHeader(f.admin.token), payload: { reason: 'Reversed by the network' } });
+    const expense = (payload: object) => app.inject({ method: 'POST', url: '/expenses', headers: authHeader(f.admin.token), payload });
+    await expense({ category: 'MEDICINES_SUPPLIES', description: 'Restock', amount: 150000, spentOn: '2026-10-05', method: 'BANK', paidTo: 'Joint Medical Store', reference: 'TRF 1' });
+    await expense({ category: 'TRANSPORT', description: 'Boda to the lab', amount: 5000, spentOn: '2026-10-17', method: 'CASH' });
+    return f;
+  }
+
+  it('reports everything over any period as one spreadsheet - voided lines listed, marked and never counted', async () => {
+    const f = await month();
+    const res = await report(f.admin.token, f.clinic.id, 'from=2026-10-01&to=2026-10-31');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('financial-report-all-2026-10-01-to-2026-10-31.csv');
+    expect(res.body).toContain('Section,Date,Receipt / bill / reference,Received from / paid to / patient,Category,Details,Method,Amount (UGX),Recorded by,Status');
+    expect(res.body).toMatch(/Money received,2026-10-17,Receipt 000001,Achieng Mary,Cash,For bill #\w+,Cash,12000,Sarah Nakato,\r\n/);
+    expect(res.body).toMatch(/Money received,2026-10-17,Receipt 000002,Achieng Mary,Mobile money,"For bill #\w+, MTN Mobile Money, ref MP1",Mobile money,8000,Sarah Nakato,Void \(not counted\): Reversed by the network/);
+    expect(res.body).toContain('Money received,2026-10-18,Receipt 000004,');
+    expect(res.body).toContain(',Medicine,ORS (10 x 500),,5000,,');
+    expect(res.body).toContain('Money paid out,2026-10-05,TRF 1,Joint Medical Store,Medicines and supplies,Restock,Bank transfer,150000,Grace Nankya,');
+    // Voiding the mobile money payment left 8,000 owing on the visit's bill.
+    expect(res.body).toMatch(/Still owed by patients,[^\r\n]*,Achieng Mary,Part paid,[^\r\n]*,8000,,\r\n/);
+  });
+
+  it('narrows to one section, and to one payment method, kind of charge or kind of spending', async () => {
+    const f = await month();
+    const cash = (await report(f.admin.token, f.clinic.id, 'from=2026-10-17&to=2026-10-18&section=income&category=CASH')).body;
+    expect(cash.match(/^Money received,/gm)).toHaveLength(3);
+    expect(cash).not.toContain('Mobile money');
+    expect(cash).not.toContain('Money paid out');
+
+    const transport = await report(f.admin.token, f.clinic.id, 'from=2026-10-01&to=2026-10-31&section=expenses&category=TRANSPORT');
+    expect(transport.headers['content-disposition']).toContain('financial-report-expenses-transport-2026-10-01-to-2026-10-31.csv');
+    expect(transport.body).toContain('Boda to the lab');
+    expect(transport.body).not.toContain('Restock');
+
+    const medicine = (await report(f.admin.token, f.clinic.id, 'from=2026-10-01&to=2026-10-31&section=billed&category=MEDICINE')).body;
+    expect(medicine).toContain('ORS');
+    expect(medicine).not.toContain('Consultation');
+
+    // A bill left unpaid shows under what is still owed, whatever the period.
+    await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(f.desk.token), payload: { patientId: f.patient.id, items: [{ kind: 'PROCEDURE', description: 'Dressing', unitPrice: 7000 }] } });
+    const owed = (await report(f.admin.token, f.clinic.id, 'from=2026-01-01&to=2026-01-31&section=outstanding')).body;
+    expect(owed).toMatch(/Still owed by patients,\d{4}-\d{2}-\d{2},Bill #\w+,Achieng Mary,Unpaid,"Billed 7,000, paid 0",,7000,,/);
+  });
+
+  it('gives the same report as a PDF on the facility letterhead, with its logo, totals and who produced it', async () => {
+    const f = await month();
+    const pdf = async () => (await report(f.admin.token, f.clinic.id, 'from=2026-10-17&to=2026-10-17&format=pdf')).rawPayload;
+    const before = await pdf();
+    const logo = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    expect((await app.inject({ method: 'PUT', url: `/clinics/${f.clinic.id}/logo`, headers: authHeader(f.admin.token), payload: { image: logo } })).statusCode).toBe(200);
+    const after = await pdf();
+    expect(pdfImageCount(after)).toBeGreaterThan(pdfImageCount(before));
+
+    const text = pdfText(after);
+    for (const expected of ['Mbarara Family Clinic', 'FINANCIAL REPORT', '17 October 2026', 'Money received', 'Billed to patients', 'Money paid out', 'Still owed by patients', 'Received less paid out', 'VOID - Reversed by the network', 'by Grace Nankya, Administrator']) {
+      expect(text).toContain(expected);
+    }
+    // Received 12,000 + 5,000 (the voided 8,000 left out); 5,000 paid out.
+    expect(text).toContain('17,000');
+    expect(text).toContain('12,000');
+
+    const res = await report(f.admin.token, f.clinic.id, 'section=expenses&category=RENT&format=pdf');
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(pdfText(res.rawPayload)).toContain('Money paid out - Rent only');
+  });
+
+  it('refuses a period or category it cannot give, lets only managers of that facility download, and records each download', async () => {
+    const f = await month();
+    const error = async (query: string) => (await report(f.admin.token, f.clinic.id, query)).json().error;
+    expect(await error('from=2026-10-31&to=2026-10-01')).toBe('The end date is before the start date.');
+    expect(await error('from=2025-01-01&to=2026-10-31')).toBe('A report covers at most one year - choose a shorter period.');
+    expect(await error('from=31/10/2026')).toBe('Choose the dates as YYYY-MM-DD.');
+    expect(await error('section=outstanding&category=CASH')).toBe('A category can only be chosen together with money received, billed or money paid out.');
+    expect(await error('category=CASH')).toBe('A category can only be chosen together with money received, billed or money paid out.');
+    expect(await error('section=income&category=RENT')).toBe('That category does not exist for this section.');
+    expect(await error('section=profits')).toMatch(/^Choose what to include/);
+
+    expect((await report(f.desk.token, f.clinic.id, '')).statusCode).toBe(403);
+    const other = await facility('Gulu Clinic');
+    expect((await report(other.admin.token, f.clinic.id, '')).statusCode).toBe(403);
+
+    expect((await report(f.admin.token, f.clinic.id, 'from=2026-10-01&to=2026-10-31&section=income&category=CASH&format=pdf')).statusCode).toBe(200);
+    const logged = await prisma.auditLog.findFirstOrThrow({ where: { entity: 'FinanceReport', clinicId: f.clinic.id } });
+    expect(logged).toMatchObject({ action: 'VIEW', actorUserId: f.admin.user.id });
+    expect(logged.metadata).toEqual({ format: 'pdf', from: '2026-10-01', to: '2026-10-31', section: 'income', category: 'CASH' });
+  });
+});
+
 describe('demo facilities show the money side too', () => {
   it('has itemised bills, a part payment, today\'s takings and the month\'s expenses', async () => {
     const hq = await seedClinic({ name: 'Bulamu HQ' });
@@ -500,7 +631,7 @@ describe("the patient's own bills in the Patient Portal", () => {
   it('shows every bill line by line with its receipts - visits and walk-ins - and lets the patient download their own receipts only', async () => {
     const f = await facility();
     const kept = (await pay(f.desk.token, f.invoice.id, { amount: 10000, method: 'CASH' })).json().payment;
-    const mistaken = (await pay(f.desk.token, f.invoice.id, { amount: 5000, method: 'MOBILE_MONEY', reference: 'MP123' })).json().payment;
+    const mistaken = (await pay(f.desk.token, f.invoice.id, { amount: 5000, method: 'MOBILE_MONEY', provider: 'MTN Mobile Money', reference: 'MP123' })).json().payment;
     expect((await app.inject({ method: 'POST', url: `/payments/${mistaken.id}/void`, headers: authHeader(f.admin.token), payload: { reason: 'Entered twice' } })).statusCode).toBe(200);
     const walkIn = await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(f.desk.token), payload: { patientId: f.patient.id, items: [{ kind: 'OTHER', description: 'Dressing', unitPrice: 3000 }] } });
     const cancelled = await app.inject({ method: 'POST', url: '/invoices', headers: authHeader(f.desk.token), payload: { patientId: f.patient.id, items: [{ kind: 'OTHER', description: 'Opened by mistake', unitPrice: 500 }] } });

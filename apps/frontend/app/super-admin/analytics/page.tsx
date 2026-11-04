@@ -14,8 +14,7 @@ import { roleLabel } from '@/lib/role-labels';
 import { BarList, ShareRow, StatTile, TimeSeriesChart } from '@/components/analytics-charts';
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
 import { EmailDeliveryCard, MailStatus } from '@/components/email-delivery-card';
-import { SampleDocumentsCard } from '@/components/sample-documents-card';
-import { DemoFacilityCard } from '@/components/demo-facility-card';
+import Link from 'next/link';
 import {
   ENGAGEMENT_LABELS, Point, compactNumber, engagementRank, formatBytes, formatNumber, formatPercent, formatUptime, humanize, timeAgo,
 } from '@/lib/analytics-format';
@@ -479,8 +478,9 @@ export default function SuperAdminAnalyticsPage() {
                   </Card>
 
                   {system.mail && <EmailDeliveryCard initial={system.mail} />}
-                  {system.mail && <SampleDocumentsCard inbox={system.mail.operatorInbox} />}
-                  <DemoFacilityCard />
+                  <p className="text-xs text-muted-foreground">
+                    Demos and the sample documents and emails are under <Link href="/super-admin/demos" className="font-medium text-emerald-700 hover:underline dark:text-emerald-400">Demos</Link> in the menu.
+                  </p>
 
                   <Card className="p-4 gap-3">
                     <div>

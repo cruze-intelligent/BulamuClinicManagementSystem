@@ -64,7 +64,7 @@ describe('every document Bulamu produces is branded the same way', () => {
       const pages = pdfPages(pdf);
       const text = pages.join('\n');
       expect(text).toContain('Bulamu');
-      expect(text).toContain('PATIENT CARE, ORGANISED.');
+      expect(text).toContain('TRANSFORMING PATIENT CARE.');
       pages.forEach((page, i) => {
         expect(page).toContain('Bulamu is a product of Cruze Intelligent Systems (U) Ltd. bulamu.site');
         expect(page).toContain('Produced 14 October 2026');
@@ -191,7 +191,7 @@ describe('sample documents for checking', () => {
     expect(documents.map((d) => d.filename)).toEqual([
       'bulamu-sample-1-invoice-unpaid.pdf', 'bulamu-sample-2-invoice-paid-no-logo.pdf', 'bulamu-sample-3-prescription.pdf',
       'bulamu-sample-4-referral-letter.pdf', 'bulamu-sample-5-discharge-summary.pdf', 'bulamu-sample-6-subscription-receipt.pdf',
-      'bulamu-sample-7-free-trial-receipt.pdf', 'bulamu-sample-8-patient-receipt.pdf',
+      'bulamu-sample-7-free-trial-receipt.pdf', 'bulamu-sample-8-patient-receipt.pdf', 'bulamu-sample-9-financial-report.pdf',
     ]);
     for (const document of documents) {
       for (const page of pdfPages(document.content)) expect(page).toContain('SAMPLE - NOT A REAL');

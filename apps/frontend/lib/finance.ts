@@ -11,14 +11,58 @@ export const PAYMENT_METHODS = [
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]['value'];
 
-/** What the reference box asks for, by method - a payment can be traced later only by this. */
-export const REFERENCE_HINTS: Record<PaymentMethod, { label: string; placeholder: string } | null> = {
+/**
+ * What the reference box asks for, by method - a payment can be traced later
+ * only by this. Required ones must be filled in before the payment is taken
+ * (the server checks the same).
+ */
+export const REFERENCE_HINTS: Record<PaymentMethod, { label: string; placeholder: string; required: boolean } | null> = {
   CASH: null,
-  MOBILE_MONEY: { label: 'Transaction ID', placeholder: 'From the mobile money message' },
-  CARD: { label: 'Card slip number', placeholder: 'Optional' },
-  BANK: { label: 'Bank reference', placeholder: 'From the deposit slip or transfer' },
-  INSURANCE: { label: 'Insurer and member or claim number', placeholder: 'e.g. Jubilee - 12345' },
+  MOBILE_MONEY: { label: 'Transaction ID', placeholder: 'From the mobile money message', required: true },
+  CARD: { label: 'Card slip number', placeholder: 'Optional', required: false },
+  BANK: { label: 'Bank reference', placeholder: 'From the deposit slip or transfer', required: false },
+  INSURANCE: { label: 'Member or claim number', placeholder: 'From the insurance card or claim form', required: true },
 };
+
+/**
+ * Who carried the money, offered as built-in choices so it is written the same
+ * way every time; anything not listed can be typed under "Other". Cash and
+ * card have none. Kept in step with the server's PAYMENT_PROVIDERS.
+ */
+export const PAYMENT_PROVIDERS: Partial<Record<PaymentMethod, { label: string; required: boolean; options: readonly string[] }>> = {
+  MOBILE_MONEY: { label: 'Network', required: true, options: ['MTN Mobile Money', 'Airtel Money'] },
+  INSURANCE: {
+    label: 'Insurer',
+    required: true,
+    options: [
+      'AAR Healthcare', 'Jubilee Health Insurance', 'Prudential Assurance Uganda', 'Sanlam General Insurance', 'UAP Old Mutual',
+      'Liberty Health', 'ICEA LION', 'Britam', 'CIC Africa', 'GA Insurance', 'Goldstar Insurance', 'Mua Insurance',
+    ],
+  },
+  BANK: {
+    label: 'Bank',
+    required: false,
+    options: [
+      'Stanbic Bank', 'Centenary Bank', 'dfcu Bank', 'Absa Bank', 'Equity Bank', 'Standard Chartered', 'Bank of Africa',
+      'Housing Finance Bank', 'KCB Bank', 'DTB', 'PostBank', 'Opportunity Bank',
+    ],
+  },
+};
+
+/** What is missing before a payment can be recorded, in the same words the server uses - or null. */
+export function paymentProblem(method: PaymentMethod, provider: string, reference: string): string | null {
+  if (PAYMENT_PROVIDERS[method]?.required && !provider.trim()) {
+    return method === 'MOBILE_MONEY' ? 'Choose the mobile money network (MTN or Airtel)' : 'Choose the insurer';
+  }
+  if (REFERENCE_HINTS[method]?.required && !reference.trim()) {
+    return method === 'MOBILE_MONEY' ? 'Enter the transaction ID from the mobile money message' : 'Enter the member or claim number';
+  }
+  return null;
+}
+
+/** "Mobile money - MTN Mobile Money", or just the method. */
+export const methodText = (method: string | null | undefined, provider?: string | null) =>
+  provider ? `${methodLabel(method)} - ${provider}` : methodLabel(method);
 
 export const CHARGE_KINDS = [
   { value: 'CONSULTATION', label: 'Consultation' },
@@ -70,11 +114,13 @@ export const shortTime = (iso: string) => new Date(iso).toLocaleTimeString('en-G
 
 /** A receipt in one short message, for SMS or WhatsApp - what the patient needs, nothing clinical. */
 export function receiptMessage(input: {
-  clinicName: string; patientName: string; receiptNumber: string; amount: number; method: string | null; receivedAt: string; balance: number;
+  clinicName: string; patientName: string; receiptNumber: string; amount: number; method: string | null; provider?: string | null; receivedAt: string; balance: number;
 }): string {
   const when = `${shortDate(input.receivedAt)} ${shortTime(input.receivedAt)}`;
   const balance = input.balance > 0 ? `Balance ${ugx(input.balance)}.` : 'Paid in full.';
-  return `${input.clinicName}: receipt ${input.receiptNumber} for ${input.patientName}. ${ugx(input.amount)} received by ${methodLabel(input.method).toLowerCase()} on ${when}. ${balance} Thank you.`;
+  // "received by MTN Mobile Money", "received by Jubilee Health Insurance", "received by cash".
+  const by = input.provider ?? methodLabel(input.method).toLowerCase();
+  return `${input.clinicName}: receipt ${input.receiptNumber} for ${input.patientName}. ${ugx(input.amount)} received by ${by} on ${when}. ${balance} Thank you.`;
 }
 
 /** A phone number as WhatsApp links need it: 2567XXXXXXXX (Uganda by default). */

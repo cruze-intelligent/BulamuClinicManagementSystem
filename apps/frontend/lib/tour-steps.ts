@@ -68,6 +68,16 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       title: 'Platform analytics',
       body: 'How the platform is being used and how the system is running: active staff, facility engagement, sign-ins, and the System tab with email delivery and a test-email button.',
     },
+    {
+      target: nav('/super-admin/finances'), where: 'Menu', icon: Wallet,
+      title: "Bulamu's finances",
+      body: 'The subscriptions facilities pay: money received each month, renewals coming up, overdue accounts and trials about to end, and every payment with its receipt - as a spreadsheet too.',
+    },
+    {
+      target: nav('/super-admin/demos'), where: 'Menu', icon: FlaskConical,
+      title: 'Demos',
+      body: 'Send anyone a private demo facility with a sign-in for every role, see how each demo is being used, and email yourself samples of every document and email Bulamu sends.',
+    },
     theme,
     help,
   ],

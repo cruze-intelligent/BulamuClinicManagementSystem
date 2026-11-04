@@ -42,7 +42,7 @@ function drawLetterhead(doc: PDFKit.PDFDocument, issuer: string, issuerLine?: st
     .fillColor('#d1fae5')
     .font('Helvetica')
     .fontSize(9)
-    .text('PATIENT CARE, ORGANISED.', 50, 44, { characterSpacing: 1 });
+    .text('TRANSFORMING PATIENT CARE.', 50, 44, { characterSpacing: 1 });
 
   // The issuer's text ends where the logo panel (if any) begins.
   let textRight = doc.page.width - 50;
@@ -349,6 +349,8 @@ export type PatientReceiptPdfInput = SampleOption & {
   currency?: string;
   method: string;
   reference?: string | null;
+  /** What the reference is - Transaction ID, Member or claim number... */
+  referenceLabel?: string | null;
   receivedAt: Date;
   receivedBy?: Signer | null;
   /** The bill this pays towards. */
@@ -386,7 +388,7 @@ export async function generatePatientReceiptPdf(input: PatientReceiptPdfInput): 
     ['Patient phone', input.patientPhone || null],
     ['Date', documentDateTime(input.receivedAt)],
     ['Paid by', input.method],
-    ['Reference', input.reference || null],
+    [input.referenceLabel || 'Reference', input.reference || null],
     ['Received by', input.receivedBy ? `${input.receivedBy.name}, ${input.receivedBy.role}` : null],
     ['For invoice', `#${input.invoiceId.slice(0, 8)}`],
   ], 170);
@@ -809,6 +811,167 @@ export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer
     .fontSize(10)
     .fillColor('#15803d')
     .text(isTrial ? 'FREE TRIAL' : 'PAID', 0, amountY + 16, { align: 'right', width: doc.page.width - 50 });
+
+  await finishDocument(doc, input);
+  return done;
+}
+
+export type FinanceReportPdfInput = SampleOption & {
+  facilityName: string;
+  facilityCode: string;
+  facilityPhone?: string | null;
+  facilityLogo?: Buffer | null;
+  /** EAT days, YYYY-MM-DD, both included. */
+  from: string;
+  to: string;
+  /** The day what is still owed was worked out on. */
+  asOf: string;
+  includes: string;
+  categoryLabel?: string | null;
+  sections: Array<{
+    key: string;
+    title: string;
+    total: number;
+    count: number;
+    byCategory: Array<{ label: string; total: number; count: number }>;
+    lines: Array<{ date: string; reference: string; name: string; category: string; details: string; amount: number; voided: string | null }>;
+  }>;
+  net?: number | null;
+};
+
+const reportDay = (day: string) => documentDate(new Date(`${day}T12:00:00Z`));
+
+type Column = { header: string; width: number; align?: 'left' | 'right' };
+
+/**
+ * A table that runs over as many pages as it needs: the header row repeats
+ * under a "continued" line on each new page, and nothing runs into the footer.
+ * Rows given as muted (voided lines) print grey.
+ */
+function drawTable(doc: PDFKit.PDFDocument, columns: Column[], rows: Array<{ cells: string[]; muted?: boolean; bold?: boolean }>, continued: string) {
+  const header = () => {
+    const y = doc.y;
+    let x = 50;
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(MUTED);
+    for (const col of columns) {
+      doc.text(col.header, x, y, { width: col.width - 6, align: col.align ?? 'left' });
+      x += col.width;
+    }
+    doc.y = y + 12;
+    doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.y += 4;
+  };
+  // Never a header stranded at the foot of a page: start on a new page unless
+  // the header and the first rows fit.
+  if (doc.y > doc.page.maxY() - 140) {
+    doc.addPage();
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED).text(continued, 50, 50, { width: 495 });
+    doc.y = 72;
+  }
+  header();
+  for (const row of rows) {
+    if (doc.y > doc.page.maxY() - 90) {
+      doc.addPage();
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED).text(continued, 50, 50, { width: 495 });
+      doc.y = 72;
+      header();
+    }
+    const y = doc.y;
+    let x = 50;
+    let bottom = y;
+    doc.font(row.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor(row.muted ? MUTED : INK);
+    row.cells.forEach((cell, i) => {
+      const col = columns[i];
+      doc.text(cell, x, y, { width: col.width - 6, align: col.align ?? 'left' });
+      bottom = Math.max(bottom, doc.y);
+      x += col.width;
+    });
+    doc.y = bottom + 3;
+  }
+  doc.x = 50;
+}
+
+/**
+ * A facility's financial report: a summary, then for each section its totals
+ * by category and every line. Issued under the facility's own letterhead (and
+ * logo) - the figures are the facility's own.
+ */
+export async function generateFinanceReportPdf(input: FinanceReportPdfInput): Promise<Buffer> {
+  const { doc, done } = newDocument();
+  drawLetterhead(doc, input.facilityName, [`Facility ID ${input.facilityCode}`, input.facilityPhone].filter(Boolean).join(' - '), input.facilityLogo);
+
+  doc.moveDown(1);
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('FINANCIAL REPORT', 50);
+  doc.moveDown(0.8);
+  const period = input.from === input.to ? reportDay(input.from) : `${reportDay(input.from)} to ${reportDay(input.to)}`;
+  drawRows(doc, [
+    ['Period', period],
+    ['Includes', input.categoryLabel ? `${input.includes} - ${input.categoryLabel} only` : input.includes],
+    ['Amounts', 'Ugandan shillings (UGX). Voided receipts and expenses are listed but never counted.'],
+  ], 150);
+
+  // Summary: one line per section, and what is left when both sides are in.
+  doc.moveDown(0.6);
+  doc.font('Helvetica-Bold').fontSize(12).fillColor(BRAND_TEAL_DARK).text('Summary', 50);
+  doc.moveDown(0.4);
+  const summary: Array<{ cells: string[]; bold?: boolean }> = input.sections.map((s) => ({
+    cells: [s.key === 'outstanding' ? `${s.title} (as of ${reportDay(input.asOf)})` : s.title, String(s.count), s.total.toLocaleString('en-US')],
+  }));
+  if (input.net !== null && input.net !== undefined) {
+    summary.push({ cells: ['Received less paid out', '', input.net.toLocaleString('en-US')], bold: true });
+  }
+  drawTable(doc, [{ header: '', width: 335 }, { header: 'Lines', width: 60, align: 'right' }, { header: 'Total (UGX)', width: 100, align: 'right' }], summary, 'Financial report (continued)');
+
+  for (const section of input.sections) {
+    if (doc.y > doc.page.maxY() - 170) doc.addPage();
+    else doc.moveDown(1.2);
+    const title = section.key === 'outstanding' ? `${section.title} - as of ${reportDay(input.asOf)}` : section.title;
+    doc.font('Helvetica-Bold').fontSize(12).fillColor(BRAND_TEAL_DARK).text(title, 50);
+    doc.moveDown(0.4);
+    if (section.lines.length === 0) {
+      doc.font('Helvetica').fontSize(9).fillColor(MUTED).text('Nothing in this period.', 50);
+      continue;
+    }
+
+    if (section.byCategory.length > 1) {
+      drawTable(
+        doc,
+        [{ header: section.key === 'income' ? 'Method' : section.key === 'outstanding' ? 'State' : 'Category', width: 335 }, { header: 'Lines', width: 60, align: 'right' }, { header: 'Total (UGX)', width: 100, align: 'right' }],
+        [
+          ...section.byCategory.map((c) => ({ cells: [c.label, String(c.count), c.total.toLocaleString('en-US')] })),
+          { cells: ['Total', String(section.count), section.total.toLocaleString('en-US')], bold: true },
+        ],
+        `${section.title} (continued)`
+      );
+      doc.moveDown(0.8);
+    }
+
+    const nameHeader = section.key === 'expenses' ? 'Paid to' : section.key === 'income' ? 'Received from' : 'Patient';
+    drawTable(
+      doc,
+      [
+        { header: 'Date', width: 62 },
+        { header: 'Reference', width: 78 },
+        { header: nameHeader, width: 105 },
+        { header: 'Details', width: 160 },
+        { header: 'Amount', width: 90, align: 'right' },
+      ],
+      [
+        ...section.lines.map((l) => ({
+          cells: [
+            reportDay(l.date).replace(/ (\d{4})$/, '\n$1'),
+            l.reference,
+            l.name,
+            [(section.byCategory.length > 1 || section.key === 'outstanding') && l.category !== l.details ? l.category : null, l.details, l.voided ? `VOID - ${l.voided}` : null].filter(Boolean).join('\n'),
+            l.voided ? `(${l.amount.toLocaleString('en-US')})` : l.amount.toLocaleString('en-US'),
+          ],
+          muted: !!l.voided,
+        })),
+        { cells: ['', '', '', 'Total', money('UGX', section.total)], bold: true },
+      ],
+      `${section.title} (continued)`
+    );
+  }
 
   await finishDocument(doc, input);
   return done;

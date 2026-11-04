@@ -8,13 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { openPdfWithAuth } from '@/lib/download';
 import {
-  CHARGE_KINDS, PAYMENT_METHODS, REFERENCE_HINTS, kindLabel, methodLabel, parseShillings, receiptMessage, shortDate, shortTime,
+  CHARGE_KINDS, PAYMENT_METHODS, PAYMENT_PROVIDERS, REFERENCE_HINTS, kindLabel, methodText, parseShillings, paymentProblem, receiptMessage, shortDate, shortTime,
   smsLink, ugx, whatsappLink, type ChargeKind, type PaymentMethod,
 } from '@/lib/finance';
 
 export type BillItem = { id: string; kind: ChargeKind; description: string; quantity: number; unitPrice: number; amount: number };
 export type BillPayment = {
-  id: string; receiptNumber: string; amount: number; method: PaymentMethod | null; reference: string | null; payerName: string | null;
+  id: string; receiptNumber: string; amount: number; method: PaymentMethod | null; provider?: string | null; reference: string | null; payerName: string | null;
   receivedAt: string; receivedBy: { name: string; role: string } | null; voidedAt: string | null; voidReason: string | null;
 };
 export type Bill = {
@@ -33,6 +33,7 @@ export const STATE_STYLE: Record<Bill['state'], string> = {
   Cancelled: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
 };
 
+const OTHER = '__other__';
 const API = process.env.NEXT_PUBLIC_API_URL;
 const token = () => (typeof window === 'undefined' ? null : localStorage.getItem('token'));
 async function call(path: string, init: RequestInit = {}) {
@@ -67,6 +68,9 @@ export function BillPanel({
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<PaymentMethod>('CASH');
   const [reference, setReference] = useState('');
+  // The network, insurer or bank: one of the built-in names, or OTHER and typed.
+  const [providerChoice, setProviderChoice] = useState('');
+  const [providerTyped, setProviderTyped] = useState('');
   const [payerName, setPayerName] = useState('');
   const [otherPayer, setOtherPayer] = useState(false);
 
@@ -127,14 +131,21 @@ export function BillPanel({
     e.preventDefault();
     const value = parseShillings(amount);
     if (!value) return setError('Enter the amount received, in whole shillings');
+    const problem = paymentProblem(method, provider, reference);
+    if (problem) return setError(problem);
     void run('pay', () => call(`/invoices/${billId}/payments`, {
       method: 'POST',
-      body: JSON.stringify({ amount: value, method, reference: reference.trim() || undefined, payerName: otherPayer ? payerName.trim() || undefined : undefined }),
+      body: JSON.stringify({
+        amount: value, method, provider: provider.trim() || undefined, reference: reference.trim() || undefined,
+        payerName: otherPayer ? payerName.trim() || undefined : undefined,
+      }),
     }), (data) => {
       setJustPaid(data.payment);
       // The receipt options are at the top of the panel - bring them into view.
       panelRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' });
       setReference('');
+      setProviderChoice('');
+      setProviderTyped('');
       setPayerName('');
       setOtherPayer(false);
     });
@@ -170,12 +181,20 @@ export function BillPanel({
   };
 
   const message = (payment: BillPayment) => receiptMessage({
-    clinicName, patientName: bill?.patient.name ?? '', receiptNumber: payment.receiptNumber, amount: payment.amount, method: payment.method,
+    clinicName, patientName: bill?.patient.name ?? '', receiptNumber: payment.receiptNumber, amount: payment.amount, method: payment.method, provider: payment.provider,
     receivedAt: payment.receivedAt, balance: bill?.balance ?? 0,
   });
 
   const open = bill && bill.status !== 'CANCELLED';
   const hint = REFERENCE_HINTS[method];
+  const providers = PAYMENT_PROVIDERS[method];
+  const provider = providerChoice === OTHER ? providerTyped : providerChoice;
+  const chooseMethod = (value: PaymentMethod) => {
+    setMethod(value);
+    setProviderChoice('');
+    setProviderTyped('');
+    setReference('');
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -353,12 +372,30 @@ export function BillPanel({
                       <div className="flex flex-wrap gap-2">
                         {PAYMENT_METHODS.map((m) => (
                           <label key={m.value} className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm ${method === m.value ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300 bg-white text-slate-700 hover:border-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'}`}>
-                            <input type="radio" name="method" value={m.value} checked={method === m.value} onChange={() => setMethod(m.value)} className="sr-only" />
+                            <input type="radio" name="method" value={m.value} checked={method === m.value} onChange={() => chooseMethod(m.value)} className="sr-only" />
                             {m.label}
                           </label>
                         ))}
                       </div>
                     </fieldset>
+                    {providers && (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label htmlFor="pay-provider" className="text-xs">{providers.label}{providers.required ? '' : ' (optional)'}</Label>
+                          <Select id="pay-provider" value={providerChoice} onChange={(e) => setProviderChoice(e.target.value)} required={providers.required}>
+                            <option value="">Choose...</option>
+                            {providers.options.map((name) => <option key={name} value={name}>{name}</option>)}
+                            <option value={OTHER}>Other - type the name</option>
+                          </Select>
+                        </div>
+                        {providerChoice === OTHER && (
+                          <div>
+                            <Label htmlFor="pay-provider-other" className="text-xs">{providers.label} name</Label>
+                            <Input id="pay-provider-other" value={providerTyped} onChange={(e) => setProviderTyped(e.target.value)} maxLength={60} required={providers.required} />
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div>
                         <Label htmlFor="pay-amount" className="text-xs">Amount received (UGX)</Label>
@@ -367,8 +404,8 @@ export function BillPanel({
                       </div>
                       {hint && (
                         <div>
-                          <Label htmlFor="pay-reference" className="text-xs">{hint.label}</Label>
-                          <Input id="pay-reference" value={reference} onChange={(e) => setReference(e.target.value)} placeholder={hint.placeholder} autoCapitalize="characters" />
+                          <Label htmlFor="pay-reference" className="text-xs">{hint.label}{hint.required ? '' : ' (optional)'}</Label>
+                          <Input id="pay-reference" value={reference} onChange={(e) => setReference(e.target.value)} placeholder={hint.placeholder} autoCapitalize="characters" required={hint.required} maxLength={80} />
                         </div>
                       )}
                     </div>
@@ -399,7 +436,7 @@ export function BillPanel({
                     {bill.payments.map((p) => (
                       <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
                         <div className={p.voidedAt ? 'text-slate-400 line-through dark:text-slate-500' : ''}>
-                          <span className="font-medium">Receipt {p.receiptNumber}</span> · {ugx(p.amount)} · {methodLabel(p.method)}
+                          <span className="font-medium">Receipt {p.receiptNumber}</span> · {ugx(p.amount)} · {methodText(p.method, p.provider)}
                           <span className="block text-xs text-slate-500 no-underline dark:text-slate-400">
                             {shortDate(p.receivedAt)} {shortTime(p.receivedAt)}{p.receivedBy ? ` · taken by ${p.receivedBy.name}` : ''}{p.reference ? ` · ${p.reference}` : ''}
                           </span>

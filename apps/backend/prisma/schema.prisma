@@ -740,6 +740,10 @@ model PatientPayment {
   method           PaymentMethod?
   // Mobile money transaction ID, card slip, bank reference or insurance claim number.
   reference        String?
+  // Who carried the money: the mobile money network, the insurer or the bank
+  // (as chosen from Bulamu's list, or typed when not on it). Required for
+  // mobile money and insurance; empty for cash and on older payments.
+  provider         String?
   // Who paid, when it was not the patient (a relative, an employer).
   payerName        String?
   receivedByUserId String?

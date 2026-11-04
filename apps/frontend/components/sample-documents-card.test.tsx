@@ -10,7 +10,7 @@ afterEach(() => {
 const respond = (body: unknown, ok = true) =>
   vi.stubGlobal('fetch', vi.fn(async () => ({ ok, json: async () => body })));
 
-describe('the System tab sample documents card', () => {
+describe('the sample documents card', () => {
   it('says which inbox gets the samples, sends them, and confirms', async () => {
     respond({ success: true, result: { sent: true }, documents: ['a', 'b', 'c', 'd', 'e', 'f', 'g'] });
     render(<SampleDocumentsCard inbox="starplay.stargames@gmail.com" />);

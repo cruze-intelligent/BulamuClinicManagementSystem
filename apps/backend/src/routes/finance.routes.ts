@@ -6,10 +6,13 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import {
   BILLING_ROLES, CHARGE_KINDS, EXPENSE_CATEGORIES, PAYMENT_METHODS, cleanText, eatDateKey, eatDayRange, eatMonthRange,
-  formatReceiptNumber, isExpenseCategory, isPaymentMethod, parseAmount,
+  formatReceiptNumber, isExpenseCategory, isPaymentMethod, parseAmount, paymentMethodText,
 } from '../lib/invoices';
-import { roleTitle } from '../lib/document-signer';
+import { documentProducer, roleTitle } from '../lib/document-signer';
 import { buildCsv, sendCsv } from '../lib/csv';
+import { buildFinanceReport, financeReportCsv, parseReportRequest, reportFileName } from '../lib/finance-report';
+import { generateFinanceReportPdf } from '../lib/pdf';
+import { facilityLogo } from '../lib/facility-logo';
 import { sendRouteError } from '../lib/http-error';
 
 /** Payments with no method recorded (taken before methods were kept) are grouped under this key. */
@@ -90,7 +93,8 @@ export async function financeRoutes(fastify: FastifyInstance) {
             receivedAt: p.receivedAt,
             amount: p.amount,
             method: p.method,
-            methodLabel: methodLabel(p.method),
+            methodLabel: paymentMethodText(p.method, p.provider),
+            provider: p.provider,
             reference: p.reference,
             patientName: p.invoice.patient.name,
             invoiceId: p.invoice.id,
@@ -180,7 +184,7 @@ export async function financeRoutes(fastify: FastifyInstance) {
       const rows: Row[] = [
         ...payments.map((p) => ({
           type: 'Money in', date: eatDateKey(p.receivedAt), ref: `Receipt ${formatReceiptNumber(p.receiptNumber)}`, who: p.payerName || p.invoice.patient.name,
-          detail: p.reference ?? '', method: methodLabel(p.method), amount: p.amount, by: p.receivedBy?.name ?? '', status: p.voidedAt ? `Void: ${p.voidReason ?? ''}` : '',
+          detail: p.reference ?? '', method: paymentMethodText(p.method, p.provider), amount: p.amount, by: p.receivedBy?.name ?? '', status: p.voidedAt ? `Void: ${p.voidReason ?? ''}` : '',
         })),
         ...expenses.map((e) => ({
           type: 'Money out', date: eatDateKey(e.spentOn), ref: e.reference ?? '', who: e.paidTo ?? '', detail: `${EXPENSE_CATEGORIES[e.category]} - ${e.description}`,
@@ -192,6 +196,47 @@ export async function financeRoutes(fastify: FastifyInstance) {
         ['Details', (r) => r.detail], ['Method', (r) => r.method], ['Amount (UGX)', (r) => r.amount], ['Recorded by', (r) => r.by], ['Status', (r) => r.status],
       ], rows);
       return sendCsv(reply, `finances-${month}.csv`, csv);
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
+  // The financial report, as a spreadsheet (?format=csv, the default) or a PDF
+  // (?format=pdf): everything or one section, optionally one category of it,
+  // over ?from=&to= (see finance-report.ts). Each download is recorded.
+  fastify.get('/finances/:clinicId/report', managers, async (request, reply) => {
+    const clinicId = resolveClinicScope(request, reply, (request.params as any).clinicId);
+    if (!clinicId) return;
+    const query = request.query as Record<string, unknown>;
+    const format = query.format === 'pdf' ? 'pdf' : 'csv';
+    const parsed = parseReportRequest(query);
+    if ('error' in parsed) return reply.status(400).send({ error: parsed.error });
+    try {
+      const authUser = getAuthUser(request);
+      const report = await buildFinanceReport(clinicId, parsed.request);
+      await recordAudit({
+        entity: 'FinanceReport', recordId: clinicId, clinicId, action: 'VIEW', actorUserId: authUser.userId, actorRole: authUser.role,
+        metadata: { format, from: report.from, to: report.to, section: report.section, ...(report.category ? { category: report.category } : {}) },
+      });
+      if (format === 'csv') return sendCsv(reply, reportFileName(report, 'csv'), financeReportCsv(report));
+
+      const pdf = await generateFinanceReportPdf({
+        facilityName: report.facility.name,
+        facilityCode: report.facility.facilityCode,
+        facilityPhone: report.facility.phone,
+        facilityLogo: await facilityLogo(clinicId),
+        from: report.from,
+        to: report.to,
+        asOf: report.asOf,
+        includes: report.sectionLabel,
+        categoryLabel: report.categoryLabel,
+        sections: report.sections,
+        net: report.net,
+        producedBy: await documentProducer(authUser.userId),
+      });
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${reportFileName(report, 'pdf')}"`);
+      return reply.send(pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);
     }

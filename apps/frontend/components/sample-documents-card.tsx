@@ -10,7 +10,8 @@ import { Card } from '@/components/ui/card';
  * records: one of every document Bulamu produces (made-up details, stamped
  * SAMPLE on every page), or one of every email it sends.
  */
-export function SampleDocumentsCard({ inbox }: { inbox: string }) {
+export function SampleDocumentsCard({ inbox: givenInbox }: { inbox: string | null }) {
+  const inbox = givenInbox ?? 'the operator inbox';
   const [sending, setSending] = useState<'documents' | 'emails' | null>(null);
   const [outcome, setOutcome] = useState<{ sent: boolean; message: string } | null>(null);
 
@@ -51,7 +52,7 @@ export function SampleDocumentsCard({ inbox }: { inbox: string }) {
           <h3 className="text-sm font-medium">Samples for checking</h3>
           <p className="text-xs text-muted-foreground">
             Sends to <strong className="text-foreground">{inbox}</strong>, with made-up details: one of every document Bulamu
-            produces (invoices, prescription, referral letter, discharge summary and both receipts, stamped SAMPLE on every page),
+            produces (invoices, prescription, referral letter, discharge summary, both receipts and a financial report, stamped SAMPLE on every page),
             or one of every email it sends (with &quot;[Sample]&quot; in the subject).
           </p>
         </div>

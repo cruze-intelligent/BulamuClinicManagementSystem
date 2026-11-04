@@ -55,6 +55,58 @@ export const isPaymentMethod = (value: unknown): value is PaymentMethod => typeo
 export const isChargeKind = (value: unknown): value is ChargeKind => typeof value === 'string' && value in CHARGE_KINDS;
 export const isExpenseCategory = (value: unknown): value is ExpenseCategory => typeof value === 'string' && value in EXPENSE_CATEGORIES;
 
+/**
+ * Who can carry a payment, offered as built-in choices so they are written the
+ * same way every time (and can be totalled). Anything not listed can still be
+ * typed. Cash and card have no provider.
+ */
+export const PAYMENT_PROVIDERS: Partial<Record<PaymentMethod, readonly string[]>> = {
+  MOBILE_MONEY: ['MTN Mobile Money', 'Airtel Money'],
+  INSURANCE: [
+    'AAR Healthcare', 'Jubilee Health Insurance', 'Prudential Assurance Uganda', 'Sanlam General Insurance', 'UAP Old Mutual',
+    'Liberty Health', 'ICEA LION', 'Britam', 'CIC Africa', 'GA Insurance', 'Goldstar Insurance', 'Mua Insurance',
+  ],
+  BANK: [
+    'Stanbic Bank', 'Centenary Bank', 'dfcu Bank', 'Absa Bank', 'Equity Bank', 'Standard Chartered', 'Bank of Africa',
+    'Housing Finance Bank', 'KCB Bank', 'DTB', 'PostBank', 'Opportunity Bank',
+  ],
+};
+
+/** What each method must come with, and how its reference is named on receipts. */
+export const PAYMENT_DETAILS: Record<PaymentMethod, { provider: 'required' | 'optional' | null; reference: 'required' | 'optional' | null; providerLabel?: string; referenceLabel?: string }> = {
+  CASH: { provider: null, reference: null },
+  MOBILE_MONEY: { provider: 'required', reference: 'required', providerLabel: 'network', referenceLabel: 'Transaction ID' },
+  INSURANCE: { provider: 'required', reference: 'required', providerLabel: 'insurer', referenceLabel: 'Member or claim number' },
+  BANK: { provider: 'optional', reference: 'optional', providerLabel: 'bank', referenceLabel: 'Bank reference' },
+  CARD: { provider: null, reference: 'optional', referenceLabel: 'Card slip number' },
+};
+
+/**
+ * Checks the details that go with a payment method: the network and
+ * transaction ID for mobile money, the insurer and member or claim number for
+ * insurance. A provider or reference the method does not use is dropped.
+ */
+export function paymentDetails(
+  method: PaymentMethod, providerInput: unknown, referenceInput: unknown,
+): { provider: string | null; reference: string | null } | { error: string } {
+  const rules = PAYMENT_DETAILS[method];
+  const provider = rules.provider ? cleanText(providerInput, 60) : null;
+  const reference = rules.reference ? cleanText(referenceInput, 80) : null;
+  if (rules.provider === 'required' && !provider) {
+    return { error: method === 'MOBILE_MONEY' ? 'Choose the mobile money network (MTN or Airtel)' : 'Choose the insurer' };
+  }
+  if (rules.reference === 'required' && !reference) {
+    return { error: method === 'MOBILE_MONEY' ? 'Enter the transaction ID from the mobile money message' : 'Enter the member or claim number' };
+  }
+  return { provider, reference };
+}
+
+/** "Mobile money - MTN Mobile Money", or just the method when there is no provider. */
+export function paymentMethodText(method: PaymentMethod | null, provider: string | null | undefined): string {
+  const label = method ? PAYMENT_METHODS[method] : 'Not recorded';
+  return provider ? `${label} - ${provider}` : label;
+}
+
 /** Who handles money at the front desk, in the consulting room and at the pharmacy. */
 export const BILLING_ROLES = ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF', 'PHARMACIST'] as const;
 

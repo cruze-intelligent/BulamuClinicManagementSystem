@@ -10,6 +10,8 @@ export type NavItem = { name: string; path: string; icon: LucideIcon; roles: str
 export const NAV_ITEMS: NavItem[] = [
   { name: 'Facility Management', path: '/super-admin', icon: Crown, roles: ['SUPER_ADMIN'] },
   { name: 'Analytics', path: '/super-admin/analytics', icon: BarChart3, roles: ['SUPER_ADMIN'] },
+  { name: 'Finances', path: '/super-admin/finances', icon: Wallet, roles: ['SUPER_ADMIN'] },
+  { name: 'Demos', path: '/super-admin/demos', icon: FlaskConical, roles: ['SUPER_ADMIN'] },
   { name: 'Dashboard', path: '/dashboard', icon: Home, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH'] },
   { name: 'Patients', path: '/patients', icon: Users, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH'] },
   { name: 'Appointments', path: '/appointments', icon: CalendarDays, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },

@@ -1,6 +1,6 @@
 import { deflateSync } from 'zlib';
 import {
-  generateDischargeSummaryPdf, generateInvoicePdf, generatePatientReceiptPdf, generatePrescriptionPdf, generateReceiptPdf, generateReferralLetterPdf,
+  generateDischargeSummaryPdf, generateFinanceReportPdf, generateInvoicePdf, generatePatientReceiptPdf, generatePrescriptionPdf, generateReceiptPdf, generateReferralLetterPdf,
 } from './pdf';
 
 // One of every document Bulamu produces, filled with plainly made-up details
@@ -31,7 +31,7 @@ export async function buildSampleDocuments(now: Date = new Date()): Promise<Samp
       ...staff, invoiceId: 'sample-invoice-0001', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo,
       patientName: patient.name, patientPhone: patient.phone, diagnosis: 'Malaria, uncomplicated', doctorName: 'Dr Sample Clinician',
       amount: 26000, amountPaid: 10000, status: 'PENDING', createdAt: now, items: lines,
-      payments: [{ receiptNumber: '000041', receivedAt: now, method: 'Mobile money', amount: 10000 }],
+      payments: [{ receiptNumber: '000041', receivedAt: now, method: 'Mobile money - MTN Mobile Money', amount: 10000 }],
     })],
     ['2-invoice-paid-no-logo.pdf', 'Patient invoice (paid) - a facility without a logo', generateInvoicePdf({
       ...staff, invoiceId: 'sample-invoice-0002', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone,
@@ -75,12 +75,56 @@ export async function buildSampleDocuments(now: Date = new Date()): Promise<Samp
     })],
     ['8-patient-receipt.pdf', 'Patient receipt (facility to patient, part payment) - with the facility logo', generatePatientReceiptPdf({
       ...staff, receiptNumber: '000041', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo,
-      patientName: patient.name, patientPhone: patient.phone, amount: 10000, method: 'Mobile money', reference: 'SAMPLE-MOMO-REF', receivedAt: now,
+      patientName: patient.name, patientPhone: patient.phone, amount: 10000, method: 'Mobile money - MTN Mobile Money', reference: 'SAMPLE-MOMO-REF', referenceLabel: 'Transaction ID', receivedAt: now,
       receivedBy: { name: 'Sample Staff Member', role: 'Front Desk' }, invoiceId: 'sample-invoice-0001', billTotal: 26000, paidToDate: 10000, items: lines,
+    })],
+    ['9-financial-report.pdf', "Financial report (the facility's money in and out) - with the facility logo", generateFinanceReportPdf({
+      ...staff, ...sampleFinanceReport(now), facilityName: FACILITY.name, facilityCode: FACILITY.code, facilityPhone: FACILITY.phone, facilityLogo: logo,
     })],
   ];
 
   return Promise.all(documents.map(async ([filename, title, pdf]) => ({ filename: `bulamu-sample-${filename}`, title, content: await pdf })));
+}
+
+/** A made-up month of a facility's money: received, billed, paid out and still owed. */
+function sampleFinanceReport(now: Date) {
+  const day = (offset: number) => new Date(now.getTime() - offset * DAY).toISOString().slice(0, 10);
+  const line = (date: string, reference: string, name: string, category: string, details: string, amount: number, voided: string | null = null) =>
+    ({ date, reference, name, category, details, amount, voided });
+  const section = (key: string, title: string, lines: ReturnType<typeof line>[]) => {
+    const counted = lines.filter((l) => !l.voided);
+    const groups = new Map<string, { label: string; total: number; count: number }>();
+    for (const l of counted) {
+      const g = groups.get(l.category) ?? { label: l.category, total: 0, count: 0 };
+      g.total += l.amount;
+      g.count += 1;
+      groups.set(l.category, g);
+    }
+    return { key, title, lines, total: counted.reduce((t, l) => t + l.amount, 0), count: counted.length, byCategory: [...groups.values()].sort((a, b) => b.total - a.total) };
+  };
+  const income = section('income', 'Money received', [
+    line(day(9), 'Receipt 000038', 'Jane Sample', 'Cash', 'For bill #sample01', 26000),
+    line(day(6), 'Receipt 000039', 'John Example', 'Mobile money', 'For bill #sample02, ref SAMPLE-MOMO-1', 45000),
+    line(day(4), 'Receipt 000040', 'Mary Placeholder', 'Cash', 'For bill #sample03', 12000, 'entered twice'),
+    line(day(2), 'Receipt 000041', 'Jane Sample', 'Insurance', 'For bill #sample04', 80000),
+  ]);
+  const billed = section('billed', 'Billed to patients', [
+    line(day(9), 'Bill #sample01', 'Jane Sample', 'Consultation', 'Consultation', 15000),
+    line(day(9), 'Bill #sample01', 'Jane Sample', 'Lab test', 'Malaria RDT', 11000),
+    line(day(6), 'Bill #sample02', 'John Example', 'Medicine', 'Amoxicillin 500 mg (30 x 1,500)', 45000),
+    line(day(2), 'Bill #sample04', 'Jane Sample', 'Admission / ward', 'Ward stay, 2 nights (2 x 40,000)', 80000),
+  ]);
+  const expenses = section('expenses', 'Money paid out', [
+    line(day(8), 'INV-SAMPLE-7', 'Sample Medical Supplies Ltd', 'Medicines and supplies', 'Restock of gloves and syringes', 60000),
+    line(day(3), '', 'Sample Landlord', 'Rent', 'Rent for the month', 50000),
+  ]);
+  const outstanding = section('outstanding', 'Still owed by patients', [
+    line(day(12), 'Bill #sample05', 'Peter Example', 'Part paid', 'Billed 40,000, paid 15,000', 25000),
+  ]);
+  return {
+    from: day(14), to: day(0), asOf: day(0), includes: 'Everything',
+    sections: [income, billed, expenses, outstanding], net: income.total - expenses.total,
+  };
 }
 
 /** A plain placeholder "logo" (a teal disc and bar), drawn as a PNG. */

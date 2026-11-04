@@ -7,7 +7,7 @@ import { recordAudit } from '../lib/audit';
 import { generateInvoicePdf, generatePatientReceiptPdf, billState, type BillLine } from '../lib/pdf';
 import {
   BILLING_ROLES, CHARGE_KINDS, PAYMENT_METHODS, balanceOf, cleanText, ensureItemised, formatReceiptNumber, isChargeKind,
-  isPaymentMethod, lockInvoice, parseAmount, parseFee, settleInvoice,
+  PAYMENT_DETAILS, isPaymentMethod, lockInvoice, paymentDetails, paymentMethodText, parseAmount, parseFee, settleInvoice,
 } from '../lib/invoices';
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer, signer, type Signer } from '../lib/document-signer';
@@ -205,8 +205,9 @@ export async function buildReceipt(id: string, producedBy: Signer | string | nul
     patientPhone: invoice.patient.phone,
     payerName: payment.payerName,
     amount: payment.amount,
-    method: payment.method ? PAYMENT_METHODS[payment.method] : 'Not recorded',
+    method: paymentMethodText(payment.method, payment.provider),
     reference: payment.reference,
+    referenceLabel: payment.method ? PAYMENT_DETAILS[payment.method].referenceLabel : undefined,
     receivedAt: payment.receivedAt,
     receivedBy: signer(payment.receivedBy),
     invoiceId: invoice.id,
@@ -428,8 +429,10 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
     } catch (error: any) {
       return sendRouteError(reply, error, 400);
     }
+    const details = paymentDetails(body.method, body.provider, body.reference);
+    if ('error' in details) return reply.status(400).send({ error: details.error });
     return takePayment(request, reply, id, {
-      amount, method: body.method, reference: cleanText(body.reference, 80), payerName: cleanText(body.payerName, 80), userId: authUser.userId,
+      amount, method: body.method, ...details, payerName: cleanText(body.payerName, 80), userId: authUser.userId,
     });
   });
 
@@ -444,7 +447,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       if (!assertClinicMatch(request, reply, existing.clinicId)) return;
       return takePayment(request, reply, id, {
         amount: balanceOf(existing), method: isPaymentMethod(body.method) ? body.method : null,
-        reference: cleanText(body.reference, 80), payerName: null, userId: getAuthUser(request).userId,
+        reference: cleanText(body.reference, 80), provider: cleanText(body.provider, 60), payerName: null, userId: getAuthUser(request).userId,
       });
     } catch (error: any) {
       return sendRouteError(reply, error, 400);
@@ -453,7 +456,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
 
   async function takePayment(
     request: FastifyRequest, reply: FastifyReply, id: string,
-    input: { amount: number; method: keyof typeof PAYMENT_METHODS | null; reference: string | null; payerName: string | null; userId: string },
+    input: { amount: number; method: keyof typeof PAYMENT_METHODS | null; reference: string | null; provider: string | null; payerName: string | null; userId: string },
   ) {
     const authUser = getAuthUser(request);
     try {
@@ -474,7 +477,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
         const payment = await tx.patientPayment.create({
           data: {
             clinicId: fresh.clinicId, invoiceId: id, receiptNumber: lastReceiptNumber, amount: input.amount, method: input.method,
-            reference: input.reference, payerName: input.payerName, receivedByUserId: input.userId,
+            reference: input.reference, provider: input.provider, payerName: input.payerName, receivedByUserId: input.userId,
           },
         });
         await settleInvoice(tx, id);
@@ -485,7 +488,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       await recordAudit({
         entity: 'PatientPayment', recordId: outcome.payment.id, clinicId: existing.clinicId, action: 'CREATE',
         actorUserId: authUser.userId, actorRole: authUser.role,
-        metadata: { amount: input.amount, method: input.method, receipt: outcome.payment.receiptNumber },
+        metadata: { amount: input.amount, method: input.method, ...(input.provider ? { provider: input.provider } : {}), receipt: outcome.payment.receiptNumber },
       });
       const invoice = present((await loadInvoice(id))!);
       return {
@@ -598,7 +601,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
           patientName: receipt.invoice.patient.name,
           receiptNumber: number,
           amount: ugx(receipt.payment.amount),
-          method: receipt.payment.method ? PAYMENT_METHODS[receipt.payment.method] : 'Not recorded',
+          method: paymentMethodText(receipt.payment.method, receipt.payment.provider),
           receivedAt: receipt.payment.receivedAt,
           balance: balance > 0 ? ugx(balance) : null,
         }),
@@ -639,7 +642,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
         items: billLines(invoice),
         payments: invoice.payments.map((p) => ({
           receiptNumber: formatReceiptNumber(p.receiptNumber), receivedAt: p.receivedAt,
-          method: p.method ? PAYMENT_METHODS[p.method] : 'Not recorded', amount: p.amount, voided: !!p.voidedAt,
+          method: paymentMethodText(p.method, p.provider), amount: p.amount, voided: !!p.voidedAt,
         })),
         producedBy: await documentProducer(getAuthUser(request).userId),
       });
