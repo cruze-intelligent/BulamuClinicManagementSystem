@@ -32,6 +32,7 @@ import { FACILITY_TYPES, facilityTypeLabel } from '@/lib/facility-types';
 import { Select } from '@/components/ui/select';
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
 import { isOnTrial, TrialExtensionsCard } from '@/components/trial-extensions-card';
+import { FacilityChangeReviews } from '@/components/facility-change-reviews';
 
 
 type Facility = {
@@ -352,6 +353,8 @@ export default function SuperAdminPage() {
           <button type="button" onClick={() => setDecisionNotice('')} className="shrink-0 text-xs font-medium underline">Dismiss</button>
         </div>
       )}
+
+      <FacilityChangeReviews />
 
       {pending.length > 0 && (
         <Card className="rounded-lg border-amber-200 bg-amber-50 p-5">

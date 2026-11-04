@@ -538,6 +538,33 @@ export function facilityStatusEmail(rawClinicName: string, active: boolean, logi
   `, { eyebrow: 'Access suspended', preheader: `Access to Bulamu has been suspended for ${clinicName}.` });
 }
 
+/**
+ * Tells a facility's admin what Bulamu decided about a change to the
+ * facility's details that went for review. `changes` are [field, from, to].
+ */
+export function facilityDetailsReviewedEmail(
+  rawClinicName: string,
+  approved: boolean,
+  changes: Array<[string, string, string]>,
+  loginUrl: string,
+  letter: FacilityLetter,
+): string {
+  const clinicName = escapeHtml(rawClinicName);
+  const rows = changes.map(([field, from, to]): [string, string] => [escapeHtml(field), `${escapeHtml(from)} &rarr; <strong>${escapeHtml(to)}</strong>`]);
+  return emailShell(`
+    ${heading(approved ? 'Your facility details are updated' : 'Your change to the facility details was not made')}
+    ${letterOpening(letter, clinicName)}
+    ${para(approved
+      ? 'A Bulamu administrator has checked the change you asked for and made it. Your documents now print the new details.'
+      : 'A Bulamu administrator has checked the change you asked for and did not make it. Your facility details are as they were.')}
+    ${factsTable(rows)}
+    ${letter.reason ? factsTable([[approved ? 'Note' : 'Reason', escapeHtml(letter.reason)]]) : ''}
+    ${action(loginUrl, 'Open your facility page')}
+    ${SUPPORT_LINE}
+    ${SIGN_OFF}
+  `, { eyebrow: 'Facility details', preheader: approved ? `The new details for ${clinicName} are in place.` : `The change to ${clinicName}'s details was not made.` });
+}
+
 /** Tells a facility's admin that the facility has been removed from Bulamu. */
 export function facilityRemovedEmail(rawClinicName: string, letter: FacilityLetter): string {
   const clinicName = escapeHtml(rawClinicName);

@@ -60,7 +60,7 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
     {
       target: nav('/super-admin'), where: 'Menu', icon: Crown,
       title: 'Facility Management',
-      body: 'New facility registrations wait here for your approval. Approve or reject them, add a facility yourself, suspend or reactivate one, and open any facility to see its full sign-up details.',
+      body: 'New facility registrations wait here for your approval. Approve or reject them, add a facility yourself, suspend or reactivate one, and open any facility to see its full sign-up details. A facility that changes its details more than 3 times in 12 months sends each further change here for you to check.',
       tips: ['Each decision emails the facility automatically.', 'You are emailed about every registration, approval, payment and suspension.'],
     },
     {
@@ -135,8 +135,9 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
     },
     {
       target: nav('/facility'), where: 'Menu', icon: Building2,
-      title: 'Your logo on documents',
-      body: 'Add your facility logo here. It is printed on your invoices, prescriptions, referral letters and discharge summaries, which are also signed with the name and role of the staff member responsible.',
+      title: 'Your facility details and logo',
+      body: 'Keep your facility name, type, phone, address and location up to date here, and add your logo. They are printed on your invoices, prescriptions, referral letters and discharge summaries, which are also signed with the name and role of the staff member responsible.',
+      tips: ['You can change the details 3 times in 12 months yourself; Bulamu checks any further change before it is made.'],
     },
     ...closing,
   ],

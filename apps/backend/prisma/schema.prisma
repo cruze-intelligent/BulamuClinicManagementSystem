@@ -151,10 +151,42 @@ model Clinic {
   lastReceiptNumber Int @default(0)
   patientPayments   PatientPayment[]
   expenses          Expense[]
+  detailChanges     FacilityDetailChange[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([phoneKey])
+}
+
+// A change a facility's administrator made to the facility's own details
+// (name, type, phone, address, location). A few a year apply straight away;
+// beyond that each one waits for a Bulamu administrator to check it
+// (see lib/facility-details.ts).
+model FacilityDetailChange {
+  id          String   @id @default(uuid())
+  clinicId    String
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  // Only the fields that change: { name: { from: "Old", to: "New" }, ... }.
+  changes     Json
+  status      FacilityChangeStatus
+  // A note from the facility for the reviewer (why the details changed).
+  note        String?
+  requestedBy String
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  reviewNote  String?
+  createdAt   DateTime @default(now())
+
+  @@index([clinicId, createdAt])
+  @@index([status, createdAt])
+}
+
+enum FacilityChangeStatus {
+  APPLIED   // made by the facility itself, within its allowance
+  PENDING   // waiting for a Bulamu administrator
+  APPROVED  // checked and applied by a Bulamu administrator
+  REJECTED  // turned down by a Bulamu administrator
+  WITHDRAWN // taken back by the facility before it was reviewed
 }
 
 // A facility's own logo, printed on its documents (invoices, prescriptions,

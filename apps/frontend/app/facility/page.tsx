@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Building2, ImagePlus, Trash2, Upload } from 'lucide-react';
+import { ImagePlus, Trash2, Upload } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/useAuth';
+import { FacilityDetailsEditor } from '@/components/facility-details-editor';
 
 const MAX_BYTES = 500 * 1024;
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -13,7 +14,10 @@ const API = process.env.NEXT_PUBLIC_API_URL;
 export default function FacilityPage() {
   const { user, hasRole } = useAuth();
   const clinicId = user?.clinicId;
-  const clinic = (user as any)?.clinic as { name?: string; facilityCode?: string; phone?: string; address?: string } | undefined;
+  const signedInClinic = (user as any)?.clinic as { name?: string } | undefined;
+  // The name shown on the logo preview follows any change made below.
+  const [clinicName, setClinicName] = useState<string | null>(null);
+  const clinic = { name: clinicName ?? signedInClinic?.name };
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -93,22 +97,9 @@ export default function FacilityPage() {
     <div className="min-h-screen bg-slate-50 p-4 sm:p-8 dark:bg-slate-950">
       <div className="mx-auto max-w-3xl">
         <h1 className="text-3xl font-bold">Facility</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Your facility&apos;s details and logo, as they appear on the documents you print.</p>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Your facility&apos;s details and logo, as they appear on the documents you print and to facilities you refer patients to.</p>
 
-        <Card className="mt-6 p-5">
-          <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-white">
-              <Building2 className="size-5" aria-hidden="true" />
-            </div>
-            <div className="min-w-0 text-sm">
-              <p className="text-lg font-semibold text-slate-950 dark:text-slate-50">{clinic?.name ?? 'Your facility'}</p>
-              {clinic?.facilityCode && <p className="text-slate-600 dark:text-slate-400">Facility ID {clinic.facilityCode}</p>}
-              {clinic?.phone && <p className="text-slate-600 dark:text-slate-400">{clinic.phone}</p>}
-              {clinic?.address && <p className="text-slate-600 dark:text-slate-400">{clinic.address}</p>}
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">To change these details, contact Bulamu support.</p>
-            </div>
-          </div>
-        </Card>
+        {clinicId && <FacilityDetailsEditor clinicId={clinicId} isAdmin={isAdmin} onChanged={(details) => setClinicName(details.name)} />}
 
         <Card className="mt-4 p-5">
           <h2 className="text-lg font-semibold">Logo on your documents</h2>
