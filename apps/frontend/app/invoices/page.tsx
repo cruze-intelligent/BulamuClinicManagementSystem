@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/select';
 import { BillPanel, STATE_STYLE, type Bill } from '@/components/bill-panel';
 import { useAuth } from '@/lib/useAuth';
 import { CHARGE_KINDS, parseShillings, shortDate, ugx, type ChargeKind } from '@/lib/finance';
+import { StockPicker, sellable, useStockList } from '@/components/stock-picker';
 
 const FILTERS = [
   { value: 'OPEN', label: 'Still owed' },
@@ -182,8 +183,8 @@ export default function BillsPage() {
   );
 }
 
-type Line = { kind: ChargeKind; description: string; quantity: string; unitPrice: string };
-const emptyLine = (): Line => ({ kind: 'MEDICINE', description: '', quantity: '1', unitPrice: '' });
+type Line = { kind: ChargeKind; description: string; quantity: string; unitPrice: string; medicineId: string };
+const emptyLine = (): Line => ({ kind: 'MEDICINE', description: '', quantity: '1', unitPrice: '', medicineId: '' });
 
 /** A bill without a visit: medicine sold over the counter, a lab test on its own, a procedure. */
 function NewBill({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
@@ -193,6 +194,8 @@ function NewBill({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  // Medicine sold from stock comes off the shelf when the bill is opened.
+  const stockList = useStockList();
 
   useEffect(() => {
     const clinicId = JSON.parse(localStorage.getItem('user') || '{}').clinicId;
@@ -225,7 +228,9 @@ function NewBill({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
       if (!l.description.trim()) return setError('Describe each charge');
       if (!price) return setError(`Enter the price for ${l.description.trim()}, in whole shillings`);
       if (!Number.isInteger(quantity) || quantity < 1) return setError(`The quantity for ${l.description.trim()} must be 1 or more`);
-      items.push({ kind: l.kind, description: l.description.trim(), quantity, unitPrice: price });
+      const stocked = l.medicineId ? stockList.find((m) => m.id === l.medicineId) : null;
+      if (stocked && quantity > sellable(stocked)) return setError(`Only ${sellable(stocked)} ${stocked.unit} of ${stocked.name} are in stock`);
+      items.push({ kind: l.kind, description: l.description.trim(), quantity, unitPrice: price, ...(l.medicineId ? { medicineId: l.medicineId } : {}) });
     }
     if (!items.length) return setError('Add at least one charge');
     setBusy(true);
@@ -287,11 +292,19 @@ function NewBill({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
               <div key={i} className="grid grid-cols-6 gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
                 <div className="col-span-6 sm:col-span-2">
                   <Label htmlFor={`kind-${i}`} className="text-xs">For</Label>
-                  <Select id={`kind-${i}`} value={line.kind} onChange={(e) => setLine(i, { kind: e.target.value as ChargeKind })}>
+                  <Select id={`kind-${i}`} value={line.kind} onChange={(e) => setLine(i, { kind: e.target.value as ChargeKind, medicineId: '' })}>
                     {CHARGE_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
                   </Select>
                 </div>
-                <div className="col-span-6 sm:col-span-4">
+                {line.kind === 'MEDICINE' && stockList.length > 0 && (
+                  <div className="col-span-6 sm:col-span-4">
+                    <StockPicker
+                      id={`stock-${i}`} items={stockList} value={line.medicineId}
+                      onPick={(item) => setLine(i, item ? { medicineId: item.id, description: item.name, unitPrice: String(Math.round(item.price)) } : { medicineId: '' })}
+                    />
+                  </div>
+                )}
+                <div className={line.kind === 'MEDICINE' && stockList.length > 0 ? 'col-span-6' : 'col-span-6 sm:col-span-4'}>
                   <Label htmlFor={`description-${i}`} className="text-xs">Description</Label>
                   <Input id={`description-${i}`} value={line.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="e.g. Paracetamol 500 mg" />
                 </div>

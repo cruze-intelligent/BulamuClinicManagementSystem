@@ -117,7 +117,12 @@ export type LocalMedicine = {
   unit: string;
   reorderLevel: number;
   price: number;
-  expiryDate?: string;
+  /** The soonest expiry among the batches on the shelf. */
+  expiryDate?: string | null;
+  /** How much of what is on the shelf has expired (from the server). */
+  expiredQuantity?: number;
+  batches?: Array<{ id: string; quantity: number; expiryDate: string | null; receivedAt: string; supplier: string | null }>;
+  deletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   syncStatus: "pending" | "synced" | "failed";
@@ -731,20 +736,38 @@ export async function createLabTestOffline(input: {
 export async function listLocalInventory(clinicId: string): Promise<LocalMedicine[]> {
   const items = await getAllRecords<LocalMedicine>(INVENTORY_STORE);
   return items
-    .filter((item) => item.clinicId === clinicId)
+    .filter((item) => item.clinicId === clinicId && !item.deletedAt)
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function cacheInventory(items: Array<Omit<LocalMedicine, "syncStatus">>) {
   await Promise.all(
     items.map((item) =>
-      putRecord<LocalMedicine>(INVENTORY_STORE, {
-        ...item,
-        syncStatus: "synced",
-      })
+      // A discontinued item leaves this device's copy too.
+      item.deletedAt
+        ? deleteRecord(INVENTORY_STORE, item.id)
+        : putRecord<LocalMedicine>(INVENTORY_STORE, {
+            ...item,
+            syncStatus: "synced",
+          })
     )
   );
   emitLocalChange();
+}
+
+/**
+ * The facility's full stock list as the server has it now: replaces this
+ * device's copy, keeping only items added here and not yet sent.
+ */
+export async function replaceInventory(clinicId: string, items: Array<Omit<LocalMedicine, "syncStatus">>) {
+  const current = await getAllRecords<LocalMedicine>(INVENTORY_STORE);
+  const fresh = new Set(items.map((item) => item.id));
+  await Promise.all(
+    current
+      .filter((item) => item.clinicId === clinicId && item.syncStatus !== "pending" && !fresh.has(item.id))
+      .map((item) => deleteRecord(INVENTORY_STORE, item.id))
+  );
+  await cacheInventory(items);
 }
 
 export async function addMedicineOffline(input: {

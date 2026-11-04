@@ -111,7 +111,7 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
     {
       target: nav('/inventory'), where: 'Menu', icon: Package,
       title: 'Medicine stock',
-      body: 'Stock levels and reorder points. You and the pharmacist are alerted when stock runs low, runs out, or is about to expire.',
+      body: 'Stock levels, reorder points and expiry dates. Receive deliveries, remove damaged or expired stock and record counts here - every change is kept in the history of each item. You and the pharmacist are alerted when stock runs low, runs out or nears expiry.',
     },
     {
       target: nav('/reports'), where: 'Menu', icon: BarChart3,
@@ -219,7 +219,7 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
     {
       target: nav('/inventory'), where: 'Menu', icon: Package,
       title: 'Inventory',
-      body: 'Stock levels, reorder points and expiry dates. You are alerted when a medicine runs low, runs out, or is within two months of expiry.',
+      body: 'Receive each delivery as its own batch with its expiry date, remove damaged or expired stock with the reason, and record counts. Dispensing uses the batch that expires first and never expired stock. You are alerted when a medicine runs low, runs out or nears expiry.',
     },
     {
       target: nav('/patients'), where: 'Menu', icon: Users,

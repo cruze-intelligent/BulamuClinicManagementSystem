@@ -11,8 +11,9 @@ import {
   CHARGE_KINDS, PAYMENT_METHODS, PAYMENT_PROVIDERS, REFERENCE_HINTS, kindLabel, methodText, parseShillings, paymentProblem, receiptMessage, shortDate, shortTime,
   smsLink, ugx, whatsappLink, type ChargeKind, type PaymentMethod,
 } from '@/lib/finance';
+import { StockPicker, sellable, useStockList } from '@/components/stock-picker';
 
-export type BillItem = { id: string; kind: ChargeKind; description: string; quantity: number; unitPrice: number; amount: number };
+export type BillItem = { id: string; kind: ChargeKind; description: string; quantity: number; unitPrice: number; amount: number; medicineId?: string | null; prescriptionId?: string | null };
 export type BillPayment = {
   id: string; receiptNumber: string; amount: number; method: PaymentMethod | null; provider?: string | null; reference: string | null; payerName: string | null;
   receivedAt: string; receivedBy: { name: string; role: string } | null; voidedAt: string | null; voidReason: string | null;
@@ -24,7 +25,10 @@ export type Bill = {
   consultation: { id: string; diagnosis: string; appointment: { doctor: { name: string } | null } } | null;
   items: BillItem[]; payments: BillPayment[];
 };
-type Suggestion = { kind: ChargeKind; description: string; quantity: number; unitPrice: number | null; labTestId?: string; prescriptionId?: string; admissionId?: string };
+type Suggestion = { kind: ChargeKind; description: string; quantity: number; unitPrice: number | null; labTestId?: string; prescriptionId?: string; admissionId?: string; medicineId?: string };
+
+/** A line sold from stock (not a prescription, which comes off stock when dispensed). */
+const fromStock = (item: BillItem) => !!item.medicineId && !item.prescriptionId;
 
 export const STATE_STYLE: Record<Bill['state'], string> = {
   Unpaid: 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300',
@@ -80,6 +84,9 @@ export function BillPanel({
   const [description, setDescription] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [unitPrice, setUnitPrice] = useState('');
+  // Medicine sold from stock comes off the shelf when the charge is added.
+  const [medicineId, setMedicineId] = useState('');
+  const stockList = useStockList();
 
   const load = useCallback(async () => {
     try {
@@ -171,13 +178,17 @@ export function BillPanel({
   };
 
   const removeItem = (item: BillItem) => {
-    if (!window.confirm(`Take "${item.description}" (${ugx(item.amount)}) off this bill?`)) return;
+    const back = fromStock(item) ? ` The ${item.quantity} sold go back on the shelf.` : '';
+    if (!window.confirm(`Take "${item.description}" (${ugx(item.amount)}) off this bill?${back}`)) return;
     void run(`remove-${item.id}`, () => call(`/invoices/${billId}/items/${item.id}`, { method: 'DELETE' }), () => load());
   };
 
   const cancelBill = () => {
     if (!bill || !window.confirm(`Cancel this ${ugx(bill.amount)} bill? Use this for a bill raised by mistake or waived. It is kept, marked cancelled.`)) return;
-    void run('cancel', () => call(`/invoices/${billId}/cancel`, { method: 'PATCH' }), () => load());
+    // Medicine sold from stock: back on the shelf only if it really came back.
+    const restock = bill.items.some(fromStock)
+      && window.confirm('Did the medicine on this bill come back to the shelf?\n\nOK - yes, put it back in stock.\nCancel - no, it was handed out (waived).');
+    void run('cancel', () => call(`/invoices/${billId}/cancel`, { method: 'PATCH', body: JSON.stringify({ restock }) }), () => load());
   };
 
   const message = (payment: BillPayment) => receiptMessage({
@@ -327,17 +338,30 @@ export function BillPanel({
                       if (!description.trim()) return setError('Describe the charge');
                       if (!price) return setError('Enter the price, in whole shillings');
                       if (!Number.isInteger(qty) || qty < 1) return setError('The quantity must be 1 or more');
-                      void addCharge({ kind, description: description.trim(), quantity: qty, unitPrice: price }, 'add').then(() => {
-                        setDescription(''); setUnitPrice(''); setQuantity('1'); setAdding(false);
+                      const stocked = medicineId ? stockList.find((m) => m.id === medicineId) : null;
+                      if (stocked && qty > sellable(stocked)) return setError(`Only ${sellable(stocked)} ${stocked.unit} of ${stocked.name} are in stock`);
+                      void addCharge({ kind, description: description.trim(), quantity: qty, unitPrice: price, ...(medicineId ? { medicineId } : {}) }, 'add').then(() => {
+                        setDescription(''); setUnitPrice(''); setQuantity('1'); setMedicineId(''); setAdding(false);
                       });
                     }}
                   >
                     <div className="sm:col-span-2">
                       <Label htmlFor="charge-kind" className="text-xs">For</Label>
-                      <Select id="charge-kind" value={kind} onChange={(e) => setKind(e.target.value as ChargeKind)}>
+                      <Select id="charge-kind" value={kind} onChange={(e) => { setKind(e.target.value as ChargeKind); setMedicineId(''); }}>
                         {CHARGE_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
                       </Select>
                     </div>
+                    {kind === 'MEDICINE' && (
+                      <div className="sm:col-span-6">
+                        <StockPicker
+                          id="charge-stock" items={stockList} value={medicineId}
+                          onPick={(item) => {
+                            setMedicineId(item?.id ?? '');
+                            if (item) { setDescription(item.name); setUnitPrice(String(Math.round(item.price))); }
+                          }}
+                        />
+                      </div>
+                    )}
                     <div className="sm:col-span-4">
                       <Label htmlFor="charge-description" className="text-xs">Description</Label>
                       <Input id="charge-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Malaria RDT, wound dressing" />
