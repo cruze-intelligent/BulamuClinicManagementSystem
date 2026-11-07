@@ -1,5 +1,5 @@
 import { prisma } from './prisma';
-import { invalidateSubscriptionCache, paidPeriodEnd, SUBSCRIPTION_PERIOD_MS } from './subscription';
+import { invalidateSubscriptionCache, paidPeriodEnd, paidSubscription, SUBSCRIPTION_PERIOD_MS } from './subscription';
 import { formatEmailDate, MailResult, sendMail, subscriptionReceiptEmail } from './mailer';
 import { alertOperator, deliveryNote } from './operator-alerts';
 import { notifyStaff } from './notifications';
@@ -82,7 +82,7 @@ export async function applyPesapalStatus(orderTrackingId: string, log: Log): Pro
 
   await prisma.subscription.update({
     where: { id: payment.subscriptionId },
-    data: { status: 'ACTIVE', lastPaymentAt: new Date(), currentPeriodEnd: periodEnd },
+    data: paidSubscription(periodEnd),
   });
   invalidateSubscriptionCache(payment.clinicId);
 

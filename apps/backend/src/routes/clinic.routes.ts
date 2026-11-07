@@ -336,7 +336,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
                 take: 1
               },
               subscription: {
-                select: { status: true, plan: true, amount: true, trialEndsAt: true, currentPeriodEnd: true, trialExtendedDays: true, lastPaymentAt: true }
+                select: { status: true, plan: true, amount: true, currency: true, trialEndsAt: true, currentPeriodEnd: true, trialExtendedDays: true, lastPaymentAt: true, graceDays: true, graceFrom: true }
               }
             }
           })

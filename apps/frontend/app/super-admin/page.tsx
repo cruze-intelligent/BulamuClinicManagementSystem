@@ -33,6 +33,7 @@ import { Select } from '@/components/ui/select';
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
 import { isOnTrial, TrialExtensionsCard } from '@/components/trial-extensions-card';
 import { FacilityChangeReviews } from '@/components/facility-change-reviews';
+import { CashAndGraceCard } from '@/components/cash-and-grace-card';
 
 
 type Facility = {
@@ -47,7 +48,7 @@ type Facility = {
   users: number;
   patients: number;
   admin: { name: string; email: string; isActive: boolean } | null;
-  subscription: { status: string; plan: 'STANDARD' | 'CUSTOM'; amount: number; trialEndsAt: string; currentPeriodEnd: string | null; trialExtendedDays?: number; lastPaymentAt?: string | null } | null;
+  subscription: { status: string; plan: 'STANDARD' | 'CUSTOM'; amount: number; currency?: string; trialEndsAt: string; currentPeriodEnd: string | null; trialExtendedDays?: number; lastPaymentAt?: string | null; graceDays?: number; graceFrom?: string | null } | null;
 };
 
 type PendingFacility = {
@@ -486,10 +487,13 @@ export default function SuperAdminPage() {
           </div>
         </Card>
 
-        <TrialExtensionsCard
-          facilities={overview?.clinics || []}
-          onExtended={(message) => { setDecisionNotice(message); void fetchOverview(); }}
-        />
+        <div className="min-w-0 space-y-4">
+          <TrialExtensionsCard
+            facilities={overview?.clinics || []}
+            onExtended={(message) => { setDecisionNotice(message); void fetchOverview(); }}
+          />
+          <CashAndGraceCard facilities={overview?.clinics || []} onChanged={() => void fetchOverview()} />
+        </div>
       </section>
 
       <Card className="rounded-lg p-5">

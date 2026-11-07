@@ -61,7 +61,11 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       target: nav('/super-admin'), where: 'Menu', icon: Crown,
       title: 'Facility Management',
       body: 'New facility registrations wait here for your approval. Approve or reject them, add a facility yourself, suspend or reactivate one, and open any facility to see its full sign-up details. A facility that changes its details more than 3 times in 12 months sends each further change here for you to check.',
-      tips: ['Each decision emails the facility automatically.', 'You are emailed about every registration, approval, payment and suspension.'],
+      tips: [
+        'Each decision emails the facility automatically.',
+        'Record cash a facility pays you on a visit - the date and time are taken for its receipt - and give a paid facility whose subscription ran out up to 7 days of grace.',
+        'You are emailed about every registration, approval, payment and suspension.',
+      ],
     },
     {
       target: nav('/super-admin/analytics'), where: 'Menu', icon: BarChart3,

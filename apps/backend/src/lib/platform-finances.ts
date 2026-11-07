@@ -5,7 +5,7 @@ import { eastAfricaDay } from './usage-tracking';
 
 /**
  * Bulamu's own money, for the platform operator: the subscriptions facilities
- * pay through Pesapal. Facilities' patient bills are their money, not
+ * pay through Pesapal, or in cash to a Bulamu administrator. Facilities' patient bills are their money, not
  * Bulamu's, and never appear here. Months are East Africa months; a payment
  * counts on the day Pesapal confirmed it (when it was marked completed), the
  * same date its receipt shows. Free-trial receipts (UGX 0) are not income and
@@ -158,7 +158,10 @@ export function paymentRow(p: PaymentWithFacility) {
     paidAt: p.status === 'COMPLETED' || p.status === 'REVERSED' ? p.updatedAt : null,
     periodStart: p.periodStart,
     periodEnd: p.periodEnd,
-    reference: p.pesapalOrderTrackingId,
+    method: p.method,
+    paidBy: p.paidBy,
+    // Pesapal's reference, or the receipt-book number for cash.
+    reference: p.pesapalOrderTrackingId ?? p.reference,
     hasReceipt: p.status === 'COMPLETED',
   };
 }

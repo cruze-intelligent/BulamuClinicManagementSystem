@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import type { Payment } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
@@ -9,7 +10,9 @@ import { generateReceiptPdf } from '../lib/pdf';
 import { getAccessToken, registerIpnUrl, submitOrderRequest, describePesapalError } from '../services/pesapal.service';
 import { REAL_FACILITY } from '../lib/facility';
 import { recordAudit } from '../lib/audit';
-import { sendMail, trialExtendedEmail } from '../lib/mailer';
+import { formatEmailDate, graceGrantedEmail, sendMail, subscriptionReceiptEmail, trialExtendedEmail } from '../lib/mailer';
+import { giveGraceDays, recordCashPayment, SubscriptionAdminError } from '../lib/subscription-admin';
+import { notifyStaff } from '../lib/notifications';
 import { frontendUrl } from '../lib/operator-alerts';
 import { sendRouteError } from '../lib/http-error';
 
@@ -21,6 +24,41 @@ function pesapalCredentials() {
   const consumerSecret = process.env.PESAPAL_CONSUMER_SECRET;
   if (!consumerKey || !consumerSecret) return null;
   return { consumerKey, consumerSecret };
+}
+
+/** For a cash payment's receipt: who handed it over, and which Bulamu administrator received it. */
+async function cashDetails(payment: Pick<Payment, 'method' | 'paidBy' | 'recordedBy' | 'reference'>) {
+  if (payment.method !== 'CASH') return null;
+  const recorder = payment.recordedBy ? await prisma.user.findUnique({ where: { id: payment.recordedBy }, select: { name: true } }) : null;
+  return { paidBy: payment.paidBy ?? 'The facility', receivedBy: recorder?.name ?? 'A Bulamu administrator', reference: payment.reference };
+}
+
+/** Emails the facility's administrator the receipt for cash just recorded, and tells its staff. */
+async function sendCashReceipt(payment: Payment) {
+  const [clinic, admin] = await Promise.all([
+    prisma.clinic.findUnique({ where: { id: payment.clinicId } }),
+    prisma.user.findFirst({ where: { clinicId: payment.clinicId, role: 'ADMIN', isActive: true }, orderBy: { createdAt: 'asc' } }),
+  ]);
+  if (!clinic || !payment.periodEnd) return;
+  await notifyStaff({
+    type: 'PAYMENT_RECEIVED',
+    clinicId: payment.clinicId,
+    title: 'Subscription payment received',
+    body: `${payment.currency} ${payment.amount.toLocaleString()} in cash was received. Your subscription is active through ${formatEmailDate(payment.periodEnd)}. The receipt has been emailed and is on the Billing page.`,
+    link: '/billing',
+    emailSummary: 'A subscription payment was received.',
+  });
+  if (!admin) return;
+  const pdf = await generateReceiptPdf({
+    paymentId: payment.id, clinicName: clinic.name, facilityCode: clinic.facilityCode, amount: payment.amount, currency: payment.currency,
+    paidAt: payment.createdAt, periodStart: payment.periodStart, periodEnd: payment.periodEnd, cash: await cashDetails(payment), months: payment.months,
+  });
+  await sendMail({
+    to: admin.email,
+    subject: `Bulamu payment receipt - ${clinic.name}`,
+    html: subscriptionReceiptEmail(clinic.name, payment.amount, payment.currency, payment.periodEnd),
+    attachments: [{ filename: `bulamu-receipt-${payment.id.slice(0, 8)}.pdf`, content: pdf, contentType: 'application/pdf' }],
+  });
 }
 
 export async function billingRoutes(fastify: FastifyInstance) {
@@ -200,6 +238,8 @@ export async function billingRoutes(fastify: FastifyInstance) {
         periodStart: payment.periodStart,
         periodEnd: payment.periodEnd ?? (payment.amount === 0 ? subscription.trialEndsAt : subscription.currentPeriodEnd || payment.updatedAt),
         pesapalReference: payment.pesapalOrderTrackingId,
+        cash: await cashDetails(payment),
+        months: payment.months,
       });
 
       reply.header('Content-Type', 'application/pdf');
@@ -300,6 +340,57 @@ export async function billingRoutes(fastify: FastifyInstance) {
         emailed: !!mail?.sent,
       };
     } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
+  // Cash a facility handed to a Bulamu administrator on a visit (SUPER_ADMIN
+  // only). The date and time are recorded now, for the receipt; the facility
+  // is paid through the new period and its administrator emailed the receipt.
+  fastify.post('/billing/cash/:clinicId', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const { clinicId } = request.params as { clinicId: string };
+    const authUser = getAuthUser(request);
+    try {
+      const { payment, repeated } = await recordCashPayment({ clinicId, recordedBy: authUser.userId, body: request.body });
+      if (!repeated) {
+        await recordAudit({
+          entity: 'Payment', recordId: payment.id, clinicId, action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role,
+          metadata: { method: 'CASH', amount: payment.amount, months: payment.months, periodEnd: payment.periodEnd?.toISOString() },
+        });
+        void sendCashReceipt(payment).catch((error) => fastify.log.error(error, 'Cash receipt email failed'));
+      }
+      return {
+        success: true, repeated, payment,
+        paidUntil: payment.periodEnd,
+        receiptPath: `/billing/receipts/${payment.id}/pdf`,
+      };
+    } catch (error) {
+      if (error instanceof SubscriptionAdminError) return reply.status(error.statusCode).send({ error: error.message });
+      return sendRouteError(reply, error, 400);
+    }
+  });
+
+  // A few days' grace for a paid facility whose subscription ran out
+  // (SUPER_ADMIN only) - at most MAX_GRACE_DAYS before it pays again.
+  fastify.post('/billing/grace/:clinicId', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const { clinicId } = request.params as { clinicId: string };
+    const authUser = getAuthUser(request);
+    try {
+      const grace = await giveGraceDays({ clinicId, days: (request.body as { days?: unknown } | undefined)?.days });
+      await recordAudit({
+        entity: 'Subscription', recordId: grace.subscriptionId, clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
+        metadata: { graceDaysGiven: grace.days, graceDays: grace.graceDays, graceEndsAt: grace.graceEndsAt.toISOString() },
+      });
+      const admins = await prisma.user.findMany({ where: { clinicId, role: 'ADMIN', isActive: true }, select: { email: true } });
+      const to = admins.map((u) => u.email).join(', ');
+      const mail = to
+        ? await sendMail({ to, subject: `${grace.days} day${grace.days === 1 ? '' : 's'} of grace to renew - ${grace.clinic.name}`, html: graceGrantedEmail(grace.clinic.name, grace.days, grace.graceEndsAt, frontendUrl('/billing')) })
+        : null;
+      return {
+        success: true, graceEndsAt: grace.graceEndsAt.toISOString(), graceDays: grace.graceDays, remaining: grace.remaining, emailed: !!mail?.sent,
+      };
+    } catch (error) {
+      if (error instanceof SubscriptionAdminError) return reply.status(error.statusCode).send({ error: error.message });
       return sendRouteError(reply, error);
     }
   });

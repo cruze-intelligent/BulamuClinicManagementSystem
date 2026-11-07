@@ -143,7 +143,7 @@ describe("Bulamu's own finances", () => {
     const csv = await app.inject({ method: 'GET', url: '/super-admin/finances/payments.csv', headers: authHeader(operator) });
     expect(csv.statusCode).toBe(200);
     expect(csv.headers['content-disposition']).toMatch(/bulamu-subscription-payments-\d{4}-\d{2}-\d{2}\.csv/);
-    expect(csv.body).toContain('Started,Paid on,Facility,Facility code,Amount,Currency,Status,Period from,Period to,Pesapal reference,Payment ID');
+    expect(csv.body).toContain('Started,Paid on,Facility,Facility code,Amount,Currency,Status,Period from,Period to,Method,Paid by,Reference,Payment ID');
     expect(csv.body).toContain(',2026-09-14,Arua Health Centre IV,');
     expect(csv.body.match(/\r\n/g)).toHaveLength(6); // the header and five payments
     expect(csv.body).not.toContain('Bulamu Test Facility');

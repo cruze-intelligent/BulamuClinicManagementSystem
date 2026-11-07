@@ -9,6 +9,7 @@ import { SubscriptionCalendar } from '@/components/subscription-calendar';
 import { ContactIcons } from '@/components/contact-icons';
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
 import { PlanCards } from '@/components/offering-cards';
+import { shortDate } from '@/lib/finance';
 
 type Subscription = {
   status: 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED';
@@ -19,6 +20,9 @@ type Subscription = {
   amount: number;
   currency: string;
   lastPaymentAt: string | null;
+  // Days of grace the Bulamu team gave after the paid period ran out, and when they began.
+  graceDays?: number;
+  graceFrom?: string | null;
   createdAt: string;
 };
 
@@ -28,6 +32,8 @@ type Payment = {
   currency: string;
   createdAt: string;
   updatedAt: string;
+  method?: 'PESAPAL' | 'CASH';
+  months?: number;
 };
 
 const STATUS_LABEL: Record<Subscription['status'], string> = {
@@ -209,10 +215,19 @@ export default function BillingPage() {
               {subscription.status === 'PAST_DUE' && (
                 <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
                   Your trial or subscription has ended. Existing records can still be viewed, but new ones can&apos;t be
-                  saved until payment is completed. Saving works again as soon as Pesapal confirms the payment.
+                  saved until payment is completed. Saving works again as soon as Pesapal confirms the payment, or as soon
+                  as the Bulamu team records a cash payment.
                 </div>
               )}
-              {subscription.status === 'ACTIVE' && subscription.currentPeriodEnd && (
+              {subscription.status === 'ACTIVE' && subscription.currentPeriodEnd && !!subscription.graceDays && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                  Your subscription has ended. The Bulamu team gave you {subscription.graceDays} day{subscription.graceDays === 1 ? '' : 's'} of
+                  grace, so your team can keep working until {shortDate(subscription.currentPeriodEnd)}. Renew before
+                  then - the grace days count towards your next payment, whose month starts
+                  {subscription.graceFrom ? ` on ${shortDate(subscription.graceFrom)}` : ' when the grace began'}.
+                </div>
+              )}
+              {subscription.status === 'ACTIVE' && subscription.currentPeriodEnd && !subscription.graceDays && (
                 <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                   Active until {new Date(subscription.currentPeriodEnd).toLocaleDateString()}. Renewing early adds 30 days
                   on after that date.
@@ -283,7 +298,7 @@ export default function BillingPage() {
                     <p className="font-medium text-slate-800 dark:text-slate-200">
                       {payment.amount === 0
                         ? 'Free trial (2 weeks)'
-                        : `${payment.amount.toLocaleString()} ${payment.currency}`}
+                        : `${payment.amount.toLocaleString()} ${payment.currency}${payment.method === 'CASH' ? ' in cash' : ''}${payment.months && payment.months > 1 ? ` - ${payment.months} months` : ''}`}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {payment.amount === 0 ? 'Started ' : ''}

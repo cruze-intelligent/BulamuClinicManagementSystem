@@ -220,6 +220,12 @@ model Subscription {
   amount           Int      @default(100000)
   currency         String   @default("UGX")
   lastPaymentAt    DateTime?
+  // Grace days a Bulamu administrator gave a paid facility whose period ran
+  // out (at most 7 before it pays again), and when the grace began. They are
+  // lent, not given: the next payment's period starts from when they began,
+  // and clears them. currentPeriodEnd carries the grace end meanwhile.
+  graceDays        Int      @default(0)
+  graceFrom        DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -247,6 +253,17 @@ model Payment {
   pesapalOrderTrackingId   String?  @unique
   pesapalMerchantReference String?  @unique
   rawCallback              Json?
+  // Through Pesapal, or cash handed to a Bulamu administrator on a visit.
+  method                   SubscriptionPaymentMethod @default(PESAPAL)
+  // Cash only: the Bulamu administrator who recorded it, who handed it over,
+  // any receipt-book number, and the key the form sent, so a double click
+  // records one payment, not two.
+  recordedBy               String?
+  paidBy                   String?
+  reference                String?
+  requestKey               String?  @unique
+  // How many months the payment covers (cash may pay several at once).
+  months                   Int      @default(1)
   // The period this payment paid for (for a free-trial receipt: the trial),
   // so a receipt downloaded later still shows its own dates. Empty on
   // payments made before this was recorded.
@@ -256,6 +273,11 @@ model Payment {
   updatedAt                DateTime @updatedAt
 
   @@index([clinicId])
+}
+
+enum SubscriptionPaymentMethod {
+  PESAPAL
+  CASH
 }
 
 enum PaymentStatus {

@@ -603,6 +603,20 @@ export function trialExtendedEmail(rawClinicName: string, days: number, trialEnd
   `, { eyebrow: 'Free trial', preheader: `${clinicName}'s free trial now runs until ${formatEmailDate(trialEndsAt)}.` });
 }
 
+/** Tells a paid facility's admin that the Bulamu team has given them grace days after their subscription ran out. */
+export function graceGrantedEmail(rawClinicName: string, days: number, graceEndsAt: Date, billingUrl: string): string {
+  const clinicName = escapeHtml(rawClinicName);
+  const dayText = `${days} day${days === 1 ? '' : 's'}`;
+  return emailShell(`
+    ${heading(`${dayText} of grace to renew`)}
+    ${para(`${clinicName}'s Bulamu subscription has ended. So that your team can keep working while you arrange payment, the Bulamu team has given you ${dayText} of grace.`)}
+    ${factsTable([['Facility', clinicName], ['You can keep working until', `<strong>${formatEmailDate(graceEndsAt)}</strong>`]])}
+    ${callout('The grace days count towards your next payment: when you renew, your new month starts from when the grace began.')}
+    ${action(billingUrl, 'Renew on the Billing page')}
+    ${SIGN_OFF}
+  `, { eyebrow: 'Grace period', preheader: `${clinicName} can keep using Bulamu until ${formatEmailDate(graceEndsAt)}.` });
+}
+
 /** A facility's receipt to its patient, sent from the payment screen with the PDF attached. */
 export function patientReceiptEmail(input: {
   clinicName: string; patientName: string; receiptNumber: string; amount: string; method: string; receivedAt: Date; balance: string | null;

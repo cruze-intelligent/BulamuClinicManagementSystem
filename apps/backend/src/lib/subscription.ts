@@ -7,7 +7,8 @@ import { alertOperator } from './operator-alerts';
 const CACHE_TTL_MS = 60 * 1000;
 const cache = new Map<string, { blocked: boolean; expiresAt: number }>();
 
-export const SUBSCRIPTION_PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const SUBSCRIPTION_PERIOD_MS = 30 * DAY_MS;
 
 export const SUBSCRIPTION_REQUIRED_MESSAGE =
   "Your facility's subscription has ended, so this can't be saved. Existing records can still be viewed. An administrator can renew it from the Billing page.";
@@ -119,11 +120,28 @@ export async function sweepLapsedSubscriptions(now: Date = new Date()): Promise<
 /**
  * When a newly paid period ends. Paying before the trial or the current
  * period is over adds the 30 days on top of what is left, so paying early
- * never costs the facility days it already had.
+ * never costs the facility days it already had. Grace days are lent, not
+ * given: after grace, the paid period starts back when the grace began - or,
+ * when the facility pays well after the grace ran out, as many days ago as it
+ * had in grace - so it pays for the days it used.
  */
-export function paidPeriodEnd(subscription: Pick<Subscription, 'status' | 'trialEndsAt' | 'currentPeriodEnd'>, now: Date = new Date()): Date {
+export function paidPeriodEnd(
+  subscription: Pick<Subscription, 'status' | 'trialEndsAt' | 'currentPeriodEnd'> & Partial<Pick<Subscription, 'graceDays' | 'graceFrom'>>,
+  now: Date = new Date(),
+  months = 1,
+): Date {
   let start = now;
-  if (subscription.status === 'TRIALING' && subscription.trialEndsAt > start) start = subscription.trialEndsAt;
-  if (subscription.status === 'ACTIVE' && subscription.currentPeriodEnd && subscription.currentPeriodEnd > start) start = subscription.currentPeriodEnd;
-  return new Date(start.getTime() + SUBSCRIPTION_PERIOD_MS);
+  if (subscription.graceDays && subscription.graceFrom) {
+    const usedFrom = new Date(now.getTime() - subscription.graceDays * DAY_MS);
+    start = subscription.graceFrom > usedFrom ? subscription.graceFrom : usedFrom;
+  } else {
+    if (subscription.status === 'TRIALING' && subscription.trialEndsAt > start) start = subscription.trialEndsAt;
+    if (subscription.status === 'ACTIVE' && subscription.currentPeriodEnd && subscription.currentPeriodEnd > start) start = subscription.currentPeriodEnd;
+  }
+  return new Date(start.getTime() + months * SUBSCRIPTION_PERIOD_MS);
 }
+
+/** What a payment writes onto the subscription: paid, through the new end, with any grace settled. */
+export const paidSubscription = (periodEnd: Date, paidAt: Date = new Date()) => ({
+  status: 'ACTIVE' as const, lastPaymentAt: paidAt, currentPeriodEnd: periodEnd, graceDays: 0, graceFrom: null,
+});

@@ -20,6 +20,7 @@ type Payment = {
   id: string; facility: { id: string; name: string; facilityCode: string }; amount: number; currency: string;
   status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERSED'; startedAt: string; paidAt: string | null;
   periodStart: string | null; periodEnd: string | null; reference: string | null; hasReceipt: boolean;
+  method?: 'PESAPAL' | 'CASH'; paidBy?: string | null;
 };
 type Bucket = { amount: number; payments: number };
 type Finances = {
@@ -223,7 +224,7 @@ export default function SuperAdminFinancesPage() {
                     <th className="p-3 text-right font-medium">Amount</th>
                     <th className="p-3 font-medium">Status</th>
                     <th className="p-3 font-medium">Paid for</th>
-                    <th className="p-3 font-medium">Pesapal reference</th>
+                    <th className="p-3 font-medium">How paid</th>
                     <th className="p-3 font-medium"><span className="sr-only">Receipt</span></th>
                   </tr>
                 </thead>
@@ -236,7 +237,10 @@ export default function SuperAdminFinancesPage() {
                       <td className="p-3 text-right tabular-nums">{money(p.amount)}</td>
                       <td className="p-3 whitespace-nowrap">{paymentStatusLabel(p.status)}{p.paidAt && p.status === 'COMPLETED' && <div className="text-xs text-muted-foreground">on {shortDate(p.paidAt)}</div>}</td>
                       <td className="p-3 whitespace-nowrap text-xs">{periodText(p.periodStart, p.periodEnd)}</td>
-                      <td className="p-3 font-mono text-xs">{p.reference ?? '-'}</td>
+                      <td className="p-3 text-xs">
+                        {p.method === 'CASH' ? `Cash${p.paidBy ? ` from ${p.paidBy}` : ''}` : 'Pesapal'}
+                        {p.reference && <span className="block font-mono text-muted-foreground">{p.reference}</span>}
+                      </td>
                       <td className="p-3 text-right">
                         {p.hasReceipt && (
                           <button
