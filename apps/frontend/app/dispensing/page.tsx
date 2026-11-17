@@ -224,9 +224,10 @@ export default function DispensingPage() {
 
                       return (
                         <li key={item.id} className="rounded-md bg-slate-50 p-3 dark:bg-slate-800/60">
-                          <p className="font-semibold text-slate-900 dark:text-slate-50">{line.title}</p>
-                          {line.sig && <p className="text-sm text-slate-700 dark:text-slate-300">{line.sig}</p>}
-                          {line.instructions && <p className="text-xs text-slate-500 dark:text-slate-400">{line.instructions}</p>}
+                          <p className="font-semibold text-slate-900 dark:text-slate-50">{line.order}</p>
+                          {(line.details || line.instructions) && (
+                            <p className="text-xs text-slate-500 dark:text-slate-400">{[line.details, line.instructions].filter(Boolean).join('  |  ')}</p>
+                          )}
 
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                             {item.quantity && <span className="rounded-full bg-slate-200 px-2 py-0.5 font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">Prescribed quantity: {item.quantity}</span>}

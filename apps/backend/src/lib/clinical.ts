@@ -301,19 +301,28 @@ const FREQUENCY_LABELS: Record<string, string> = {
   WEEKLY: 'once a week',
 };
 
-const ROUTE_LABELS: Record<string, { text: string; verb: string }> = {
-  PO: { text: 'by mouth', verb: 'Take' },
-  SL: { text: 'under the tongue', verb: 'Place' },
-  IV: { text: 'intravenously', verb: 'Give' },
-  IM: { text: 'by intramuscular injection', verb: 'Give' },
-  SC: { text: 'by subcutaneous injection', verb: 'Give' },
-  PR: { text: 'rectally', verb: 'Insert' },
-  PV: { text: 'vaginally', verb: 'Insert' },
-  TOP: { text: 'to the skin', verb: 'Apply' },
-  INH: { text: 'by inhalation', verb: 'Inhale' },
-  EYE: { text: 'in the eye', verb: 'Instil' },
-  EAR: { text: 'in the ear', verb: 'Instil' },
-  NASAL: { text: 'in the nose', verb: 'Instil' },
+// abbr: as prescribers write the route at the start of a prescription line.
+// Injections and infusions are given by staff, so their plain-words directions
+// (for the patient) carry no verb.
+const ROUTE_LABELS: Record<string, { text: string; verb: string; abbr: string }> = {
+  PO: { text: 'by mouth', verb: 'Take', abbr: 'P.O' },
+  SL: { text: 'under the tongue', verb: 'Place', abbr: 'S.L' },
+  IV: { text: 'intravenously', verb: '', abbr: 'I.V' },
+  IM: { text: 'by intramuscular injection', verb: '', abbr: 'I.M' },
+  SC: { text: 'by subcutaneous injection', verb: '', abbr: 'S.C' },
+  PR: { text: 'rectally', verb: 'Insert', abbr: 'P.R' },
+  PV: { text: 'vaginally', verb: 'Insert', abbr: 'P.V' },
+  TOP: { text: 'to the skin', verb: 'Apply', abbr: 'TOP' },
+  INH: { text: 'by inhalation', verb: 'Inhale', abbr: 'INH' },
+  EYE: { text: 'in the eye', verb: 'Instil', abbr: 'EYE' },
+  EAR: { text: 'in the ear', verb: 'Instil', abbr: 'EAR' },
+  NASAL: { text: 'in the nose', verb: 'Instil', abbr: 'NASAL' },
+};
+
+// Frequencies as written on a prescription line: the standard code, with the
+// hourly ones the way prescribers write them ("12hrly").
+const FREQUENCY_SHORT: Record<string, string> = {
+  Q4H: '4hrly', Q6H: '6hrly', Q8H: '8hrly', Q12H: '12hrly', MANE: 'mane', NOCTE: 'nocte', WEEKLY: 'weekly',
 };
 
 /** "TDS" -> "three times daily (TDS)"; wording that is not a known code is kept as written. */
@@ -322,7 +331,62 @@ export function describeFrequency(frequency: string): string {
   return label ? `${label} (${frequency.trim().toUpperCase()})` : frequency.trim();
 }
 
-export type PrescriptionLine = { title: string; sig: string; quantity: string | null; instructions: string | null };
+export type PrescriptionLine = {
+  /** The prescription line in the standard order: route, drug and dose, frequency, duration - "P.O Amoxicillin 500mg TDS x 5 days". */
+  order: string;
+  /** What else the dispenser needs: the form and, where the dose is a count, how many each time. */
+  details: string | null;
+  title: string;
+  /** The same directions in plain words, for the patient. */
+  sig: string;
+  quantity: string | null;
+  instructions: string | null;
+};
+
+// "500 mg" -> "500mg", as prescribers write it.
+const compact = (text: string) => text.trim().replace(/(\d)\s+(mg|g|mcg|ml|IU|%)(?![a-z])/gi, '$1$2').replace(/\s+/g, ' ');
+
+const COUNT_UNIT = /^(tablets?|capsules?|suppositor(y|ies)|pessar(y|ies)|sachets?)$/i;
+
+/** "1", "0.5", "1/2", "1 1/2" -> a number; anything else -> NaN. */
+function amountOf(text: string): number {
+  const t = text.trim();
+  const mixed = t.match(/^(\d+)\s+(\d+)\/(\d+)$/);
+  if (mixed) return Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
+  const fraction = t.match(/^(\d+)\/(\d+)$/);
+  if (fraction) return Number(fraction[2]) ? Number(fraction[1]) / Number(fraction[2]) : NaN;
+  return /^\d+(\.\d+)?$/.test(t) ? Number(t) : NaN;
+}
+
+/** 1000 mg -> 1g, 250 mg -> 250mg. */
+function measure(value: number, unit: string): string {
+  const rounded = Math.round(value * 1000) / 1000;
+  if (unit.toLowerCase() === 'mg' && rounded >= 1000 && rounded % 1000 === 0) return `${rounded / 1000}g`;
+  return `${rounded}${unit}`;
+}
+
+/**
+ * The dose as written on the line: the dose itself when it is a measure
+ * (120 mg, 5 ml); for a count of tablets or capsules of a simple strength,
+ * the total (2 x 500 mg -> 1000mg, with "2 tablets" shown); otherwise the
+ * strength followed by the dose.
+ */
+function doseOnLine(strength: string, dosage: string): { dose: string; count: string | null } {
+  if (!dosage) return { dose: compact(strength), count: null };
+  const parsed = dosage.match(/^([\d./]+(?:\s+\d+\/\d+)?)\s*(.*)$/);
+  const unit = parsed?.[2]?.trim() ?? '';
+  // A measured dose stands on its own (a vial's strength is not the dose);
+  // a liquid keeps its concentration in front: "125mg/5ml 5ml".
+  if (/^(mg|g|mcg|ml|IU|units?)$/i.test(unit)) {
+    return { dose: [/^ml$/i.test(unit) && /[/%]/.test(strength) ? compact(strength) : '', compact(dosage)].filter(Boolean).join(' '), count: null };
+  }
+  const simple = strength.match(/^(\d+(?:\.\d+)?)\s*(mg|g|mcg|IU)$/i);
+  const n = parsed ? amountOf(parsed[1]) : NaN;
+  if (simple && COUNT_UNIT.test(unit) && n > 0) {
+    return { dose: measure(n * Number(simple[1]), simple[2]), count: n === 1 ? null : dosage.trim() };
+  }
+  return { dose: [compact(strength), dosage.trim()].filter(Boolean).join(' '), count: null };
+}
 
 /**
  * A prescription the way it is written on paper: the drug (name, strength,
@@ -334,7 +398,8 @@ export function formatPrescriptionLine(rx: {
   frequency?: string | null; duration?: string | null; quantity?: number | null; instructions?: string | null;
 }): PrescriptionLine {
   const title = [rx.medication, rx.strength, rx.form].filter(Boolean).join(' ');
-  const route = ROUTE_LABELS[(rx.route || '').toUpperCase()];
+  const routeCode = (rx.route || '').toUpperCase();
+  const route = ROUTE_LABELS[routeCode];
   const parts = [
     route?.verb,
     rx.dosage?.trim(),
@@ -342,7 +407,21 @@ export function formatPrescriptionLine(rx: {
     rx.frequency?.trim() ? describeFrequency(rx.frequency) : '',
     rx.duration?.trim() ? `for ${rx.duration.trim()}` : '',
   ].filter(Boolean);
+  const frequency = rx.frequency?.trim() ?? '';
+  const code = frequency.toUpperCase();
+  const { dose, count } = doseOnLine(rx.strength?.trim() ?? '', rx.dosage?.trim() ?? '');
+  const order = [
+    route?.abbr ?? (rx.route?.trim() || ''),
+    rx.medication.trim(),
+    dose,
+    count ? `(${count})` : '',
+    FREQUENCY_SHORT[code] ?? (FREQUENCY_LABELS[code] ? code : frequency),
+    rx.duration?.trim() && code !== 'STAT' ? `x ${rx.duration.trim()}` : '',
+  ].filter(Boolean).join(' ');
+  const form = rx.form?.trim();
   return {
+    order,
+    details: form ? form.charAt(0).toUpperCase() + form.slice(1) : null,
     title,
     sig: parts.join(' '),
     quantity: rx.quantity ? `Dispense: ${rx.quantity}` : null,

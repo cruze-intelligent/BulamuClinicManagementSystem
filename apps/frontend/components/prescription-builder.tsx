@@ -59,7 +59,7 @@ export function PrescriptionBuilder({
   };
 
   const applyVariant = (key: string, medicine: CatalogMedicine, variant: CatalogVariant) =>
-    update(key, { strength: variant.strength, form: variant.form, doseUnit: defaultDoseUnit(variant.form), route: medicine.route });
+    update(key, { strength: variant.strength, form: variant.form, doseUnit: defaultDoseUnit(variant.form), route: variant.route ?? medicine.route });
 
   const suggestionsFor = (text: string): Suggestion[] => {
     const q = text.trim().toLowerCase();
@@ -72,10 +72,15 @@ export function PrescriptionBuilder({
     const fromCatalog = searchMedicinesCatalog(text)
       .filter((m) => !inStockNames.has(m.name.toLowerCase()))
       .map((m) => ({ key: `cat:${m.name}`, label: m.name, detail: m.variants.slice(0, 2).map(variantLabel).join(', ') }));
-    return [...inStock, ...fromCatalog];
+    // Any medicine can be prescribed, listed or not: the name as typed is always offered.
+    const typed = text.trim();
+    const listed = [...inStock, ...fromCatalog].some((s) => s.label.toLowerCase() === typed.toLowerCase());
+    const asTyped = listed ? [] : [{ key: 'typed:', label: `Prescribe "${typed}"`, detail: 'Not in the list - enter its strength and form below' }];
+    return [...inStock, ...fromCatalog, ...asTyped];
   };
 
   const pickMedicine = (d: PrescriptionDraft, key: string) => {
+    if (key === 'typed:') return update(d.key, { medication: d.medication.trim(), medicineId: '' });
     if (key.startsWith('stock:')) {
       const item = stock.find((m) => m.id === key.slice(6));
       if (!item) return;
@@ -83,7 +88,7 @@ export function PrescriptionBuilder({
       update(d.key, {
         medication: item.name, medicineId: item.id, allergyOverride: false, doseUnit: stockDoseUnit(item.unit),
         ...(catalog ? { route: catalog.route } : {}),
-        ...(catalog && catalog.variants.length === 1 ? { strength: catalog.variants[0].strength, form: catalog.variants[0].form } : {}),
+        ...(catalog && catalog.variants.length === 1 ? { strength: catalog.variants[0].strength, form: catalog.variants[0].form, route: catalog.variants[0].route ?? catalog.route } : {}),
       });
       return;
     }
@@ -92,7 +97,7 @@ export function PrescriptionBuilder({
     const linked = stock.find((m) => m.name.toLowerCase() === medicine.name.toLowerCase());
     const only = medicine.variants.length === 1 ? medicine.variants[0] : null;
     update(d.key, {
-      medication: medicine.name, medicineId: linked?.id ?? '', allergyOverride: false, route: medicine.route,
+      medication: medicine.name, medicineId: linked?.id ?? '', allergyOverride: false, route: only?.route ?? medicine.route,
       ...(only ? { strength: only.strength, form: only.form, doseUnit: defaultDoseUnit(only.form) } : {}),
     });
   };
@@ -132,8 +137,13 @@ export function PrescriptionBuilder({
               onChange={(text) => update(d.key, { medication: text, allergyOverride: false, ...(linkedStock && linkedStock.name !== text ? { medicineId: '' } : {}) })}
               suggestions={suggestionsFor(d.medication)}
               onPick={(key) => pickMedicine(d, key)}
-              footer={d.medication.trim().length >= 2 ? <>Your facility&apos;s stock is listed first. Keep typing to use another name.</> : undefined}
+              footer={d.medication.trim().length >= 2 ? <>Your facility&apos;s stock is listed first, then Bulamu&apos;s medicines list.</> : undefined}
             />
+            {d.medication.trim().length >= 2 && !catalog && !linkedStock && (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Not in Bulamu&apos;s medicines list - prescribed as typed. Enter its strength and form below.
+              </p>
+            )}
             {linkedStock && (
               <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
                 Linked to stock: {linkedStock.quantity} {linkedStock.unit} available{linkedStock.quantity <= linkedStock.reorderLevel ? ' - running low' : ''}.
@@ -273,8 +283,10 @@ export function PrescriptionBuilder({
             {line && (
               <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
                 <span className="text-xs font-semibold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">Reads as</span>
-                <p className="font-medium text-slate-900 dark:text-slate-100">{line.title}</p>
-                <p className="text-slate-700 dark:text-slate-300">{line.sig}{line.instructions ? `. ${line.instructions}` : ''}{line.quantity ? ` (${line.quantity.toLowerCase()})` : ''}</p>
+                <p className="font-medium text-slate-900 dark:text-slate-100">{line.order}</p>
+                {(line.details || line.quantity || line.instructions) && (
+                  <p className="text-slate-700 dark:text-slate-300">{[line.details, line.quantity, line.instructions].filter(Boolean).join('  |  ')}</p>
+                )}
               </div>
             )}
 

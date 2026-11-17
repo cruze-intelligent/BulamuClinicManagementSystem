@@ -103,12 +103,11 @@ export function ConsultationDetails({
               return (
                 <li key={rx.id ?? `${rx.medication}-${i}`} className="rounded-md bg-slate-50 p-3 text-sm dark:bg-slate-800">
                   <p className="font-semibold text-slate-900 dark:text-slate-50">
-                    <span className="mr-1.5 text-slate-400">{i + 1}.</span>{line.title}
+                    <span className="mr-1.5 text-slate-400">{i + 1}.</span>{line.order}
                   </p>
-                  {line.sig && <p className="mt-0.5 text-slate-700 dark:text-slate-300">{line.sig}</p>}
-                  {(line.quantity || line.instructions) && (
+                  {(line.details || line.quantity || line.instructions) && (
                     <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                      {[line.quantity, line.instructions].filter(Boolean).join('  |  ')}
+                      {[line.details, line.quantity, line.instructions].filter(Boolean).join('  |  ')}
                     </p>
                   )}
                   <div className="mt-1.5 flex flex-wrap gap-1.5 text-xs">

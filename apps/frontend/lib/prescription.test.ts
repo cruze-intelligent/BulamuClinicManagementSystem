@@ -19,6 +19,8 @@ describe('reading a prescription', () => {
         frequency: 'TDS', duration: '5 days', quantity: 15, instructions: 'Take after food',
       })
     ).toEqual({
+      order: 'P.O Amoxicillin 500mg TDS x 5 days',
+      details: 'Capsule',
       title: 'Amoxicillin 500 mg capsule',
       sig: 'Take 1 capsule by mouth three times daily (TDS) for 5 days',
       quantity: 'Dispense: 15',
@@ -29,16 +31,34 @@ describe('reading a prescription', () => {
   it('chooses the verb that fits the route', () => {
     const sig = (route: string) => formatPrescription({ medication: 'X', dosage: '1 unit', route, frequency: 'OD', duration: '' }).sig;
     expect(sig('TOP')).toBe('Apply 1 unit to the skin once daily (OD)');
-    expect(sig('IM')).toBe('Give 1 unit by intramuscular injection once daily (OD)');
+    // Injections are given by staff: the patient's directions never say "Give".
+    expect(sig('IM')).toBe('1 unit by intramuscular injection once daily (OD)');
     expect(sig('EYE')).toBe('Instil 1 unit in the eye once daily (OD)');
   });
 
   it('reads prescriptions written before structured prescribing, keeping wording it does not know', () => {
     expect(formatPrescription({ medication: 'Coartem', dosage: '4 tablets', frequency: 'twice daily', duration: '3 days' })).toEqual({
-      title: 'Coartem', sig: '4 tablets twice daily for 3 days', quantity: null, instructions: null,
+      order: 'Coartem 4 tablets twice daily x 3 days', details: null, title: 'Coartem', sig: '4 tablets twice daily for 3 days', quantity: null, instructions: null,
     });
     expect(formatPrescription({ medication: 'Coartem', dosage: '4 tablets', frequency: 'bd', duration: '3 days' }).sig).toBe('4 tablets twice daily (BD) for 3 days');
     expect(describeFrequency('every other day')).toBe('every other day');
+  });
+});
+
+describe('the prescription line, as prescribers write it', () => {
+  // The same lines the printed prescription uses (apps/backend/test/clinical.test.ts).
+  const order = (rx: Parameters<typeof formatPrescription>[0]) => formatPrescription(rx).order;
+  it('puts route, drug and dose, frequency and duration in that order', () => {
+    expect(order({ medication: 'Artesunate', strength: '60 mg', form: 'injection', dosage: '120 mg', route: 'IV', frequency: 'Q12H', duration: '1 day' })).toBe('I.V Artesunate 120mg 12hrly x 1 day');
+    expect(order({ medication: 'Amoxicillin', strength: '500 mg', form: 'capsule', dosage: '1 capsule', route: 'PO', frequency: 'TDS', duration: '5 days' })).toBe('P.O Amoxicillin 500mg TDS x 5 days');
+    expect(order({ medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '2 tablets', route: 'PO', frequency: 'TDS', duration: '3 days' })).toBe('P.O Paracetamol 1g (2 tablets) TDS x 3 days');
+    expect(order({ medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '1/2 tablet', route: 'PO', frequency: 'PRN', duration: '3 days' })).toBe('P.O Paracetamol 250mg (1/2 tablet) PRN x 3 days');
+    expect(order({ medication: 'Amoxicillin', strength: '125 mg/5 ml', form: 'suspension', dosage: '5 ml', route: 'PO', frequency: 'TDS', duration: '5 days' })).toBe('P.O Amoxicillin 125mg/5ml 5ml TDS x 5 days');
+    expect(order({ medication: 'Artemether', strength: '80 mg/ml', form: 'injection', dosage: '160 mg', route: 'IM', frequency: 'STAT', duration: '' })).toBe('I.M Artemether 160mg STAT');
+    expect(order({ medication: 'Normal saline 0.9%', form: 'infusion', dosage: '1000 ml', route: 'IV', frequency: 'Q8H', duration: '1 day' })).toBe('I.V Normal saline 0.9% 1000ml 8hrly x 1 day');
+    expect(order({ medication: 'Normal saline', strength: '0.9%', form: 'infusion', dosage: '1000 ml', route: 'IV', frequency: 'Q8H', duration: '1 day' })).toBe('I.V Normal saline 0.9% 1000ml 8hrly x 1 day');
+    expect(order({ medication: "Ringer's lactate", strength: 'compound sodium lactate', form: 'infusion', dosage: '500 ml', route: 'IV', frequency: 'STAT', duration: '' })).toBe("I.V Ringer's lactate 500ml STAT");
+    expect(order({ medication: 'Hydralazine', strength: '20 mg/ml', form: 'injection', dosage: '5 mg', route: 'IV', frequency: 'STAT', duration: '' })).toBe('I.V Hydralazine 5mg STAT');
   });
 });
 
@@ -47,7 +67,8 @@ describe('vocabulary', () => {
     expect(new Set(ROUTES.map((r) => r.code)).size).toBe(ROUTES.length);
     expect(new Set(FREQUENCIES.map((f) => f.code)).size).toBe(FREQUENCIES.length);
     for (const f of FREQUENCIES) expect(f.phrase.length).toBeGreaterThan(3);
-    for (const r of ROUTES) expect(r.verb.length).toBeGreaterThan(2);
+    for (const r of ROUTES) expect(r.abbr.length).toBeGreaterThan(1);
+    expect(ROUTES.map((r) => r.verb)).not.toContain('Give');
   });
 
   it('counts a dose in the unit that suits the form', () => {
@@ -148,14 +169,26 @@ describe('checking and saving a prescription line', () => {
     expect(draftToPayload(draft({ frequency: 'STAT', durationValue: '' })).duration).toBe('');
   });
 
-  it('reads back, in plain words, exactly what was entered', () => {
+  it('reads back exactly what was entered, as a prescription line and in plain words', () => {
     const line = formatPrescription(draftToPayload(draft({ quantity: '15' })));
+    expect(line.order).toBe('P.O Amoxicillin 500mg TDS x 5 days');
     expect(line.sig).toBe('Take 1 capsule by mouth three times daily (TDS) for 5 days');
     expect(line.quantity).toBe('Dispense: 15');
   });
 });
 
 describe('medicines reference list', () => {
+  it('has the IV fluids and the drugs clinicians asked for, each strength given by the right route', () => {
+    const find = (name: string) => MEDICINES_CATALOG.find((m) => m.name === name)!;
+    for (const name of ['Normal saline', 'Dextrose', "Ringer's lactate", 'Hydralazine', 'Labetalol']) expect(find(name), name).toBeTruthy();
+    expect(find('Hydralazine').variants.map((x) => x.route ?? find('Hydralazine').route)).toEqual(['IV', 'PO', 'PO']);
+    expect(searchMedicinesCatalog('ringers')[0].name).toBe("Ringer's lactate");
+    expect(searchMedicinesCatalog('normal saline')[0].name).toBe('Normal saline');
+    const routes = new Set<string>(ROUTES.map((r) => r.code));
+    for (const m of MEDICINES_CATALOG) for (const x of m.variants) if (x.route) expect(routes.has(x.route), `${m.name} ${x.form}`).toBe(true);
+  });
+
+
   it('lists each medicine once, with a valid route and only forms the form can select', () => {
     const names = new Set<string>();
     const routes = new Set<string>(ROUTES.map((r) => r.code));

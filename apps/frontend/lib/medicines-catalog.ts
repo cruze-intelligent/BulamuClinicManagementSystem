@@ -7,7 +7,8 @@
 
 import type { RouteCode } from './prescription';
 
-export type CatalogVariant = { strength: string; form: string };
+/** A strength and form; `route` when it is given differently from the medicine's usual route (an injection of a tablet medicine). */
+export type CatalogVariant = { strength: string; form: string; route?: RouteCode };
 
 export type CatalogMedicine = {
   name: string;
@@ -17,7 +18,7 @@ export type CatalogMedicine = {
   variants: CatalogVariant[];
 };
 
-const v = (strength: string, form: string): CatalogVariant => ({ strength, form });
+const v = (strength: string, form: string, route?: RouteCode): CatalogVariant => (route ? { strength, form, route } : { strength, form });
 
 export const MEDICINES_CATALOG: CatalogMedicine[] = [
   // Antimalarials
@@ -25,7 +26,7 @@ export const MEDICINES_CATALOG: CatalogMedicine[] = [
   { name: 'Artesunate', aka: 'severe malaria', route: 'IV', variants: [v('60 mg', 'injection')] },
   { name: 'Artesunate/Amodiaquine', aka: 'asaq act malaria', route: 'PO', variants: [v('25/67.5 mg', 'tablet'), v('100/270 mg', 'tablet')] },
   { name: 'Dihydroartemisinin/Piperaquine', aka: 'duocotecxin eurartesim act malaria', route: 'PO', variants: [v('40/320 mg', 'tablet')] },
-  { name: 'Quinine', aka: 'malaria', route: 'PO', variants: [v('300 mg', 'tablet'), v('300 mg/ml', 'injection')] },
+  { name: 'Quinine', aka: 'malaria', route: 'PO', variants: [v('300 mg', 'tablet'), v('300 mg/ml', 'injection', 'IV')] },
   { name: 'Sulfadoxine/Pyrimethamine', aka: 'fansidar sp ipt malaria pregnancy', route: 'PO', variants: [v('500/25 mg', 'tablet')] },
 
   // Antibiotics
@@ -36,14 +37,14 @@ export const MEDICINES_CATALOG: CatalogMedicine[] = [
   { name: 'Phenoxymethylpenicillin', aka: 'penicillin v pen v', route: 'PO', variants: [v('250 mg', 'tablet')] },
   { name: 'Flucloxacillin', aka: 'floxapen', route: 'PO', variants: [v('250 mg', 'capsule'), v('500 mg', 'capsule')] },
   { name: 'Cefalexin', aka: 'cephalexin keflex', route: 'PO', variants: [v('250 mg', 'capsule'), v('500 mg', 'capsule')] },
-  { name: 'Ceftriaxone', aka: 'rocephin', route: 'IV', variants: [v('250 mg', 'injection'), v('1 g', 'injection')] },
+  { name: 'Ceftriaxone', aka: 'rocephin', route: 'IV', variants: [v('250 mg', 'injection'), v('500 mg', 'injection'), v('1 g', 'injection'), v('2 g', 'injection')] },
   { name: 'Cefixime', aka: 'suprax', route: 'PO', variants: [v('200 mg', 'tablet'), v('100 mg/5 ml', 'suspension')] },
   { name: 'Gentamicin', route: 'IM', variants: [v('80 mg/2 ml', 'injection')] },
   { name: 'Azithromycin', aka: 'zithromax', route: 'PO', variants: [v('250 mg', 'tablet'), v('500 mg', 'tablet'), v('200 mg/5 ml', 'suspension')] },
   { name: 'Erythromycin', route: 'PO', variants: [v('250 mg', 'tablet'), v('500 mg', 'tablet'), v('125 mg/5 ml', 'suspension')] },
   { name: 'Doxycycline', route: 'PO', variants: [v('100 mg', 'capsule')] },
   { name: 'Ciprofloxacin', aka: 'cipro', route: 'PO', variants: [v('250 mg', 'tablet'), v('500 mg', 'tablet')] },
-  { name: 'Metronidazole', aka: 'flagyl', route: 'PO', variants: [v('200 mg', 'tablet'), v('400 mg', 'tablet'), v('200 mg/5 ml', 'suspension')] },
+  { name: 'Metronidazole', aka: 'flagyl', route: 'PO', variants: [v('200 mg', 'tablet'), v('400 mg', 'tablet'), v('200 mg/5 ml', 'suspension'), v('500 mg/100 ml', 'infusion', 'IV')] },
   { name: 'Cotrimoxazole', aka: 'septrin bactrim sulfamethoxazole trimethoprim', route: 'PO', variants: [v('480 mg', 'tablet'), v('960 mg', 'tablet'), v('240 mg/5 ml', 'suspension')] },
   { name: 'Nitrofurantoin', route: 'PO', variants: [v('100 mg', 'capsule')] },
   { name: 'Chloramphenicol', route: 'EYE', variants: [v('0.5%', 'eye drops'), v('1%', 'eye ointment')] },
@@ -54,7 +55,7 @@ export const MEDICINES_CATALOG: CatalogMedicine[] = [
   { name: 'Mebendazole', aka: 'worms deworming', route: 'PO', variants: [v('100 mg', 'tablet'), v('500 mg', 'tablet')] },
   { name: 'Praziquantel', aka: 'bilharzia schistosomiasis', route: 'PO', variants: [v('600 mg', 'tablet')] },
   { name: 'Fluconazole', route: 'PO', variants: [v('50 mg', 'capsule'), v('150 mg', 'capsule'), v('200 mg', 'tablet')] },
-  { name: 'Clotrimazole', aka: 'canesten thrush', route: 'TOP', variants: [v('1%', 'cream'), v('500 mg', 'pessary')] },
+  { name: 'Clotrimazole', aka: 'canesten thrush', route: 'TOP', variants: [v('1%', 'cream'), v('500 mg', 'pessary', 'PV')] },
   { name: 'Benzyl benzoate', aka: 'scabies', route: 'TOP', variants: [v('25%', 'lotion')] },
   { name: 'Ivermectin', aka: 'scabies onchocerciasis', route: 'PO', variants: [v('3 mg', 'tablet')] },
 
@@ -65,24 +66,24 @@ export const MEDICINES_CATALOG: CatalogMedicine[] = [
   { name: 'Pyridoxine', aka: 'vitamin b6', route: 'PO', variants: [v('25 mg', 'tablet')] },
 
   // Pain, fever and inflammation
-  { name: 'Paracetamol', aka: 'panadol acetaminophen', route: 'PO', variants: [v('500 mg', 'tablet'), v('120 mg/5 ml', 'suspension'), v('100 mg', 'suppository')] },
+  { name: 'Paracetamol', aka: 'panadol acetaminophen', route: 'PO', variants: [v('500 mg', 'tablet'), v('120 mg/5 ml', 'suspension'), v('100 mg', 'suppository', 'PR'), v('10 mg/ml', 'infusion', 'IV')] },
   { name: 'Ibuprofen', aka: 'brufen', route: 'PO', variants: [v('200 mg', 'tablet'), v('400 mg', 'tablet'), v('100 mg/5 ml', 'suspension')] },
-  { name: 'Diclofenac', aka: 'voltaren', route: 'PO', variants: [v('50 mg', 'tablet'), v('75 mg/3 ml', 'injection'), v('1%', 'gel')] },
+  { name: 'Diclofenac', aka: 'voltaren', route: 'PO', variants: [v('50 mg', 'tablet'), v('75 mg/3 ml', 'injection', 'IM'), v('1%', 'gel', 'TOP')] },
   { name: 'Aspirin', route: 'PO', variants: [v('75 mg', 'tablet'), v('300 mg', 'tablet')] },
   { name: 'Tramadol', route: 'PO', variants: [v('50 mg', 'capsule')] },
-  { name: 'Morphine', route: 'PO', variants: [v('10 mg/5 ml', 'oral solution'), v('10 mg/ml', 'injection')] },
+  { name: 'Morphine', route: 'PO', variants: [v('10 mg/5 ml', 'oral solution'), v('10 mg/ml', 'injection', 'IV')] },
   { name: 'Prednisolone', route: 'PO', variants: [v('5 mg', 'tablet')] },
-  { name: 'Dexamethasone', route: 'IV', variants: [v('4 mg/ml', 'injection'), v('0.5 mg', 'tablet')] },
-  { name: 'Hydrocortisone', route: 'IV', variants: [v('100 mg', 'injection'), v('1%', 'cream')] },
+  { name: 'Dexamethasone', route: 'IV', variants: [v('4 mg/ml', 'injection'), v('0.5 mg', 'tablet', 'PO')] },
+  { name: 'Hydrocortisone', route: 'IV', variants: [v('100 mg', 'injection'), v('1%', 'cream', 'TOP')] },
 
   // Stomach, gut and rehydration
   { name: 'Oral rehydration salts', aka: 'ors diarrhoea', route: 'PO', variants: [v('low osmolarity', 'sachet')] },
   { name: 'Zinc sulfate', aka: 'zinc diarrhoea', route: 'PO', variants: [v('20 mg dispersible', 'tablet')] },
   { name: 'Omeprazole', route: 'PO', variants: [v('20 mg', 'capsule'), v('40 mg', 'capsule')] },
   { name: 'Magnesium trisilicate', aka: 'antacid mist mag trisil', route: 'PO', variants: [v('500 mg', 'tablet'), v('500 mg/5 ml', 'suspension')] },
-  { name: 'Hyoscine butylbromide', aka: 'buscopan', route: 'PO', variants: [v('10 mg', 'tablet'), v('20 mg/ml', 'injection')] },
-  { name: 'Metoclopramide', aka: 'plasil', route: 'PO', variants: [v('10 mg', 'tablet'), v('10 mg/2 ml', 'injection')] },
-  { name: 'Promethazine', aka: 'phenergan', route: 'PO', variants: [v('25 mg', 'tablet'), v('25 mg/ml', 'injection')] },
+  { name: 'Hyoscine butylbromide', aka: 'buscopan', route: 'PO', variants: [v('10 mg', 'tablet'), v('20 mg/ml', 'injection', 'IV')] },
+  { name: 'Metoclopramide', aka: 'plasil', route: 'PO', variants: [v('10 mg', 'tablet'), v('10 mg/2 ml', 'injection', 'IV')] },
+  { name: 'Promethazine', aka: 'phenergan', route: 'PO', variants: [v('25 mg', 'tablet'), v('25 mg/ml', 'injection', 'IM')] },
   { name: 'Lactulose', route: 'PO', variants: [v('3.35 g/5 ml', 'syrup')] },
 
   // Breathing and allergy
@@ -94,12 +95,12 @@ export const MEDICINES_CATALOG: CatalogMedicine[] = [
 
   // Heart, blood pressure and diabetes
   { name: 'Amlodipine', route: 'PO', variants: [v('5 mg', 'tablet'), v('10 mg', 'tablet')] },
-  { name: 'Nifedipine', route: 'PO', variants: [v('10 mg', 'tablet'), v('20 mg retard', 'tablet')] },
+  { name: 'Nifedipine', aka: 'preterm labour tocolysis', route: 'PO', variants: [v('10 mg', 'tablet'), v('20 mg retard', 'tablet'), v('10 mg', 'capsule')] },
   { name: 'Enalapril', route: 'PO', variants: [v('5 mg', 'tablet'), v('10 mg', 'tablet')] },
   { name: 'Lisinopril', route: 'PO', variants: [v('5 mg', 'tablet'), v('10 mg', 'tablet')] },
   { name: 'Atenolol', route: 'PO', variants: [v('50 mg', 'tablet'), v('100 mg', 'tablet')] },
   { name: 'Hydrochlorothiazide', aka: 'hctz diuretic', route: 'PO', variants: [v('25 mg', 'tablet')] },
-  { name: 'Furosemide', aka: 'lasix frusemide diuretic', route: 'PO', variants: [v('40 mg', 'tablet'), v('20 mg/2 ml', 'injection')] },
+  { name: 'Furosemide', aka: 'lasix frusemide diuretic', route: 'PO', variants: [v('40 mg', 'tablet'), v('20 mg/2 ml', 'injection', 'IV')] },
   { name: 'Methyldopa', aka: 'pregnancy hypertension', route: 'PO', variants: [v('250 mg', 'tablet')] },
   { name: 'Simvastatin', aka: 'statin cholesterol', route: 'PO', variants: [v('20 mg', 'tablet')] },
   { name: 'Metformin', aka: 'glucophage diabetes', route: 'PO', variants: [v('500 mg', 'tablet'), v('850 mg', 'tablet')] },
@@ -125,20 +126,93 @@ export const MEDICINES_CATALOG: CatalogMedicine[] = [
   { name: 'Vitamin C', aka: 'ascorbic acid', route: 'PO', variants: [v('100 mg', 'tablet'), v('500 mg', 'tablet')] },
 
   // Nervous system and mental health
-  { name: 'Diazepam', aka: 'valium', route: 'PO', variants: [v('5 mg', 'tablet'), v('10 mg/2 ml', 'injection')] },
+  { name: 'Diazepam', aka: 'valium', route: 'PO', variants: [v('5 mg', 'tablet'), v('10 mg/2 ml', 'injection', 'IV')] },
   { name: 'Phenobarbital', aka: 'phenobarbitone epilepsy', route: 'PO', variants: [v('30 mg', 'tablet'), v('60 mg', 'tablet')] },
   { name: 'Carbamazepine', aka: 'epilepsy', route: 'PO', variants: [v('200 mg', 'tablet')] },
   { name: 'Phenytoin', aka: 'epilepsy', route: 'PO', variants: [v('100 mg', 'tablet')] },
   { name: 'Amitriptyline', aka: 'depression', route: 'PO', variants: [v('25 mg', 'tablet')] },
   { name: 'Fluoxetine', aka: 'depression', route: 'PO', variants: [v('20 mg', 'capsule')] },
-  { name: 'Haloperidol', route: 'PO', variants: [v('5 mg', 'tablet'), v('5 mg/ml', 'injection')] },
+  { name: 'Haloperidol', route: 'PO', variants: [v('5 mg', 'tablet'), v('5 mg/ml', 'injection', 'IM')] },
 
   // Skin, wounds and local use
   { name: 'Silver sulfadiazine', aka: 'burns', route: 'TOP', variants: [v('1%', 'cream')] },
   { name: 'Calamine', aka: 'itching', route: 'TOP', variants: [v('standard', 'lotion')] },
-  { name: 'Lidocaine', aka: 'lignocaine local anaesthetic', route: 'SC', variants: [v('2%', 'injection'), v('2%', 'gel')] },
+  { name: 'Lidocaine', aka: 'lignocaine local anaesthetic', route: 'SC', variants: [v('2%', 'injection'), v('2%', 'gel', 'TOP')] },
   { name: 'Povidone iodine', aka: 'betadine antiseptic', route: 'TOP', variants: [v('10%', 'solution')] },
   { name: 'Tetanus toxoid', aka: 'tt vaccine', route: 'IM', variants: [v('0.5 ml', 'injection')] },
+  { name: 'Miconazole', aka: 'daktarin fungal', route: 'TOP', variants: [v('2%', 'cream'), v('2%', 'gel')] },
+  { name: 'Nystatin', aka: 'oral thrush candida', route: 'PO', variants: [v('100,000 IU/ml', 'suspension'), v('100,000 IU', 'pessary', 'PV')] },
+  { name: 'Aciclovir', aka: 'acyclovir zovirax herpes zoster shingles', route: 'PO', variants: [v('200 mg', 'tablet'), v('400 mg', 'tablet'), v('800 mg', 'tablet'), v('5%', 'cream', 'TOP')] },
+  { name: 'Griseofulvin', aka: 'ringworm tinea fungal', route: 'PO', variants: [v('500 mg', 'tablet'), v('125 mg', 'tablet')] },
+
+  // IV fluids, electrolytes and blood
+  { name: 'Normal saline', aka: 'sodium chloride ns iv fluid infusion drip', route: 'IV', variants: [v('0.9%', 'infusion')] },
+  { name: 'Dextrose', aka: 'glucose d5 d10 d50 iv fluid infusion drip hypoglycaemia', route: 'IV', variants: [v('5%', 'infusion'), v('10%', 'infusion'), v('50%', 'injection')] },
+  { name: "Ringer's lactate", aka: 'ringers lactate hartmann hartmanns compound sodium lactate rl iv fluid infusion drip', route: 'IV', variants: [v('compound sodium lactate', 'infusion')] },
+  { name: 'Dextrose/Sodium chloride', aka: 'dextrose saline dns iv fluid infusion drip', route: 'IV', variants: [v('5%/0.9%', 'infusion'), v('5%/0.45%', 'infusion')] },
+  { name: 'Darrow solution', aka: 'half strength darrows dextrose iv fluid paediatric', route: 'IV', variants: [v('half strength with 2.5% dextrose', 'infusion')] },
+  { name: 'Potassium chloride', aka: 'kcl hypokalaemia', route: 'IV', variants: [v('15% (2 mmol/ml)', 'injection'), v('600 mg slow release', 'tablet', 'PO')] },
+  { name: 'Calcium gluconate', aka: 'hypocalcaemia magnesium toxicity', route: 'IV', variants: [v('10%', 'injection')] },
+  { name: 'Sodium bicarbonate', aka: 'acidosis', route: 'IV', variants: [v('8.4%', 'injection')] },
+  { name: 'Water for injection', aka: 'wfi diluent', route: 'IV', variants: [v('10 ml', 'injection')] },
+  { name: 'Mannitol', aka: 'raised intracranial pressure', route: 'IV', variants: [v('20%', 'infusion')] },
+  { name: 'Gelatin (succinylated)', aka: 'gelofusine haemaccel plasma expander colloid', route: 'IV', variants: [v('4%', 'infusion')] },
+
+  // Emergency, anaesthesia and theatre
+  { name: 'Adrenaline', aka: 'epinephrine anaphylaxis cardiac arrest', route: 'IM', variants: [v('1 mg/ml (1:1000)', 'injection')] },
+  { name: 'Atropine', aka: 'bradycardia organophosphate premedication', route: 'IV', variants: [v('0.6 mg/ml', 'injection')] },
+  { name: 'Aminophylline', aka: 'asthma bronchospasm', route: 'IV', variants: [v('25 mg/ml', 'injection'), v('100 mg', 'tablet', 'PO')] },
+  { name: 'Ketamine', aka: 'anaesthesia', route: 'IV', variants: [v('50 mg/ml', 'injection')] },
+  { name: 'Pethidine', aka: 'meperidine pain analgesia', route: 'IM', variants: [v('50 mg/ml', 'injection')] },
+  { name: 'Ondansetron', aka: 'zofran nausea vomiting', route: 'IV', variants: [v('2 mg/ml', 'injection'), v('4 mg', 'tablet', 'PO'), v('8 mg', 'tablet', 'PO')] },
+  { name: 'Tranexamic acid', aka: 'txa bleeding pph trauma', route: 'IV', variants: [v('100 mg/ml', 'injection'), v('500 mg', 'tablet', 'PO')] },
+  { name: 'Phytomenadione', aka: 'vitamin k newborn bleeding warfarin', route: 'IM', variants: [v('1 mg/0.5 ml', 'injection'), v('10 mg/ml', 'injection')] },
+  { name: 'Glyceryl trinitrate', aka: 'gtn nitroglycerin angina', route: 'SL', variants: [v('0.5 mg', 'tablet')] },
+  { name: 'Esomeprazole', aka: 'nexium ulcer bleeding', route: 'IV', variants: [v('40 mg', 'injection'), v('20 mg', 'tablet', 'PO'), v('40 mg', 'tablet', 'PO')] },
+
+  // More antibiotics
+  { name: 'Cefuroxime', aka: 'zinnat zinacef', route: 'PO', variants: [v('250 mg', 'tablet'), v('500 mg', 'tablet'), v('750 mg', 'injection', 'IV')] },
+  { name: 'Cloxacillin', aka: 'orbenin', route: 'PO', variants: [v('250 mg', 'capsule'), v('500 mg', 'capsule'), v('500 mg', 'injection', 'IV')] },
+  { name: 'Clindamycin', aka: 'dalacin', route: 'PO', variants: [v('150 mg', 'capsule'), v('300 mg', 'capsule'), v('150 mg/ml', 'injection', 'IV')] },
+  { name: 'Benzathine benzylpenicillin', aka: 'penadur syphilis rheumatic', route: 'IM', variants: [v('2.4 MU', 'injection')] },
+  { name: 'Procaine benzylpenicillin', aka: 'ppf procaine penicillin', route: 'IM', variants: [v('3 MU', 'injection')] },
+  { name: 'Levofloxacin', aka: 'tavanic', route: 'PO', variants: [v('500 mg', 'tablet'), v('750 mg', 'tablet')] },
+  { name: 'Tinidazole', aka: 'fasigyn', route: 'PO', variants: [v('500 mg', 'tablet')] },
+  { name: 'Meropenem', aka: 'meronem carbapenem', route: 'IV', variants: [v('500 mg', 'injection'), v('1 g', 'injection')] },
+  { name: 'Amikacin', route: 'IV', variants: [v('500 mg/2 ml', 'injection')] },
+  { name: 'Artemether', aka: 'paluther severe malaria', route: 'IM', variants: [v('80 mg/ml', 'injection'), v('20 mg/ml', 'injection')] },
+
+  // More heart, blood pressure, blood and diabetes
+  { name: 'Hydralazine', aka: 'apresoline pre-eclampsia severe hypertension', route: 'IV', variants: [v('20 mg/ml', 'injection'), v('25 mg', 'tablet', 'PO'), v('50 mg', 'tablet', 'PO')] },
+  { name: 'Labetalol', aka: 'trandate pre-eclampsia severe hypertension', route: 'IV', variants: [v('5 mg/ml', 'injection'), v('100 mg', 'tablet', 'PO'), v('200 mg', 'tablet', 'PO')] },
+  { name: 'Losartan', aka: 'cozaar', route: 'PO', variants: [v('50 mg', 'tablet'), v('100 mg', 'tablet')] },
+  { name: 'Carvedilol', route: 'PO', variants: [v('6.25 mg', 'tablet'), v('12.5 mg', 'tablet'), v('25 mg', 'tablet')] },
+  { name: 'Bisoprolol', aka: 'concor', route: 'PO', variants: [v('2.5 mg', 'tablet'), v('5 mg', 'tablet')] },
+  { name: 'Propranolol', aka: 'inderal', route: 'PO', variants: [v('10 mg', 'tablet'), v('40 mg', 'tablet')] },
+  { name: 'Spironolactone', aka: 'aldactone diuretic', route: 'PO', variants: [v('25 mg', 'tablet'), v('100 mg', 'tablet')] },
+  { name: 'Digoxin', aka: 'lanoxin heart failure atrial fibrillation', route: 'PO', variants: [v('0.25 mg', 'tablet'), v('62.5 mcg', 'tablet')] },
+  { name: 'Atorvastatin', aka: 'lipitor statin cholesterol', route: 'PO', variants: [v('10 mg', 'tablet'), v('20 mg', 'tablet'), v('40 mg', 'tablet')] },
+  { name: 'Clopidogrel', aka: 'plavix', route: 'PO', variants: [v('75 mg', 'tablet')] },
+  { name: 'Warfarin', route: 'PO', variants: [v('1 mg', 'tablet'), v('5 mg', 'tablet')] },
+  { name: 'Heparin', aka: 'unfractionated anticoagulant', route: 'SC', variants: [v('5,000 IU/ml', 'injection')] },
+  { name: 'Enoxaparin', aka: 'clexane lmwh anticoagulant dvt', route: 'SC', variants: [v('40 mg/0.4 ml', 'injection'), v('60 mg/0.6 ml', 'injection')] },
+  { name: 'Gliclazide', aka: 'diamicron diabetes', route: 'PO', variants: [v('80 mg', 'tablet'), v('30 mg modified release', 'tablet')] },
+  { name: 'Insulin (premixed 30/70)', aka: 'mixtard biphasic diabetes', route: 'SC', variants: [v('100 IU/ml', 'injection')] },
+
+  // More pregnancy and childbirth
+  { name: 'Ergometrine', aka: 'pph', route: 'IM', variants: [v('0.5 mg/ml', 'injection')] },
+  { name: 'Calcium carbonate', aka: 'calcium pregnancy pre-eclampsia', route: 'PO', variants: [v('500 mg', 'tablet'), v('1.25 g', 'tablet')] },
+
+  // More stomach and gut
+  { name: 'Bisacodyl', aka: 'dulcolax constipation', route: 'PO', variants: [v('5 mg', 'tablet'), v('10 mg', 'suppository', 'PR')] },
+  { name: 'Loperamide', aka: 'imodium diarrhoea', route: 'PO', variants: [v('2 mg', 'capsule')] },
+
+  // More nervous system and mental health
+  { name: 'Sodium valproate', aka: 'epilim epilepsy', route: 'PO', variants: [v('200 mg', 'tablet'), v('500 mg', 'tablet'), v('200 mg/5 ml', 'syrup')] },
+  { name: 'Levetiracetam', aka: 'keppra epilepsy', route: 'PO', variants: [v('250 mg', 'tablet'), v('500 mg', 'tablet')] },
+  { name: 'Chlorpromazine', aka: 'largactil', route: 'PO', variants: [v('25 mg', 'tablet'), v('100 mg', 'tablet'), v('25 mg/ml', 'injection', 'IM')] },
+  { name: 'Risperidone', route: 'PO', variants: [v('1 mg', 'tablet'), v('2 mg', 'tablet')] },
+  { name: 'Olanzapine', route: 'PO', variants: [v('5 mg', 'tablet'), v('10 mg', 'tablet')] },
 ];
 
 /** Medicines matching what has been typed - by name or brand - best matches first. */

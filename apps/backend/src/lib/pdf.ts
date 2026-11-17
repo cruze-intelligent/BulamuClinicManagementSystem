@@ -529,11 +529,11 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
     const line = formatPrescriptionLine(rx);
     // Keep an item's lines together: start a new page rather than split one across pages.
     if (doc.y > doc.page.maxY() - 140) continuePage();
-    doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text(`${index + 1}.  ${line.title}`, labelX, doc.y, { width: 495 });
-    doc.font('Helvetica').fontSize(10).fillColor(INK);
-    if (line.sig) doc.text(line.sig, labelX + 18, doc.y, { width: 477 });
-    const extras = [line.quantity, line.instructions].filter(Boolean).join('   |   ');
-    if (extras) doc.fillColor(MUTED).text(extras, labelX + 18, doc.y, { width: 477 });
+    // The line as prescribers write it - route, drug and dose, frequency, duration -
+    // then what the dispenser needs: the form, how many to dispense, any instructions.
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text(`${index + 1}.  ${line.order}`, labelX, doc.y, { width: 495 });
+    const extras = [line.details, line.quantity, line.instructions].filter(Boolean).join('   |   ');
+    if (extras) doc.font('Helvetica').fontSize(10).fillColor(MUTED).text(extras, labelX + 18, doc.y, { width: 477 });
     doc.moveDown(0.8);
   });
 

@@ -158,6 +158,8 @@ describe('prescription wording', () => {
         frequency: 'TDS', duration: '5 days', quantity: 15, instructions: 'Take after food',
       })
     ).toEqual({
+      order: 'P.O Amoxicillin 500mg TDS x 5 days',
+      details: 'Capsule',
       title: 'Amoxicillin 500 mg capsule',
       sig: 'Take 1 capsule by mouth three times daily (TDS) for 5 days',
       quantity: 'Dispense: 15',
@@ -168,15 +170,32 @@ describe('prescription wording', () => {
   it('chooses the verb that fits the route', () => {
     const sig = (route: string) => formatPrescriptionLine({ medication: 'X', dosage: '1 unit', route, frequency: 'OD', duration: '' }).sig;
     expect(sig('TOP')).toBe('Apply 1 unit to the skin once daily (OD)');
-    expect(sig('IM')).toBe('Give 1 unit by intramuscular injection once daily (OD)');
+    // Injections are given by staff: the patient's directions never say "Give".
+    expect(sig('IM')).toBe('1 unit by intramuscular injection once daily (OD)');
     expect(sig('EYE')).toBe('Instil 1 unit in the eye once daily (OD)');
   });
 
   it('reads older free-text prescriptions sensibly, keeping wording it does not recognise', () => {
     expect(formatPrescriptionLine({ medication: 'Coartem', dosage: '4 tablets', frequency: 'twice daily', duration: '3 days' })).toEqual({
-      title: 'Coartem', sig: '4 tablets twice daily for 3 days', quantity: null, instructions: null,
+      order: 'Coartem 4 tablets twice daily x 3 days', details: null, title: 'Coartem', sig: '4 tablets twice daily for 3 days', quantity: null, instructions: null,
     });
     expect(formatPrescriptionLine({ medication: 'Coartem', dosage: '4 tablets', frequency: 'bd', duration: '3 days' }).sig).toBe('4 tablets twice daily (BD) for 3 days');
+  });
+
+  it('writes each line in the standard order: route, drug and dose, frequency, duration', () => {
+    const order = (rx: Parameters<typeof formatPrescriptionLine>[0]) => formatPrescriptionLine(rx).order;
+    expect(order({ medication: 'Artesunate', strength: '60 mg', form: 'injection', dosage: '120 mg', route: 'IV', frequency: 'Q12H', duration: '1 day' })).toBe('I.V Artesunate 120mg 12hrly x 1 day');
+    expect(order({ medication: 'Amoxicillin', strength: '500 mg', form: 'capsule', dosage: '1 capsule', route: 'PO', frequency: 'TDS', duration: '5 days' })).toBe('P.O Amoxicillin 500mg TDS x 5 days');
+    // Two tablets: the dose they make, and how many.
+    expect(order({ medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '2 tablets', route: 'PO', frequency: 'TDS', duration: '3 days' })).toBe('P.O Paracetamol 1g (2 tablets) TDS x 3 days');
+    expect(order({ medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '1/2 tablet', route: 'PO', frequency: 'PRN', duration: '3 days' })).toBe('P.O Paracetamol 250mg (1/2 tablet) PRN x 3 days');
+    // A liquid keeps its concentration in front of the volume.
+    expect(order({ medication: 'Amoxicillin', strength: '125 mg/5 ml', form: 'suspension', dosage: '5 ml', route: 'PO', frequency: 'TDS', duration: '5 days' })).toBe('P.O Amoxicillin 125mg/5ml 5ml TDS x 5 days');
+    expect(order({ medication: 'Artemether', strength: '80 mg/ml', form: 'injection', dosage: '160 mg', route: 'IM', frequency: 'STAT', duration: '' })).toBe('I.M Artemether 160mg STAT');
+    expect(order({ medication: 'Normal saline 0.9%', form: 'infusion', dosage: '1000 ml', route: 'IV', frequency: 'Q8H', duration: '1 day' })).toBe('I.V Normal saline 0.9% 1000ml 8hrly x 1 day');
+    expect(order({ medication: 'Normal saline', strength: '0.9%', form: 'infusion', dosage: '1000 ml', route: 'IV', frequency: 'Q8H', duration: '1 day' })).toBe('I.V Normal saline 0.9% 1000ml 8hrly x 1 day');
+    expect(order({ medication: "Ringer's lactate", strength: 'compound sodium lactate', form: 'infusion', dosage: '500 ml', route: 'IV', frequency: 'STAT', duration: '' })).toBe("I.V Ringer's lactate 500ml STAT");
+    expect(order({ medication: 'Hydralazine', strength: '20 mg/ml', form: 'injection', dosage: '5 mg', route: 'IV', frequency: 'STAT', duration: '' })).toBe('I.V Hydralazine 5mg STAT');
   });
 
   it('expands standard frequency codes and leaves anything else as written', () => {

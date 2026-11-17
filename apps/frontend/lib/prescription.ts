@@ -8,20 +8,29 @@
 
 export type RouteCode = 'PO' | 'SL' | 'IV' | 'IM' | 'SC' | 'PR' | 'PV' | 'TOP' | 'INH' | 'EYE' | 'EAR' | 'NASAL';
 
-export const ROUTES: Array<{ code: RouteCode; label: string; text: string; verb: string }> = [
-  { code: 'PO', label: 'PO - by mouth', text: 'by mouth', verb: 'Take' },
-  { code: 'SL', label: 'SL - under the tongue', text: 'under the tongue', verb: 'Place' },
-  { code: 'IV', label: 'IV - intravenous', text: 'intravenously', verb: 'Give' },
-  { code: 'IM', label: 'IM - intramuscular injection', text: 'by intramuscular injection', verb: 'Give' },
-  { code: 'SC', label: 'SC - subcutaneous injection', text: 'by subcutaneous injection', verb: 'Give' },
-  { code: 'PR', label: 'PR - rectal', text: 'rectally', verb: 'Insert' },
-  { code: 'PV', label: 'PV - vaginal', text: 'vaginally', verb: 'Insert' },
-  { code: 'TOP', label: 'TOP - on the skin', text: 'to the skin', verb: 'Apply' },
-  { code: 'INH', label: 'INH - inhaled', text: 'by inhalation', verb: 'Inhale' },
-  { code: 'EYE', label: 'Eye', text: 'in the eye', verb: 'Instil' },
-  { code: 'EAR', label: 'Ear', text: 'in the ear', verb: 'Instil' },
-  { code: 'NASAL', label: 'Nose', text: 'in the nose', verb: 'Instil' },
+// abbr: as prescribers write the route at the start of a prescription line.
+// Injections and infusions are given by staff, so their plain-words
+// directions (for the patient) carry no verb.
+export const ROUTES: Array<{ code: RouteCode; label: string; text: string; verb: string; abbr: string }> = [
+  { code: 'PO', label: 'PO - by mouth', text: 'by mouth', verb: 'Take', abbr: 'P.O' },
+  { code: 'SL', label: 'SL - under the tongue', text: 'under the tongue', verb: 'Place', abbr: 'S.L' },
+  { code: 'IV', label: 'IV - intravenous', text: 'intravenously', verb: '', abbr: 'I.V' },
+  { code: 'IM', label: 'IM - intramuscular injection', text: 'by intramuscular injection', verb: '', abbr: 'I.M' },
+  { code: 'SC', label: 'SC - subcutaneous injection', text: 'by subcutaneous injection', verb: '', abbr: 'S.C' },
+  { code: 'PR', label: 'PR - rectal', text: 'rectally', verb: 'Insert', abbr: 'P.R' },
+  { code: 'PV', label: 'PV - vaginal', text: 'vaginally', verb: 'Insert', abbr: 'P.V' },
+  { code: 'TOP', label: 'TOP - on the skin', text: 'to the skin', verb: 'Apply', abbr: 'TOP' },
+  { code: 'INH', label: 'INH - inhaled', text: 'by inhalation', verb: 'Inhale', abbr: 'INH' },
+  { code: 'EYE', label: 'Eye', text: 'in the eye', verb: 'Instil', abbr: 'EYE' },
+  { code: 'EAR', label: 'Ear', text: 'in the ear', verb: 'Instil', abbr: 'EAR' },
+  { code: 'NASAL', label: 'Nose', text: 'in the nose', verb: 'Instil', abbr: 'NASAL' },
 ];
+
+// Frequencies as written on a prescription line: the standard code, with the
+// hourly ones the way prescribers write them ("12hrly").
+const FREQUENCY_SHORT: Record<string, string> = {
+  Q4H: '4hrly', Q6H: '6hrly', Q8H: '8hrly', Q12H: '12hrly', MANE: 'mane', NOCTE: 'nocte', WEEKLY: 'weekly',
+};
 
 export const FREQUENCIES: Array<{ code: string; label: string; phrase: string; dosesPerDay: number | null }> = [
   { code: 'OD', label: 'OD - once daily', phrase: 'once daily', dosesPerDay: 1 },
@@ -40,13 +49,13 @@ export const FREQUENCIES: Array<{ code: string; label: string; phrase: string; d
 ];
 
 export const DOSAGE_FORMS = [
-  'tablet', 'capsule', 'suspension', 'syrup', 'oral solution', 'injection', 'cream', 'ointment', 'gel', 'lotion',
+  'tablet', 'capsule', 'suspension', 'syrup', 'oral solution', 'injection', 'infusion', 'cream', 'ointment', 'gel', 'lotion',
   'eye drops', 'eye ointment', 'ear drops', 'inhaler', 'nebuliser solution', 'suppository', 'pessary', 'sachet', 'solution', 'powder',
 ] as const;
 
 // What one dose of a form is usually counted in.
 const FORM_DOSE_UNIT: Record<string, string> = {
-  tablet: 'tablet', capsule: 'capsule', suspension: 'ml', syrup: 'ml', 'oral solution': 'ml', injection: 'ml',
+  tablet: 'tablet', capsule: 'capsule', suspension: 'ml', syrup: 'ml', 'oral solution': 'ml', injection: 'ml', infusion: 'ml',
   cream: 'application', ointment: 'application', gel: 'application', lotion: 'application',
   'eye drops': 'drop', 'eye ointment': 'application', 'ear drops': 'drop', inhaler: 'puff',
   'nebuliser solution': 'ml', suppository: 'suppository', pessary: 'pessary', sachet: 'sachet', solution: 'ml', powder: 'sachet',
@@ -226,14 +235,60 @@ export function describeFrequency(frequency: string): string {
   return f ? `${f.phrase} (${f.code})` : frequency.trim();
 }
 
+// "500 mg" -> "500mg", as prescribers write it.
+const compact = (text: string) => text.trim().replace(/(\d)\s+(mg|g|mcg|ml|IU|%)(?![a-z])/gi, '$1$2').replace(/\s+/g, ' ');
+
+const COUNT_UNIT = /^(tablets?|capsules?|suppositor(y|ies)|pessar(y|ies)|sachets?)$/i;
+
+/** 1000 mg -> 1g, 250 mg -> 250mg. */
+function measure(value: number, unit: string): string {
+  const rounded = Math.round(value * 1000) / 1000;
+  if (unit.toLowerCase() === 'mg' && rounded >= 1000 && rounded % 1000 === 0) return `${rounded / 1000}g`;
+  return `${rounded}${unit}`;
+}
+
 /**
- * A prescription the way it is written on paper - the drug (name, strength,
- * form) and the directions in plain words, e.g.
- * "Take 1 capsule by mouth three times daily (TDS) for 5 days". Prescriptions
- * written before structured prescribing (name, dose, frequency, duration only)
- * read sensibly too.
+ * The dose as written on the line: the dose itself when it is a measure
+ * (120 mg, 5 ml); for a count of tablets or capsules of a simple strength,
+ * the total (2 x 500 mg -> 1g, with "2 tablets" shown); otherwise the
+ * strength followed by the dose.
  */
-export function formatPrescription(rx: PrescriptionView): { title: string; sig: string; quantity: string | null; instructions: string | null } {
+function doseOnLine(strength: string, dosage: string): { dose: string; count: string | null } {
+  if (!dosage) return { dose: compact(strength), count: null };
+  const parsed = dosage.match(/^([\d./]+(?:\s+\d+\/\d+)?)\s*(.*)$/);
+  const unit = parsed?.[2]?.trim() ?? '';
+  // A measured dose stands on its own (a vial's strength is not the dose);
+  // a liquid keeps its concentration in front: "125mg/5ml 5ml".
+  if (/^(mg|g|mcg|ml|IU|units?)$/i.test(unit)) {
+    return { dose: [/^ml$/i.test(unit) && /[/%]/.test(strength) ? compact(strength) : '', compact(dosage)].filter(Boolean).join(' '), count: null };
+  }
+  const simple = strength.match(/^(\d+(?:\.\d+)?)\s*(mg|g|mcg|IU)$/i);
+  const n = parsed ? parseAmount(parsed[1]) ?? NaN : NaN;
+  if (simple && COUNT_UNIT.test(unit) && n > 0) {
+    return { dose: measure(n * Number(simple[1]), simple[2]), count: n === 1 ? null : dosage.trim() };
+  }
+  return { dose: [compact(strength), dosage.trim()].filter(Boolean).join(' '), count: null };
+}
+
+export type PrescriptionLine = {
+  /** The line in the standard order: route, drug and dose, frequency, duration - "P.O Amoxicillin 500mg TDS x 5 days". */
+  order: string;
+  /** What else the dispenser needs: the form. */
+  details: string | null;
+  title: string;
+  /** The same directions in plain words, for the patient. */
+  sig: string;
+  quantity: string | null;
+  instructions: string | null;
+};
+
+/**
+ * A prescription the way prescribers write it - "I.V Artesunate 120mg 12hrly
+ * x 1 day", "P.O Amoxicillin 500mg TDS x 5 days" - with the same directions in
+ * plain words for the patient. Prescriptions written before structured
+ * prescribing (name, dose, frequency, duration only) read sensibly too.
+ */
+export function formatPrescription(rx: PrescriptionView): PrescriptionLine {
   const route = ROUTES.find((r) => r.code === (rx.route || '').toUpperCase());
   const parts = [
     route?.verb,
@@ -242,7 +297,22 @@ export function formatPrescription(rx: PrescriptionView): { title: string; sig: 
     rx.frequency?.trim() ? describeFrequency(rx.frequency) : '',
     rx.duration?.trim() ? `for ${rx.duration.trim()}` : '',
   ].filter(Boolean);
+  const frequency = rx.frequency?.trim() ?? '';
+  const code = frequency.toUpperCase();
+  const known = FREQUENCIES.some((f) => f.code === code);
+  const { dose, count } = doseOnLine(rx.strength?.trim() ?? '', rx.dosage?.trim() ?? '');
+  const order = [
+    route?.abbr ?? (rx.route?.trim() || ''),
+    rx.medication.trim(),
+    dose,
+    count ? `(${count})` : '',
+    FREQUENCY_SHORT[code] ?? (known ? code : frequency),
+    rx.duration?.trim() && code !== 'STAT' ? `x ${rx.duration.trim()}` : '',
+  ].filter(Boolean).join(' ');
+  const form = rx.form?.trim();
   return {
+    order,
+    details: form ? form.charAt(0).toUpperCase() + form.slice(1) : null,
     title: [rx.medication, rx.strength, rx.form].filter(Boolean).join(' '),
     sig: parts.join(' '),
     quantity: rx.quantity ? `Dispense: ${rx.quantity}` : null,
