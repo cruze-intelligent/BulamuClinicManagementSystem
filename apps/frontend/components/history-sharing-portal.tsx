@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Eye, History } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { formatDate, formatDayTime } from '@/lib/time';
 
 type Share = { id: string; facility: string; status: 'REQUESTED' | 'APPROVED' | 'DECLINED' | 'WITHDRAWN'; requestedAt: string; approvedAt: string | null; approvalMethod: string | null; endedAt: string | null };
 type View = { facility: string; at: string };
 
-const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-const dateTime = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const date = (iso: string) => formatDate(iso);
+const dateTime = (iso: string) => formatDayTime(iso);
 const METHOD: Record<string, string> = { PIN: 'with your password at the facility', OTP: 'with a code we emailed you', PORTAL: 'here in your portal' };
 
 /**

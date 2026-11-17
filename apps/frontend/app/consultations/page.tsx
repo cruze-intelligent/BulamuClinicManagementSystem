@@ -12,6 +12,7 @@ import {
 import { ConsultationDetails } from '@/components/consultation-details';
 import { WaitingRoom } from '@/components/waiting-room';
 import { openDocumentPreview } from '@/lib/document-preview';
+import { formatDateTime } from '@/lib/time';
 
 export default function ConsultationsPage() {
   const [consultations, setConsultations] = useState<LocalConsultation[]>([]);
@@ -83,7 +84,7 @@ export default function ConsultationsPage() {
                       )}
                     </div>
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {new Date(consult.createdAt).toLocaleString()}
+                      {formatDateTime(consult.createdAt)}
                     </p>
                   </div>
                 </div>

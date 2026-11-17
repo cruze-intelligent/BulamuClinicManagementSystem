@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { useAuth } from '@/lib/useAuth';
 import { downloadWithAuth } from '@/lib/download';
+import { formatDateTime } from '@/lib/time';
 
 type AuditEntry = {
   id: string;
@@ -173,8 +174,8 @@ export default function SyncActivityPage() {
                       <Card key={c.id} className="p-4 text-sm">
                         <p className="font-medium">{c.entity} #{c.recordId}</p>
                         <p className="text-muted-foreground">
-                          Discarded write from {new Date(c.incomingUpdatedAt).toLocaleString()} (older than the stored
-                          version from {new Date(c.currentUpdatedAt).toLocaleString()})
+                          Discarded write from {formatDateTime(c.incomingUpdatedAt)} (older than the stored
+                          version from {formatDateTime(c.currentUpdatedAt)})
                         </p>
                       </Card>
                     ))}
@@ -193,7 +194,7 @@ export default function SyncActivityPage() {
                       <p className="font-medium">
                         {e.action} {e.entity} #{e.recordId}
                       </p>
-                      <p className="text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</p>
+                      <p className="text-muted-foreground">{formatDateTime(e.createdAt)}</p>
                     </div>
                     <p className="text-muted-foreground">
                       by {e.actorName || e.actorRole}{isSuperAdmin && e.clinicName ? ` - ${e.clinicName}` : ''}

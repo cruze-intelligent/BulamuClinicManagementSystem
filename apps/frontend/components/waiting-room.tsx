@@ -14,6 +14,7 @@ import {
 import { expectedToday, waitingQueue, waitingText } from '@/lib/queue';
 import { patientIdText } from '@/lib/patient-id';
 import { useAuth } from '@/lib/useAuth';
+import { formatTime, serverNow, serverNowIso } from '@/lib/time';
 
 /**
  * Today's waiting room: patients are seen in the order they arrived. Reception
@@ -29,7 +30,7 @@ export function WaitingRoom() {
   const [walkIn, setWalkIn] = useState('');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => serverNow());
 
   const load = async () => {
     const clinicId = getCurrentClinicId();
@@ -37,14 +38,14 @@ export function WaitingRoom() {
     const [a, p] = await Promise.all([listLocalAppointments(clinicId), listLocalPatients(clinicId)]);
     setAppointments(a);
     setPatients(p);
-    setNow(new Date());
+    setNow(serverNow());
   };
 
   useEffect(() => {
     void load();
     const unsubscribe = subscribeToLocalChanges(load);
     // Waiting times move on by themselves.
-    const timer = setInterval(() => setNow(new Date()), 60_000);
+    const timer = setInterval(() => setNow(serverNow()), 60_000);
     return () => { unsubscribe(); clearInterval(timer); };
   }, []);
 
@@ -58,7 +59,7 @@ export function WaitingRoom() {
   const checkIn = async (appointment: LocalAppointment) => {
     setProblem('');
     try {
-      await updateAppointmentOffline(appointment, { checkedInAt: new Date().toISOString() });
+      await updateAppointmentOffline(appointment, { checkedInAt: serverNowIso() });
     } catch (error: any) {
       setProblem(error.message);
     }
@@ -73,10 +74,10 @@ export function WaitingRoom() {
     setProblem('');
     try {
       const user = getCurrentUser();
-      const arrived = new Date();
+      const arrived = serverNow();
       await createAppointmentOffline({
         patientId: patient.id, doctorId: user.id || '', clinicId: patient.clinicId, date: arrived.toISOString(),
-        time: arrived.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }), notes: 'Walk-in',
+        time: formatTime(arrived), notes: 'Walk-in',
         patientName: patient.name, doctorName: user.name, checkedInAt: arrived.toISOString(),
       });
       setWalkIn('');

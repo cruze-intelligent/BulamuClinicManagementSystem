@@ -31,6 +31,7 @@ import { VITAL_FIELDS, abnormalVitals } from '@/lib/wards';
 import { diagnosesToPayload, diagnosisProblems, emptyDiagnosis, type DiagnosisDraft } from '@/lib/diagnosis';
 import { draftProblems, draftToPayload, emptyDraft, isBlankDraft, type PrescriptionDraft } from '@/lib/prescription';
 import { ageText } from '@/lib/age';
+import { formatTime, serverNow } from '@/lib/time';
 import { patientIdText } from '@/lib/patient-id';
 
 function StepHeading({ n, title, hint }: { n: number; title: string; hint?: string }) {
@@ -120,10 +121,10 @@ function RecordConsultationForm() {
       // A visit recorded without an appointment gets one, as a walk-in seen now.
       let visitAppointmentId = appointmentId;
       if (!visitAppointmentId) {
-        const now = new Date();
+        const now = serverNow();
         const made = await createAppointmentOffline({
           patientId: patient.id, doctorId: user.id || '', clinicId, date: now.toISOString(),
-          time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }), notes: 'Walk-in',
+          time: formatTime(now), notes: 'Walk-in',
           patientName: patient.name, doctorName: user.name, checkedInAt: now.toISOString(),
         });
         visitAppointmentId = made.id;

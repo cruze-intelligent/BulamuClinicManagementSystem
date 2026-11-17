@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Send } from 'lucide-react';
 import { roleLabel } from '@/lib/role-labels';
+import { formatDateTime } from '@/lib/time';
 
 type Comment = {
   id: string;
@@ -91,7 +92,7 @@ export function CommentsSection({
                 <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                   {c.authorName} <span className="font-normal text-slate-400">- {roleLabel(c.authorRole)}</span>
                 </p>
-                <p className="text-xs text-slate-400">{new Date(c.createdAt).toLocaleString()}</p>
+                <p className="text-xs text-slate-400">{formatDateTime(c.createdAt)}</p>
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-400">{c.body}</p>
             </div>

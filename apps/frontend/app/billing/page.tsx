@@ -10,6 +10,7 @@ import { ContactIcons } from '@/components/contact-icons';
 import { FacilityDetailsModal } from '@/components/facility-details-modal';
 import { PlanCards } from '@/components/offering-cards';
 import { shortDate } from '@/lib/finance';
+import { formatDate } from '@/lib/time';
 
 type Subscription = {
   status: 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED';
@@ -229,7 +230,7 @@ export default function BillingPage() {
               )}
               {subscription.status === 'ACTIVE' && subscription.currentPeriodEnd && !subscription.graceDays && (
                 <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
-                  Active until {new Date(subscription.currentPeriodEnd).toLocaleDateString()}. Renewing early adds 30 days
+                  Active until {formatDate(subscription.currentPeriodEnd)}. Renewing early adds 30 days
                   on after that date.
                 </div>
               )}
@@ -302,7 +303,7 @@ export default function BillingPage() {
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       {payment.amount === 0 ? 'Started ' : ''}
-                      {new Date(payment.amount === 0 ? payment.createdAt : payment.updatedAt).toLocaleDateString()}
+                      {formatDate(payment.amount === 0 ? payment.createdAt : payment.updatedAt)}
                     </p>
                   </div>
                   <Button

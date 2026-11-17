@@ -16,10 +16,11 @@ import { facilityTypeLabel } from '@/lib/facility-types';
 import {
   ANAESTHESIA_TYPES, DISCHARGE_OUTCOMES, KIND_LABEL, NOTE_KINDS, VITAL_FIELDS, abnormalVitals, structuredFields, structuredProblem, structuredTitle, vitalsText,
 } from '@/lib/wards';
+import { formatDayTime } from '@/lib/time';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => formatDayTime(iso);
 
 export default function AdmissionPage() {
   return (

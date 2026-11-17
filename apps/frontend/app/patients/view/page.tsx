@@ -24,6 +24,7 @@ import { PatientAdmissions } from '@/components/patient-admissions';
 import { SharedHistoryPanel } from '@/components/shared-history-panel';
 import { PatientDetailsEditor } from '@/components/patient-details-editor';
 import { ConsultationFee } from '@/components/consultation-fee';
+import { formatDate } from '@/lib/time';
 
 const DOCUMENT_CATEGORIES = [
   { value: 'LAB_RESULT', label: 'Lab Result' },
@@ -406,7 +407,7 @@ function PatientHistoryContent() {
               )}
             </div>
             <p className="text-sm mt-2 text-slate-500 dark:text-slate-400">
-              Patient since {new Date(patient.createdAt).toLocaleDateString()}
+              Patient since {formatDate(patient.createdAt)}
             </p>
 
             <PatientDetailsEditor
@@ -609,12 +610,12 @@ function PatientHistoryContent() {
                         {record.pregnancyStatus} · {record.familyPlanningMethod}
                       </span>
                       <span className="text-muted-foreground">
-                        {new Date(record.createdAt).toLocaleDateString()}
+                        {formatDate(record.createdAt)}
                       </span>
                     </div>
                     {record.lastMenstrualPeriodDate && (
                       <p className="text-muted-foreground mt-1">
-                        LMP: {new Date(record.lastMenstrualPeriodDate).toLocaleDateString()}
+                        LMP: {formatDate(record.lastMenstrualPeriodDate)}
                         {record.cycleLengthDays ? ` · Cycle: ${record.cycleLengthDays}d` : ''}
                         {record.flowDurationDays ? ` · Flow: ${record.flowDurationDays}d` : ''}
                       </p>
@@ -716,7 +717,7 @@ function PatientHistoryContent() {
               <Card key={consult.id} className="p-6">
                 <div className="mb-4 flex justify-between items-start gap-3">
                   <div>
-                    <h3 className="font-bold text-lg">Visit on {new Date(consult.createdAt).toLocaleDateString()}</h3>
+                    <h3 className="font-bold text-lg">Visit on {formatDate(consult.createdAt)}</h3>
                     {consult.recordedBy ? (
                       <p className="text-sm text-muted-foreground">Recorded by {consult.recordedBy.name} ({roleLabel(consult.recordedBy.role)})</p>
                     ) : consult.appointment?.doctor?.name && (

@@ -34,6 +34,7 @@ import { FacilityDetailsModal } from '@/components/facility-details-modal';
 import { isOnTrial, TrialExtensionsCard } from '@/components/trial-extensions-card';
 import { FacilityChangeReviews } from '@/components/facility-change-reviews';
 import { CashAndGraceCard } from '@/components/cash-and-grace-card';
+import { formatDate, formatDateTime } from '@/lib/time';
 
 
 type Facility = {
@@ -451,7 +452,7 @@ export default function SuperAdminPage() {
                       </span>
                       {isOnTrial(facility) && facility.subscription && (
                         <p className="mt-1 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
-                          Trial until {new Date(facility.subscription.trialEndsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                          Trial until {formatDate(facility.subscription.trialEndsAt)}
                         </p>
                       )}
                     </td>
@@ -512,7 +513,7 @@ export default function SuperAdminPage() {
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                     {item.authorName} <span className="font-normal text-slate-400">- {item.clinicName}</span>
                   </p>
-                  <p className="text-xs text-slate-400">{new Date(item.createdAt).toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">{formatDateTime(item.createdAt)}</p>
                 </div>
                 <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-400">{item.body}</p>
               </div>

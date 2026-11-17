@@ -5,6 +5,7 @@ import { Download, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { facilityTypeLabel } from '@/lib/facility-types';
 import { downloadWithAuth } from '@/lib/download';
+import { formatDateTime } from '@/lib/time';
 
 type FacilityDetail = {
   id: string;
@@ -151,8 +152,8 @@ export function FacilityDetailsModal({ clinicId, onClose }: { clinicId: string; 
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Registration</p>
                 <div className="mt-2 grid gap-4 sm:grid-cols-2">
                   <Field label="Registration status" value={facility.registrationStatus} />
-                  <Field label="Registered on" value={new Date(facility.createdAt).toLocaleString()} />
-                  <Field label="Approved on" value={facility.approvedAt ? new Date(facility.approvedAt).toLocaleString() : null} />
+                  <Field label="Registered on" value={formatDateTime(facility.createdAt)} />
+                  <Field label="Approved on" value={facility.approvedAt ? formatDateTime(facility.approvedAt) : null} />
                   {facility.registrationStatus === 'REJECTED' && (
                     <Field label="Rejection reason" value={facility.rejectionReason} />
                   )}

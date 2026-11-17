@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
+import { formatDate } from '@/lib/time';
 
 /** The patient's hospital stays at this facility, current one first. */
 export function PatientAdmissions({ patientId }: { patientId: string }) {
@@ -16,7 +17,7 @@ export function PatientAdmissions({ patientId }: { patientId: string }) {
   }, [patientId]);
 
   if (!admissions || admissions.length === 0) return null;
-  const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const date = (iso: string) => formatDate(iso);
 
   return (
     <Card className="mb-6 p-6">

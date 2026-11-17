@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
+import { formatDate, formatDayTime } from '@/lib/time';
 
 type Account = { roleTitle: string; name: string; email: string };
 type Sent = {
@@ -27,7 +28,7 @@ const api = (path: string, init: RequestInit = {}) =>
   });
 
 const shortDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '-';
+  iso ? formatDate(iso) : '-';
 
 /**
  * Sends someone a demo of their own: a private "Bulamu Test Facility" with a
@@ -229,7 +230,7 @@ export function DemoFacilityCard() {
                     </td>
                     <td className="py-1.5 pr-3">{d.signIns}{d.failedSignIns > 0 && <span className="text-slate-500"> ({d.failedSignIns} failed)</span>}</td>
                     <td className="py-1.5 pr-3">{d.daysActive}</td>
-                    <td className="py-1.5 pr-3 whitespace-nowrap">{d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Not yet'}</td>
+                    <td className="py-1.5 pr-3 whitespace-nowrap">{d.lastSeenAt ? formatDayTime(d.lastSeenAt) : 'Not yet'}</td>
                     <td className="py-1.5 pr-3">{d.rolesTried.length ? d.rolesTried.join(', ') : '-'}</td>
                     <td className="py-1.5 pr-3" title={d.areasUsed.map((a) => `${a.area}: ${a.count}`).join('\n')}>
                       {d.recordsAdded}{d.areasUsed.length > 0 && <span className="text-slate-500"> ({d.areasUsed.slice(0, 3).map((a) => a.area).join(', ')})</span>}

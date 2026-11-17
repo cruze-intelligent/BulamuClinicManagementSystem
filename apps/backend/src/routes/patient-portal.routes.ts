@@ -14,6 +14,7 @@ import { facilityLogo } from '../lib/facility-logo';
 import { sendRouteError } from '../lib/http-error';
 import { buildReceipt } from './invoice.routes';
 import { CHARGE_KINDS, formatReceiptNumber, paymentMethodText } from '../lib/invoices';
+import { formatEmailDate } from '../lib/mailer';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -363,7 +364,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
         type: 'APPOINTMENT_REQUESTED',
         clinicId: record.clinicId,
         title: 'New appointment request',
-        body: `${record.name} requested an appointment on ${new Date(preferredDate).toLocaleDateString()}${preferredTime ? ` at ${preferredTime}` : ''}.`,
+        body: `${record.name} requested an appointment on ${formatEmailDate(new Date(preferredDate))}${preferredTime ? ` at ${preferredTime}` : ''}.`,
         link: '/appointments',
         emailSummary: 'A patient has requested an appointment through the Patient Portal. Open Appointments to review it.',
         log: (message) => fastify.log.warn(message),

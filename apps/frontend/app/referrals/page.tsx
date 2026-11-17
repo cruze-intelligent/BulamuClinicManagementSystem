@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { facilityTypeLabel } from '@/lib/facility-types';
 import { useAuth } from '@/lib/useAuth';
 import { openPdfWithAuth } from '@/lib/download';
+import { formatDateTime } from '@/lib/time';
 
 type Referral = {
   id: string;
@@ -46,7 +47,7 @@ const URGENCY_STYLE: Record<Referral['urgency'], string> = {
   EMERGENCY: 'bg-rose-700 text-white',
 };
 
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => formatDateTime(iso);
 
 export default function ReferralsPage() {
   return (

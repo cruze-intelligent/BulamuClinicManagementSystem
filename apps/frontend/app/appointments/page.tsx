@@ -16,6 +16,7 @@ import {
   updateAppointmentOffline,
   LocalAppointment,
 } from '@/lib/local-first';
+import { formatDate, formatTime, kampalaDay, serverNow, serverNowIso } from '@/lib/time';
 
 type AppointmentRequest = {
   id: string;
@@ -160,7 +161,7 @@ export default function AppointmentsPage() {
                     <div>
                       <p className="font-medium text-slate-800 dark:text-slate-200">{r.patient.name} ({r.patient.phone})</p>
                       <p className="text-sm text-slate-500 dark:text-slate-400">
-                        Preferred: {new Date(r.preferredDate).toLocaleDateString()}{r.preferredTime ? ` at ${r.preferredTime}` : ''}
+                        Preferred: {formatDate(r.preferredDate)}{r.preferredTime ? ` at ${r.preferredTime}` : ''}
                       </p>
                       {r.reason && <p className="text-sm text-slate-500 dark:text-slate-400">Reason: {r.reason}</p>}
                     </div>
@@ -212,19 +213,19 @@ export default function AppointmentsPage() {
                       )}
                     </div>
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {new Date(apt.date).toLocaleDateString()} at {apt.time}
+                      {formatDate(apt.date)} at {apt.time}
                     </p>
                     <p className="text-sm text-slate-600 dark:text-slate-400">Dr. {apt.doctor?.name || 'Assigned Clinician'}</p>
                     {apt.notes && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{apt.notes}</p>}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {apt.status === 'SCHEDULED' && !apt.checkedInAt && new Date(apt.date).toDateString() === new Date().toDateString() && (
-                      <Button size="sm" variant="outline" onClick={() => updateAppointmentOffline(apt, { checkedInAt: new Date().toISOString() }).catch((e) => alert(e.message))}>
+                    {apt.status === 'SCHEDULED' && !apt.checkedInAt && kampalaDay(apt.date) === kampalaDay(serverNow()) && (
+                      <Button size="sm" variant="outline" onClick={() => updateAppointmentOffline(apt, { checkedInAt: serverNowIso() }).catch((e) => alert(e.message))}>
                         Check in
                       </Button>
                     )}
                     {apt.status === 'SCHEDULED' && apt.checkedInAt && (
-                      <span className="text-xs text-emerald-700 dark:text-emerald-400">Arrived {new Date(apt.checkedInAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} - in the waiting room</span>
+                      <span className="text-xs text-emerald-700 dark:text-emerald-400">Arrived {formatTime(apt.checkedInAt)} - in the waiting room</span>
                     )}
                     {apt.status === 'SCHEDULED' && (
                       <Link href={`/consultations/record?appointmentId=${apt.id}&patientId=${apt.patientId}`}>

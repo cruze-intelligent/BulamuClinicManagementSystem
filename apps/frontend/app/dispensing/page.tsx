@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/useAuth';
 import { ageText } from '@/lib/age';
 import { formatPrescription } from '@/lib/prescription';
 import { allergySummary, describeConflict, findAllergyConflicts, SEVERITY_LABELS, type Allergy, type AllergyStatus } from '@/lib/allergy';
+import { formatDate, formatDateTime } from '@/lib/time';
 
 type Item = {
   id: string;
@@ -186,7 +187,7 @@ export default function DispensingPage() {
                       <p className="text-sm text-slate-500 dark:text-slate-400">
                         {[g.patient.sex ? g.patient.sex.charAt(0) + g.patient.sex.slice(1).toLowerCase() : null, age].filter(Boolean).join(', ') || 'Age and sex not recorded'}
                         {g.consultation.prescriber ? ` | Prescribed by ${g.consultation.prescriber}` : ''}
-                        {` | ${new Date(g.consultation.createdAt).toLocaleDateString()}`}
+                        {` | ${formatDate(g.consultation.createdAt)}`}
                       </p>
                       {g.consultation.diagnosis && (
                         <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
@@ -286,7 +287,7 @@ export default function DispensingPage() {
                           ) : (
                             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-300">
                               <span>
-                                Dispensed {item.dispensedAt ? new Date(item.dispensedAt).toLocaleString() : ''}
+                                Dispensed {item.dispensedAt ? formatDateTime(item.dispensedAt) : ''}
                                 {item.dispensedBy ? ` by ${item.dispensedBy.name}` : ''}
                                 {item.dispensedQuantity ? ` - ${item.dispensedQuantity}${linked ? ` ${linked.unit}` : ''}` : ''}
                               </span>

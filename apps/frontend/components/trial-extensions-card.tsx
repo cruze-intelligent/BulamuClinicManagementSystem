@@ -5,6 +5,7 @@ import { CalendarPlus, Hourglass, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
+import { KAMPALA, formatDate } from '@/lib/time';
 
 /** The most days the platform administrator may add to one facility's trial, in all (the API enforces it too). */
 export const MAX_TRIAL_EXTENSION_DAYS = 14;
@@ -26,7 +27,7 @@ export function isOnTrial(facility: TrialFacility): boolean {
 
 function endsLabel(trialEndsAt: string, now = Date.now()): string {
   const end = new Date(trialEndsAt);
-  const date = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const date = formatDate(end);
   const days = Math.ceil((end.getTime() - now) / DAY);
   if (days > 1) return `Ends ${date} (in ${days} days)`;
   if (days === 1) return `Ends ${date} (tomorrow)`;
@@ -57,7 +58,7 @@ export function TrialExtensionsCard({ facilities, onExtended }: { facilities: Tr
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) throw new Error(data.error || 'Could not extend the trial');
-      const until = new Date(data.trialEndsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+      const until = new Date(data.trialEndsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: KAMPALA });
       onExtended(`${facility.name}'s free trial now runs until ${until} (${chosen} day${chosen === 1 ? '' : 's'} added).${data.emailed ? ' Its administrator has been emailed.' : ''}`);
     } catch (e: any) {
       setError((prev) => ({ ...prev, [facility.id]: e.message || 'Could not extend the trial' }));

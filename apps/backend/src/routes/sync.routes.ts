@@ -13,6 +13,19 @@ import { parseFee } from '../lib/invoices';
 import { sendRouteError } from '../lib/http-error';
 import { parseConsultationNotes } from '../lib/consultation-notes';
 
+/**
+ * A time a device recorded (when a record was made, when a patient arrived).
+ * Devices correct their clocks against the server's (see the app's
+ * lib/time.ts), but a time that is unreadable or still in the future - a clock
+ * set wrong - is replaced by the server's own time, so no record is stamped
+ * with a moment that has not happened yet.
+ */
+function deviceTime(value: unknown, now: Date = new Date()): Date {
+  const time = typeof value === 'string' || value instanceof Date ? new Date(value) : null;
+  if (!time || Number.isNaN(time.getTime()) || time.getTime() > now.getTime() + 2 * 60 * 1000) return now;
+  return time;
+}
+
 export async function syncRoutes(fastify: FastifyInstance) {
   // Push queued offline mutations to backend (Last-Write-Wins by timestamp,
   // with tombstone deletes and a conflict log when an older write arrives
@@ -23,7 +36,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
     const isSuperAdmin = authUser.role === 'SUPER_ADMIN';
 
     if (!Array.isArray(operations) || operations.length === 0) {
-      return { success: true, applied: [] };
+      return { success: true, applied: [], serverTime: new Date().toISOString() };
     }
 
     const applied: Array<{ mutationId: string; entity: string; record: any }> = [];
@@ -40,7 +53,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
         }
 
         const scopedClinicId = isSuperAdmin ? (opClinicId || payload.clinicId || authUser.clinicId) : authUser.clinicId;
-        const incomingUpdatedAt = payload.updatedAt ? new Date(payload.updatedAt) : new Date();
+        const incomingUpdatedAt = deviceTime(payload.updatedAt);
 
         let record: any = null;
 
@@ -98,7 +111,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 consentGivenAt: payload.consentGiven ? incomingUpdatedAt : null,
                 consentGivenBy: payload.consentGiven ? authUser.userId : null,
                 clinicId: clinicIdForRecord,
-                createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
+                createdAt: deviceTime(payload.createdAt),
                 updatedAt: incomingUpdatedAt,
               },
             });
@@ -153,7 +166,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 time: payload.time,
                 status: payload.status || 'SCHEDULED',
                 notes: payload.notes || null,
-                ...(payload.checkedInAt !== undefined ? { checkedInAt: payload.checkedInAt ? new Date(payload.checkedInAt) : null } : {}),
+                ...(payload.checkedInAt !== undefined ? { checkedInAt: payload.checkedInAt ? deviceTime(payload.checkedInAt) : null } : {}),
                 updatedAt: incomingUpdatedAt,
               },
               create: {
@@ -165,8 +178,8 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 time: payload.time,
                 status: payload.status || 'SCHEDULED',
                 notes: payload.notes || null,
-                checkedInAt: payload.checkedInAt ? new Date(payload.checkedInAt) : null,
-                createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
+                checkedInAt: payload.checkedInAt ? deviceTime(payload.checkedInAt) : null,
+                createdAt: deviceTime(payload.createdAt),
                 updatedAt: incomingUpdatedAt,
               },
             });
@@ -275,7 +288,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                   ...visitText,
                   ...vitalsData,
                   serviceTags: payload.serviceTags || [],
-                  createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
+                  createdAt: deviceTime(payload.createdAt),
                   updatedAt: incomingUpdatedAt,
                 },
               });
@@ -385,7 +398,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 status: 'PENDING',
                 orderedBy: payload.orderedBy,
                 orderedByUserId: authUser.userId,
-                createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
+                createdAt: deviceTime(payload.createdAt),
                 updatedAt: incomingUpdatedAt,
               },
             });
@@ -446,7 +459,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 gravida: payload.gravida != null ? Number(payload.gravida) : null,
                 para: payload.para != null ? Number(payload.para) : null,
                 notes: payload.notes || null,
-                createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
+                createdAt: deviceTime(payload.createdAt),
                 updatedAt: incomingUpdatedAt,
               },
             });
@@ -546,7 +559,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
             }
             const created = await prisma.$transaction((tx) => createStockItem(tx, {
               ...(details as Required<typeof details>), id: payload.id, quantity, expiryDate, clinicId: scopedClinicId, userId: authUser.userId,
-              createdAt: payload.createdAt ? new Date(payload.createdAt) : undefined,
+              createdAt: payload.createdAt ? deviceTime(payload.createdAt) : undefined,
             }));
             record = created;
             await notifyIfLowStock(created, null, (message) => fastify.log.warn(message));
@@ -561,7 +574,8 @@ export async function syncRoutes(fastify: FastifyInstance) {
       }
     }
 
-    return { success: true, applied };
+    // The server's clock, so the device can correct its own (see the app's lib/time.ts).
+    return { success: true, applied, serverTime: new Date().toISOString() };
   });
 
   // Pull delta updates modified since lastSyncedAt (tombstoned records are

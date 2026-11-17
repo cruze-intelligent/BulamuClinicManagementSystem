@@ -85,4 +85,18 @@ describe('the waiting queue, from a device that may be offline', () => {
     await push(desk.token, [{ id: 'm3', entity: 'appointment', clinicId: clinic.id, payload: { id: 'apt-walk-in', patientId: patient.id, doctorId: doctor.id, clinicId: clinic.id, date: new Date().toISOString(), time: '09:05', status: 'COMPLETED' } }]);
     expect((await prisma.appointment.findUniqueOrThrow({ where: { id: 'apt-walk-in' } })).checkedInAt?.toISOString()).toBe(arrived);
   });
+
+  it('never stores a time from the future, from a device whose clock is wrong', async () => {
+    const { clinic, doctor, desk, patient } = await opd();
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await app.inject({
+      method: 'POST', url: '/sync/push', headers: authHeader(desk.token),
+      payload: { operations: [{ id: 'm1', entity: 'appointment', clinicId: clinic.id, payload: { id: 'apt-clock', patientId: patient.id, doctorId: doctor.id, clinicId: clinic.id, date: new Date().toISOString(), time: '09:00', status: 'SCHEDULED', checkedInAt: tomorrow, createdAt: tomorrow, updatedAt: tomorrow } }] },
+    });
+    const stored = await prisma.appointment.findUniqueOrThrow({ where: { id: 'apt-clock' } });
+    for (const time of [stored.checkedInAt!, stored.createdAt]) expect(Math.abs(time.getTime() - Date.now())).toBeLessThan(60_000);
+    // And every reply tells the device the server's time, to correct its clock by.
+    const reply = await app.inject({ method: 'POST', url: '/sync/push', headers: authHeader(desk.token), payload: { operations: [] } });
+    expect(Math.abs(new Date(reply.json().serverTime).getTime() - Date.now())).toBeLessThan(60_000);
+  });
 });

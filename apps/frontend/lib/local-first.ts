@@ -1,5 +1,6 @@
 import type { Allergy, AllergyStatus } from "./allergy";
 import { assertCanSave, markSubscriptionLapsed, SubscriptionRequiredError } from "./subscription-state";
+import { rememberServerTime, serverNowIso } from "./time";
 
 export type LocalPatient = {
   id: string;
@@ -392,7 +393,7 @@ export async function createPatientOffline(input: {
   consentGiven?: boolean;
 }): Promise<LocalPatient> {
   await assertCanSave();
-  const now = new Date().toISOString();
+  const now = serverNowIso();
   const patient: LocalPatient = {
     id: createId(),
     name: input.name,
@@ -467,7 +468,7 @@ export async function saveAllergiesOffline(input: {
   allergies: Allergy[];
 }): Promise<LocalPatient | undefined> {
   await assertCanSave();
-  const now = new Date().toISOString();
+  const now = serverNowIso();
   const existing = await getRecord<LocalPatient>(PATIENT_STORE, input.patientId);
   const updated: LocalPatient | undefined = existing
     ? {
@@ -535,7 +536,7 @@ export async function createAppointmentOffline(input: {
   checkedInAt?: string;
 }): Promise<LocalAppointment> {
   await assertCanSave();
-  const now = new Date().toISOString();
+  const now = serverNowIso();
   const appointment: LocalAppointment = {
     id: createId(),
     patientId: input.patientId,
@@ -596,7 +597,7 @@ export async function updateAppointmentOffline(
   change: Partial<Pick<LocalAppointment, "status" | "checkedInAt">>,
 ): Promise<LocalAppointment> {
   await assertCanSave();
-  const now = new Date().toISOString();
+  const now = serverNowIso();
   const updated: LocalAppointment = { ...appointment, ...change, updatedAt: now, syncStatus: "pending" };
   const mutation: LocalMutation = {
     id: createId(),
@@ -658,7 +659,7 @@ export async function createConsultationOffline(input: {
   patientName?: string;
 }): Promise<LocalConsultation> {
   await assertCanSave();
-  const now = new Date().toISOString();
+  const now = serverNowIso();
   const primary = input.diagnoses.find((d) => d.type === "PRIMARY") ?? input.diagnoses[0];
   const consultation: LocalConsultation = {
     id: createId(),
@@ -749,7 +750,7 @@ export async function createLabTestOffline(input: {
   patientName?: string;
 }): Promise<LocalLabTest> {
   await assertCanSave();
-  const now = new Date().toISOString();
+  const now = serverNowIso();
   const labTest: LocalLabTest = {
     id: createId(),
     patientId: input.patientId,
@@ -845,7 +846,7 @@ export async function addMedicineOffline(input: {
   expiryDate?: string;
 }): Promise<LocalMedicine> {
   await assertCanSave();
-  const now = new Date().toISOString();
+  const now = serverNowIso();
   const medicine: LocalMedicine = {
     id: createId(),
     clinicId: input.clinicId,
@@ -927,7 +928,7 @@ export async function addReproductiveHealthRecordOffline(input: {
   notes?: string;
 }): Promise<LocalReproductiveHealthRecord> {
   await assertCanSave();
-  const now = new Date().toISOString();
+  const now = serverNowIso();
   const currentUser = getCurrentUser();
   const record: LocalReproductiveHealthRecord = {
     id: createId(),
@@ -995,6 +996,7 @@ export async function flushSyncQueue() {
     return { synced: 0 };
   }
 
+  const pushedAt = Date.now();
   const response = await fetch(`${apiUrl}/sync/push`, {
     method: "POST",
     headers: getAuthHeaders(),
@@ -1009,6 +1011,7 @@ export async function flushSyncQueue() {
   }
 
   const data = await response.json();
+  if (response.ok) rememberServerTime(data.serverTime, pushedAt);
   if (!response.ok || !data.success) {
     throw new Error(data.error || "Sync failed");
   }
@@ -1049,10 +1052,13 @@ export async function pullSyncUpdates(clinicId: string) {
   const lastSyncedAt = localStorage.getItem(`lastSyncedAt_${clinicId}`) || new Date(0).toISOString();
 
   try {
+    const pulledAt = Date.now();
     const response = await fetch(`${apiUrl}/sync/pull?clinicId=${clinicId}&lastSyncedAt=${encodeURIComponent(lastSyncedAt)}`, {
       headers: getAuthHeaders(),
     });
     const data = await response.json();
+    // The server's time, so this device stamps records by the server's clock.
+    if (response.ok) rememberServerTime(data.syncedAt, pulledAt);
 
     if (response.ok && data.success) {
       if (data.patients?.length) await cachePatients(data.patients);

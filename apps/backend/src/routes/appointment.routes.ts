@@ -4,6 +4,7 @@ import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from
 import { recordAudit } from '../lib/audit';
 import { notifyDoctorOfAppointment, notifyPatient } from '../lib/notifications';
 import { sendRouteError } from '../lib/http-error';
+import { formatEmailDate } from '../lib/mailer';
 
 export async function appointmentRoutes(fastify: FastifyInstance) {
 
@@ -182,7 +183,7 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
         patientAccountId: existing.patientAccountId,
         clinicId: existing.clinicId,
         title: 'Your appointment is confirmed',
-        body: `${clinic?.name ?? 'Your facility'} confirmed your appointment on ${new Date(date).toLocaleDateString()} at ${time}.`,
+        body: `${clinic?.name ?? 'Your facility'} confirmed your appointment on ${formatEmailDate(new Date(date))} at ${time}.`,
         link: '/patient-portal/dashboard',
         emailSummary: 'Your appointment request has been confirmed. Sign in to your Patient Portal to see the details.',
         log: (message) => fastify.log.warn(message),

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { expectedToday, waitingQueue, waitingText } from './queue';
 
-const now = new Date(2026, 10, 17, 10, 0);
-const at = (h: number, m: number, day = 17) => new Date(2026, 10, day, h, m).toISOString();
+// Kampala times, as the queue shows them whatever the device's time zone.
+const kampala = (h: number, m: number, day = 17) => new Date(`2026-11-${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+03:00`);
+const now = kampala(10, 0);
+const at = (h: number, m: number, day = 17) => kampala(h, m, day).toISOString();
 const appt = (id: string, patch: object) => ({ id, patientId: `p-${id}`, status: 'SCHEDULED', date: at(8, 0), ...patch });
 
 describe('the waiting queue', () => {

@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
+import { formatDate } from '@/lib/time';
 
 type LookupResult = {
   portableId: string;
@@ -129,7 +130,7 @@ export function LinkExistingPatient() {
           <p className="mt-1 text-lg font-semibold text-slate-800 dark:text-slate-200">{result.name || 'Unnamed patient'}</p>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {result.sex || 'Sex not recorded'}
-            {result.dateOfBirth ? ` - born ${new Date(result.dateOfBirth).toLocaleDateString()}` : ''}
+            {result.dateOfBirth ? ` - born ${formatDate(result.dateOfBirth)}` : ''}
           </p>
 
           {result.alreadyLinkedPatientId ? (

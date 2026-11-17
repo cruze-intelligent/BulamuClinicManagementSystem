@@ -22,6 +22,7 @@ import {
 import { useAuth } from '@/lib/useAuth';
 import { roleLabel } from '@/lib/role-labels';
 import { LAB_TESTS_CATALOG, LAB_TEST_GROUPS, findLabTest } from '@/lib/lab-tests-catalog';
+import { formatDayTime } from '@/lib/time';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -39,7 +40,7 @@ const inTab = (test: LocalLabTest, tab: Tab) =>
   (tab === 'review' && test.status === 'COMPLETED' && !test.verifiedAt) ||
   (tab === 'verified' && !!test.verifiedAt);
 
-const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
+const when = (iso?: string | null) => (iso ? formatDayTime(iso) : '');
 
 async function call(path: string, method: string, body?: unknown) {
   const res = await fetch(`${API}${path}`, {

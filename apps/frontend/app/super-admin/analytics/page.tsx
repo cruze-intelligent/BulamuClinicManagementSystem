@@ -18,6 +18,7 @@ import Link from 'next/link';
 import {
   ENGAGEMENT_LABELS, Point, compactNumber, engagementRank, formatBytes, formatNumber, formatPercent, formatUptime, humanize, timeAgo,
 } from '@/lib/analytics-format';
+import { formatDate, formatDateTime, formatTime } from '@/lib/time';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -259,7 +260,7 @@ export default function SuperAdminAnalyticsPage() {
         <div className={loading ? 'opacity-60 transition-opacity' : 'transition-opacity'} aria-busy={loading}>
           {data.trackingStartedAt && (
             <p className="text-xs text-muted-foreground mb-4">
-              Staff activity has been recorded since {new Date(data.trackingStartedAt).toLocaleDateString()}; earlier days show no activity because it was not measured yet.
+              Staff activity has been recorded since {formatDate(data.trackingStartedAt)}; earlier days show no activity because it was not measured yet.
             </p>
           )}
 
@@ -485,7 +486,7 @@ export default function SuperAdminAnalyticsPage() {
                   <Card className="p-4 gap-3">
                     <div>
                       <h3 className="text-sm font-medium">API activity</h3>
-                      <p className="text-xs text-muted-foreground">Measured in server memory since it last started ({new Date(system.runtime.startedAt).toLocaleString()}); it resets when the server restarts or sleeps. Response times are upper bounds of the bucket they fall in.</p>
+                      <p className="text-xs text-muted-foreground">Measured in server memory since it last started ({formatDateTime(system.runtime.startedAt)}); it resets when the server restarts or sleeps. Response times are upper bounds of the bucket they fall in.</p>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                       <div><div className="text-xs text-muted-foreground">Requests (last hour)</div><div className="font-semibold tabular-nums">{formatNumber(system.runtime.lastHour.requests)}</div></div>
@@ -496,7 +497,7 @@ export default function SuperAdminAnalyticsPage() {
                     <TimeSeriesChart
                       title="Requests per minute (last hour)"
                       points={system.runtime.lastHour.perMinute.map((m) => ({ date: m.minute, value: m.requests }))}
-                      label={(k) => new Date(k).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      label={(k) => formatTime(k)}
                       period="in the last hour"
                     />
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
