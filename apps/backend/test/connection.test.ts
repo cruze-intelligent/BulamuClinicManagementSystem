@@ -47,6 +47,18 @@ describe('which websites may call the API', () => {
     expect(health.headers['access-control-allow-origin']).toBe('https://www.bulamu.site');
   });
 
+  it('lets the site edit and delete, not only read and send', async () => {
+    const a = await appWith({ FRONTEND_URL: 'https://bulamu.site' });
+    for (const method of ['PATCH', 'PUT', 'DELETE', 'POST']) {
+      const res = await a.inject({
+        method: 'OPTIONS', url: '/lab/some-test',
+        headers: { origin: 'https://bulamu.site', 'access-control-request-method': method, 'access-control-request-headers': 'content-type,authorization' },
+      });
+      expect(res.headers['access-control-allow-methods'], method).toContain(method);
+      expect(res.headers['access-control-allow-origin']).toBe('https://bulamu.site');
+    }
+  });
+
   it('works out the address twins, and takes extra sites from CORS_ORIGINS', () => {
     process.env.FRONTEND_URL = 'https://www.bulamu.site/';
     process.env.CORS_ORIGINS = 'https://staging.bulamu.site, not an address';

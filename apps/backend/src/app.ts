@@ -108,6 +108,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   const origins = allowedOrigins();
   await server.register(cors, {
     origin: (origin, callback) => callback(null, !!origin && origins.has(origin)),
+    // Named in full: left out, the browser is told only GET, HEAD and POST, so
+    // every edit (PATCH, PUT) and delete from the site fails as "Failed to fetch".
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
 
   await server.register(jwt, {
