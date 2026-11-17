@@ -8,7 +8,7 @@ import { invalidateSubscriptionCache, lapseIfDue } from '../lib/subscription';
 import { applyPesapalStatus } from '../lib/subscription-payments';
 import { paymentReason } from '../lib/payment-reason';
 import { generateReceiptPdf } from '../lib/pdf';
-import { getAccessToken, registerIpnUrl, submitOrderRequest, describePesapalError } from '../services/pesapal.service';
+import { getAccessToken, registerIpnUrl, submitOrderRequest, describePesapalError, pesapalMerchantName } from '../services/pesapal.service';
 import { REAL_FACILITY } from '../lib/facility';
 import { recordAudit } from '../lib/audit';
 import { formatEmailDate, graceGrantedEmail, sendMail, subscriptionReceiptEmail, trialExtendedEmail } from '../lib/mailer';
@@ -76,7 +76,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
         const status = await lapseIfDue(subscription);
         if (status !== subscription.status) subscription = { ...subscription, status };
       }
-      return { success: true, subscription };
+      return { success: true, subscription, merchantName: pesapalMerchantName() };
     } catch (error: any) {
       return sendRouteError(reply, error);
     }
@@ -131,7 +131,7 @@ export async function billingRoutes(fastify: FastifyInstance) {
         amount: subscription.amount,
         currency: subscription.currency,
         // Pesapal rejects descriptions over 100 characters.
-        description: `Bulamu subscription - ${clinic.name}`.slice(0, 100),
+        description: `${pesapalMerchantName()} - Bulamu subscription, ${clinic.name}`.slice(0, 100),
         callbackUrl: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/billing/callback`,
         notificationId,
         billing: { emailAddress: admin.email, phoneNumber: clinic.phone, firstName: firstName || admin.name, lastName: rest.join(' ') || admin.name },

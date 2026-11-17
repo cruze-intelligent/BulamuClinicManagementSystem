@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { formatPrescriptionLine } from './clinical';
+import { pesapalMerchantName } from '../services/pesapal.service';
 
 const BRAND_TEAL = '#0f766e';
 const BRAND_TEAL_DARK = '#0c5f58';
@@ -840,6 +841,7 @@ export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer
             : ([
                 ['Paid on', documentDate(input.paidAt)],
                 ['Payment method', 'Pesapal'],
+                ['Paid to', pesapalMerchantName()],
                 ['Pesapal reference', input.pesapalReference],
               ] as Array<[string, string | null | undefined]>)),
         ] as Array<[string, string | null | undefined]>)),

@@ -52,6 +52,7 @@ export default function BillingPage() {
   const { hasRole } = useAuth();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [merchantName, setMerchantName] = useState('');
   const [unsuccessful, setUnsuccessful] = useState<Array<{ id: string; amount: number; currency: string; status: string; startedAt: string; reason: string | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
@@ -73,6 +74,7 @@ export default function BillingPage() {
       const statusData = await statusRes.json();
       if (statusData.success) setSubscription(statusData.subscription);
       const paymentsData = await paymentsRes.json();
+      if (statusData.success && statusData.merchantName) setMerchantName(statusData.merchantName);
       if (paymentsData.success) {
         setPayments(paymentsData.payments);
         setUnsuccessful(paymentsData.unsuccessful ?? []);
@@ -247,6 +249,9 @@ export default function BillingPage() {
                     ? 'Redirecting to Pesapal...'
                     : `${subscription.status === 'ACTIVE' ? 'Renew' : 'Subscribe'} - ${subscription.amount.toLocaleString()} ${subscription.currency}/mo`}
                 </Button>
+              )}
+              {subscription.status !== 'CANCELLED' && merchantName && (
+                <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">You pay {merchantName} through Pesapal - mobile money or card.</p>
               )}
             </>
           ) : (

@@ -207,6 +207,7 @@ describe("subscription payments - Bulamu's own billing", () => {
     const text = pdfText(receipt.rawPayload);
     expect(text).toContain('Cruze Intelligent Systems (U) Ltd');
     expect(text).toContain('track-confirm');
+    expect(text).toMatch(/Paid to\s*Cruze Intelligent Systems \(U\) Ltd/);
     expect(text).toMatch(/\d{1,2} \w+ 2026 to \d{1,2} \w+ 2026/);
   });
 

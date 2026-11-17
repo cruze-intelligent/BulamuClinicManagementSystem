@@ -7,6 +7,11 @@
 
 export type FetchLike = (url: string, init?: any) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>;
 
+/** The business facilities pay through Pesapal (PESAPAL_MERCHANT_NAME), as registered with Pesapal. */
+export function pesapalMerchantName(): string {
+  return process.env.PESAPAL_MERCHANT_NAME?.trim() || 'Cruze Intelligent Systems (U) Ltd';
+}
+
 export function getPesapalBaseUrl(env: string = process.env.PESAPAL_ENV || 'sandbox'): string {
   return env === 'live' ? 'https://pay.pesapal.com/v3' : 'https://cybqa.pesapal.com/pesapalv3';
 }

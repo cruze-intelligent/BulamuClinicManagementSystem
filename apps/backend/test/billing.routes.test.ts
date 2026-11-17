@@ -32,6 +32,8 @@ describe('billing routes', () => {
     const response = await app.inject({ method: 'GET', url: '/billing/status', headers: authHeader(token) });
     expect(response.statusCode).toBe(200);
     expect(response.json().subscription.status).toBe('ACTIVE');
+    // Who the facility pays through Pesapal.
+    expect(response.json().merchantName).toBe('Cruze Intelligent Systems (U) Ltd');
   });
 
   it('rejects a non-ADMIN from starting a subscription payment', async () => {
