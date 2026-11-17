@@ -225,6 +225,7 @@ export async function financeRoutes(fastify: FastifyInstance) {
         facilityCode: report.facility.facilityCode,
         facilityPhone: report.facility.phone,
         facilityLogo: await facilityLogo(clinicId),
+        facilityMotto: report.facility.motto,
         from: report.from,
         to: report.to,
         asOf: report.asOf,

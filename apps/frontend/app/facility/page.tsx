@@ -4,13 +4,16 @@ import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Trash2, Upload } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/useAuth';
 import { FacilityDetailsEditor } from '@/components/facility-details-editor';
 
 const MAX_BYTES = 500 * 1024;
+const MAX_MOTTO = 80;
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-/** The facility's own details and its logo, which is printed on its documents. */
+/** The facility's own details, and the logo and motto printed at the top of its documents. */
 export default function FacilityPage() {
   const { user, hasRole } = useAuth();
   const clinicId = user?.clinicId;
@@ -24,6 +27,47 @@ export default function FacilityPage() {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const isAdmin = hasRole('ADMIN');
+  // What the letterhead shows beside the logo: the motto, and the Facility ID and phone.
+  const [heading, setHeading] = useState<{ facilityCode?: string; phone?: string; motto: string } | null>(null);
+  const [motto, setMotto] = useState('');
+  const [mottoBusy, setMottoBusy] = useState(false);
+  const [mottoMessage, setMottoMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const loadHeading = async () => {
+    if (!clinicId) return;
+    try {
+      const res = await fetch(`${API}/clinics/${clinicId}/details`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      const data = await res.json();
+      if (data.success) {
+        setHeading({ facilityCode: data.facility.facilityCode, phone: data.facility.phone, motto: data.facility.motto ?? '' });
+        setMotto(data.facility.motto ?? '');
+      }
+    } catch {
+      // Offline: the preview shows the name only.
+    }
+  };
+
+  const saveMotto = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setMottoBusy(true);
+    setMottoMessage(null);
+    try {
+      const res = await fetch(`${API}/clinics/${clinicId}/motto`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
+        body: JSON.stringify({ motto }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || 'The motto could not be saved');
+      setHeading((h) => ({ ...(h ?? {}), motto: data.motto ?? '' }));
+      setMotto(data.motto ?? '');
+      setMottoMessage({ ok: true, text: data.motto ? 'Motto saved. It is printed under your name on your documents.' : 'Motto removed.' });
+    } catch (error: any) {
+      setMottoMessage({ ok: false, text: navigator.onLine ? error.message : 'You are offline - the motto can be saved when the connection returns.' });
+    } finally {
+      setMottoBusy(false);
+    }
+  };
 
   const loadLogo = async () => {
     if (!clinicId) return;
@@ -39,6 +83,7 @@ export default function FacilityPage() {
 
   useEffect(() => {
     loadLogo();
+    loadHeading();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clinicId]);
 
@@ -102,17 +147,16 @@ export default function FacilityPage() {
         {clinicId && <FacilityDetailsEditor clinicId={clinicId} isAdmin={isAdmin} onChanged={(details) => setClinicName(details.name)} />}
 
         <Card className="mt-4 p-5">
-          <h2 className="text-lg font-semibold">Logo on your documents</h2>
+          <h2 className="text-lg font-semibold">Logo and motto on your documents</h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Printed at the top of your invoices, receipts, prescriptions, referral letters, discharge summaries and financial reports, beside your facility name.
-            Use a PNG or JPEG under 500 KB; a wide logo on a white or transparent background looks best.
+            Your invoices, receipts, prescriptions, referral letters, discharge summaries and financial reports are headed with your logo, your name, your motto and your Facility ID.
+            Bulamu is named only in the small print at the foot of each page. For the logo use a PNG or JPEG under 500 KB, on a white or transparent background.
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-4">
             {/* How it sits on the document header. */}
-            <div className="flex h-20 w-64 items-center justify-end gap-3 rounded-md bg-teal-700 px-3" aria-label="Preview of the document header">
-              <span className="truncate text-right text-xs font-semibold text-white">{clinic?.name ?? 'Your facility'}</span>
-              <div className="flex h-14 w-28 shrink-0 items-center justify-center rounded-md bg-white p-1.5">
+            <div className="flex h-24 w-full max-w-md items-center gap-3 rounded-md bg-teal-700 px-3" aria-label="Preview of the document header">
+              <div className="flex h-16 w-20 shrink-0 items-center justify-center rounded-md bg-white p-1.5">
                 {loading ? (
                   <span className="text-xs text-slate-400">Loading...</span>
                 ) : logoUrl ? (
@@ -121,6 +165,11 @@ export default function FacilityPage() {
                 ) : (
                   <ImagePlus className="size-6 text-slate-300" aria-label="No logo yet" />
                 )}
+              </div>
+              <div className="min-w-0 text-white">
+                <p className="truncate text-sm font-semibold">{clinic?.name ?? 'Your facility'}</p>
+                {heading?.motto && <p className="truncate text-xs italic text-emerald-100">{heading.motto}</p>}
+                <p className="truncate text-[11px] text-emerald-100">{[heading?.facilityCode ? `Facility ID ${heading.facilityCode}` : null, heading?.phone].filter(Boolean).join('  |  ')}</p>
               </div>
             </div>
 
@@ -144,9 +193,22 @@ export default function FacilityPage() {
                 )}
               </div>
             ) : (
-              <p className="text-sm text-slate-500 dark:text-slate-400">Your facility administrator can change the logo.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Your facility administrator can change the logo and motto.</p>
             )}
           </div>
+
+          {isAdmin && (
+            <form onSubmit={saveMotto} className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800">
+              <Label htmlFor="facility-motto">Motto <span className="font-normal text-slate-500">(optional)</span></Label>
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                <Input id="facility-motto" className="min-w-0 flex-1" value={motto} maxLength={MAX_MOTTO} onChange={(e) => setMotto(e.target.value)} placeholder="For example: Caring for our community" />
+                <Button type="submit" variant="outline" disabled={mottoBusy || motto.trim() === (heading?.motto ?? '')}>{mottoBusy ? 'Saving...' : 'Save motto'}</Button>
+              </div>
+              {mottoMessage && (
+                <p role={mottoMessage.ok ? 'status' : 'alert'} className={`mt-2 text-sm ${mottoMessage.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>{mottoMessage.text}</p>
+              )}
+            </form>
+          )}
 
           {message && (
             <p role={message.ok ? 'status' : 'alert'} className={`mt-4 text-sm ${message.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}`}>

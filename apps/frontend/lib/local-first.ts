@@ -8,6 +8,10 @@ export type LocalPatient = {
   email?: string;
   sex?: "FEMALE" | "MALE" | "OTHER";
   dateOfBirth?: string;
+  /** The date of birth was worked out from an age the patient gave. */
+  dateOfBirthEstimated?: boolean;
+  /** The facility's Patient ID, given by the server once the record reaches it. */
+  patientNumber?: number | null;
   village?: string;
   parish?: string;
   subCounty?: string;
@@ -370,6 +374,7 @@ export async function createPatientOffline(input: {
   clinicId: string;
   sex?: LocalPatient["sex"];
   dateOfBirth?: string;
+  dateOfBirthEstimated?: boolean;
   village?: string;
   parish?: string;
   subCounty?: string;
@@ -387,6 +392,7 @@ export async function createPatientOffline(input: {
     email: input.email,
     sex: input.sex,
     dateOfBirth: input.dateOfBirth,
+    dateOfBirthEstimated: !!input.dateOfBirth && !!input.dateOfBirthEstimated,
     village: input.village,
     parish: input.parish,
     subCounty: input.subCounty,
@@ -414,6 +420,7 @@ export async function createPatientOffline(input: {
       email: patient.email,
       sex: patient.sex,
       dateOfBirth: patient.dateOfBirth,
+      dateOfBirthEstimated: patient.dateOfBirthEstimated,
       village: patient.village,
       parish: patient.parish,
       subCounty: patient.subCounty,

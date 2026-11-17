@@ -50,7 +50,7 @@ export async function dispensingRoutes(fastify: FastifyInstance) {
           consultation: {
             select: {
               id: true, createdAt: true,
-              patient: { select: { id: true, name: true, sex: true, dateOfBirth: true, allergyStatus: true, allergies: true } },
+              patient: { select: { id: true, name: true, sex: true, dateOfBirth: true, dateOfBirthEstimated: true, patientNumber: true, allergyStatus: true, allergies: true } },
               appointment: { select: { doctor: { select: { name: true } } } },
               diagnoses: { where: { type: 'PRIMARY' }, select: { icd10Code: true, description: true }, take: 1 },
             },

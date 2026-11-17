@@ -10,6 +10,7 @@ export type PatientDetails = {
   email?: string | null;
   sex?: (typeof SEXES)[number] | null;
   dateOfBirth?: Date | null;
+  dateOfBirthEstimated?: boolean;
 } & Partial<Record<(typeof TEXT_FIELDS)[number], string | null>>;
 
 /**
@@ -46,10 +47,16 @@ export function parsePatientDetails(body: Record<string, unknown>, now: Date = n
       const date = new Date(raw);
       if (Number.isNaN(date.getTime())) return { error: 'Enter a valid date of birth' };
       if (date > now) return { error: "The date of birth can't be in the future" };
+      if (now.getFullYear() - date.getFullYear() > 130) return { error: 'Check the date of birth or age - that is more than 130 years ago' };
       data.dateOfBirth = date;
     } else {
       data.dateOfBirth = null;
+      data.dateOfBirthEstimated = false;
     }
+  }
+  // Worked out from an age the patient gave, when they don't know their date of birth.
+  if (body.dateOfBirthEstimated !== undefined && data.dateOfBirth !== null) {
+    data.dateOfBirthEstimated = body.dateOfBirthEstimated === true;
   }
   for (const field of TEXT_FIELDS) {
     if (body[field] !== undefined) data[field] = text(body[field]) || null;

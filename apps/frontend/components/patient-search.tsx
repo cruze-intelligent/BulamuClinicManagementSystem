@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
+import { patientIdText } from '@/lib/patient-id';
 
 export function PatientSearch() {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState([]);
+  const [results, setResults] = useState<Array<{ id: string; name: string; phone: string; patientNumber?: number | null }>>([]);
   const [searching, setSearching] = useState(false);
 
   const search = async (q: string) => {
@@ -38,7 +39,7 @@ export function PatientSearch() {
   return (
     <div className="relative">
       <Input
-        placeholder="Search patients by name or phone..."
+        placeholder="Search patients by name, phone or Patient ID..."
         value={query}
         onChange={(e) => search(e.target.value)}
       />
@@ -51,7 +52,7 @@ export function PatientSearch() {
             results.map((patient: any) => (
               <Card key={patient.id} className="p-3 m-2 hover:bg-slate-50 hover:dark:bg-slate-800 cursor-pointer">
                 <h4 className="font-semibold">{patient.name}</h4>
-                <p className="text-sm text-muted-foreground">{patient.phone}</p>
+                <p className="text-sm text-muted-foreground">{[patientIdText(patient.patientNumber) ? `ID ${patientIdText(patient.patientNumber)}` : null, patient.phone].filter(Boolean).join('  ·  ')}</p>
               </Card>
             ))
           ) : (

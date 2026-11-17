@@ -62,7 +62,9 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
           deletedAt: null,
           OR: [
             { name: { contains: q, mode: 'insensitive' } },
-            { phone: { contains: q } }
+            { phone: { contains: q } },
+            // "42" or "00042": the facility's Patient ID.
+            ...(/^\d{1,7}$/.test(String(q ?? '').trim()) && Number(q) > 0 ? [{ patientNumber: Number(q) }] : []),
           ]
         },
         take: 20

@@ -22,57 +22,65 @@ function documentDateTime(date: Date): string {
   return `${documentDate(date)}, ${time} EAT`;
 }
 
+/** Who heads a document: the facility for its own documents, Bulamu for its subscription receipts. */
+export type Letterhead = {
+  name: string;
+  motto?: string | null;
+  /** Under the name, once: the Facility ID and the phone number. */
+  lines?: Array<string | null | undefined>;
+  logo?: Buffer | null;
+};
+
+/** The heading a facility's own documents carry: its logo, name, motto, Facility ID and phone. */
+export function facilityLetterhead(input: { name: string; facilityCode?: string | null; phone?: string | null; motto?: string | null; logo?: Buffer | null }): Letterhead {
+  return {
+    name: input.name,
+    motto: input.motto,
+    lines: [input.facilityCode ? `Facility ID ${input.facilityCode}` : null, input.phone],
+    logo: input.logo,
+  };
+}
+
 /**
- * The shared Bulamu letterhead on the first page: the Bulamu mark on the left
- * and, on the right, whoever issues the document - the facility for its own
- * clinical documents and patient invoices, Cruze for subscription receipts.
- * A facility that has added its logo gets it on a white panel at the right.
- * (No approved Bulamu logo image exists yet; the left side is a text mark.)
+ * The letterhead on the first page, as a facility's own stationery would be:
+ * its logo on a white panel at the left, then its name, its motto beneath, and
+ * its Facility ID and phone once, under the name. Bulamu, which makes the
+ * document, is named in the footer of every page instead (see finishDocument).
  */
-function drawLetterhead(doc: PDFKit.PDFDocument, issuer: string, issuerLine?: string, logo?: Buffer | null) {
-  doc.rect(0, 0, doc.page.width, 70).fill(BRAND_TEAL);
+function drawLetterhead(doc: PDFKit.PDFDocument, head: Letterhead) {
+  const height = 86;
+  doc.rect(0, 0, doc.page.width, height).fill(BRAND_TEAL);
 
-  doc
-    .fillColor('#ffffff')
-    .font('Helvetica-Bold')
-    .fontSize(20)
-    .text('Bulamu', 50, 20);
-
-  doc
-    .fillColor('#d1fae5')
-    .font('Helvetica')
-    .fontSize(9)
-    .text('TRANSFORMING PATIENT CARE.', 50, 44, { characterSpacing: 1 });
-
-  // The issuer's text ends where the logo panel (if any) begins.
-  let textRight = doc.page.width - 50;
-  if (logo) {
-    const box = { w: 120, h: 54 };
-    const boxX = doc.page.width - 50 - box.w;
+  let textX = 50;
+  if (head.logo) {
+    const box = { w: 88, h: 66 };
     try {
-      doc.roundedRect(boxX, 8, box.w, box.h, 6).fill('#ffffff');
-      doc.image(logo, boxX + 6, 8 + 5, { fit: [box.w - 12, box.h - 10], align: 'center', valign: 'center' });
-      textRight = boxX - 12;
+      doc.roundedRect(50, 10, box.w, box.h, 6).fill('#ffffff');
+      doc.image(head.logo, 50 + 6, 10 + 5, { fit: [box.w - 12, box.h - 10], align: 'center', valign: 'center' });
+      textX = 50 + box.w + 14;
     } catch {
       // An unreadable image never stops the document - it goes out without it.
     }
   }
-  doc
-    .fillColor('#ffffff')
-    .font('Helvetica-Bold')
-    .fontSize(11)
-    .text(issuer, 200, issuerLine ? 20 : 26, { align: 'right', width: textRight - 200 });
-  if (issuerLine) {
-    doc
-      .fillColor('#d1fae5')
-      .font('Helvetica')
-      .fontSize(9)
-      .text(issuerLine, 200, 38, { align: 'right', width: textRight - 200 });
+  const width = doc.page.width - 50 - textX;
+
+  // A long name steps down a size rather than running into the motto.
+  doc.font('Helvetica-Bold');
+  let size = 18;
+  while (size > 12 && doc.fontSize(size).widthOfString(head.name) > width) size -= 1;
+  doc.fillColor('#ffffff').fontSize(size).text(head.name, textX, 16, { width, height: size * 2.4, ellipsis: true });
+
+  let y = Math.max(doc.y + 2, 38);
+  if (head.motto?.trim()) {
+    doc.fillColor('#d1fae5').font('Helvetica-Oblique').fontSize(9.5).text(head.motto.trim(), textX, y, { width, lineBreak: false, ellipsis: true });
+    y += 14;
   }
+  const lines = (head.lines ?? []).filter(Boolean).join('   |   ');
+  if (lines) doc.fillColor('#d1fae5').font('Helvetica').fontSize(9).text(lines, textX, y, { width, lineBreak: false, ellipsis: true });
 
   doc.fillColor(INK).font('Helvetica').fontSize(10);
   doc.x = 50;
-  doc.y = 95;
+  doc.y = height + 22;
 }
 
 /**
@@ -116,7 +124,7 @@ async function finishDocument(doc: PDFKit.PDFDocument, options: SampleOption = {
       .font('Helvetica')
       .fontSize(8)
       .fillColor(MUTED)
-      .text(`Bulamu is a product of ${COMPANY_NAME}. bulamu.site`, textX, topY, { width: textWidth, lineBreak: false })
+      .text(`Powered by Bulamu - transforming patient care. bulamu.site, a product of ${COMPANY_NAME}`, textX, topY, { width: textWidth, lineBreak: false })
       .text(`Produced ${generated}`, textX, topY + 11, { width: textWidth, lineBreak: false })
       .text(`Page ${i - start + 1} of ${count}`, textX, topY + 22, { width: textWidth, lineBreak: false });
   }
@@ -180,7 +188,11 @@ export type InvoicePdfInput = SampleOption & {
   facilityCode: string;
   clinicPhone?: string | null;
   clinicLogo?: Buffer | null;
+  /** The facility's motto, under its name in the letterhead. */
+  clinicMotto?: string | null;
   patientName: string;
+  /** The facility's Patient ID, as printed (00042). */
+  patientNumber?: string | null;
   patientPhone: string;
   /** The visit's diagnosis, for a bill that belongs to a visit. */
   diagnosis?: string | null;
@@ -259,7 +271,7 @@ export function billState(input: { amount: number; amountPaid: number; status: s
 export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer> {
   const { doc, done } = newDocument();
   const currency = input.currency ?? 'UGX';
-  drawLetterhead(doc, input.clinicName, `Facility ID ${input.facilityCode}`, input.clinicLogo);
+  drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
 
   const cancelled = input.status === 'CANCELLED';
   const paidSoFar = input.amountPaid ?? (input.status === 'PAID' ? input.amount : 0);
@@ -272,8 +284,8 @@ export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer
   doc.moveDown(1.5);
 
   drawRows(doc, [
-    ['Issued by', `${input.clinicName}${input.clinicPhone ? ` - ${input.clinicPhone}` : ''}`],
     ['Patient', input.patientName],
+    ['Patient ID', input.patientNumber || null],
     ['Phone', input.patientPhone || '-'],
     ['Visit', input.diagnosis ? `Consultation - ${input.diagnosis}` : null],
     ['Attending clinician', input.doctorName || null],
@@ -342,7 +354,9 @@ export type PatientReceiptPdfInput = SampleOption & {
   facilityCode: string;
   clinicPhone?: string | null;
   clinicLogo?: Buffer | null;
+  clinicMotto?: string | null;
   patientName: string;
+  patientNumber?: string | null;
   patientPhone?: string | null;
   payerName?: string | null;
   amount: number;
@@ -370,7 +384,7 @@ export type PatientReceiptPdfInput = SampleOption & {
 export async function generatePatientReceiptPdf(input: PatientReceiptPdfInput): Promise<Buffer> {
   const { doc, done } = newDocument();
   const currency = input.currency ?? 'UGX';
-  drawLetterhead(doc, input.clinicName, `Facility ID ${input.facilityCode}`, input.clinicLogo);
+  drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
 
   doc.moveDown(2);
   doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('RECEIPT', 50);
@@ -385,6 +399,7 @@ export async function generatePatientReceiptPdf(input: PatientReceiptPdfInput): 
   const balance = Math.max(0, input.billTotal - input.paidToDate);
   drawRows(doc, [
     ['Received from', input.payerName ? `${input.payerName}, for ${input.patientName}` : input.patientName],
+    ['Patient ID', input.patientNumber || null],
     ['Patient phone', input.patientPhone || null],
     ['Date', documentDateTime(input.receivedAt)],
     ['Paid by', input.method],
@@ -445,8 +460,11 @@ export type PrescriptionPdfInput = SampleOption & {
   consultationId: string;
   clinicName: string;
   facilityCode: string;
+  clinicPhone?: string | null;
   clinicLogo?: Buffer | null;
+  clinicMotto?: string | null;
   patientName: string;
+  patientNumber?: string | null;
   patientPhone: string;
   patientSex?: string | null;
   patientAge?: string;
@@ -470,7 +488,7 @@ export type PrescriptionPdfInput = SampleOption & {
 export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Promise<Buffer> {
   const { doc, done } = newDocument();
 
-  drawLetterhead(doc, input.clinicName, `Facility ID ${input.facilityCode}`, input.clinicLogo);
+  drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
 
   doc.moveDown(1.5);
   doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('PRESCRIPTION');
@@ -482,11 +500,11 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
   const sexAge = [input.patientSex ? input.patientSex.charAt(0) + input.patientSex.slice(1).toLowerCase() : '', input.patientAge].filter(Boolean).join(', ');
   const details: [string, string][] = [
     ['Patient', input.patientName],
+    ...(input.patientNumber ? ([['Patient ID', input.patientNumber]] as [string, string][]) : []),
     ['Age / sex', sexAge || '-'],
     ['Phone', input.patientPhone || '-'],
     ['Date', documentDate(input.date)],
     ['Prescriber', input.prescriberName || '-'],
-    ['Facility ID', input.facilityCode],
   ];
   doc.fontSize(10);
   for (const [label, value] of details) {
@@ -566,7 +584,9 @@ function newDocument(): { doc: PDFKit.PDFDocument; done: Promise<Buffer> } {
 async function drawClinicalLetter(input: SampleOption & {
   clinicName: string;
   facilityCode?: string;
+  clinicPhone?: string | null;
   clinicLogo?: Buffer | null;
+  clinicMotto?: string | null;
   title: string;
   reference: string;
   banner?: { text: string; color: string } | null;
@@ -576,7 +596,7 @@ async function drawClinicalLetter(input: SampleOption & {
   signatures: [{ label: string; signer?: Signer | null }, { label: string; signer?: Signer | null }];
 }): Promise<Buffer> {
   const { doc, done } = newDocument();
-  drawLetterhead(doc, input.clinicName, input.facilityCode ? `Facility ID ${input.facilityCode}` : undefined, input.clinicLogo);
+  drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
 
   doc.moveDown(1.5);
   doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text(input.title);
@@ -635,12 +655,13 @@ export type ReferralLetterInput = SampleOption & {
   fromClinicPhone: string | null;
   fromFacilityCode: string;
   fromClinicLogo?: Buffer | null;
+  fromClinicMotto?: string | null;
   toClinicName: string;
   urgency: string;
   createdAt: Date;
   referredByName: string | null;
   referredByRole?: string | null;
-  patient: { name: string; sexAge: string | null; phone: string | null; address: string | null; nextOfKin: string | null };
+  patient: { name: string; number?: string | null; sexAge: string | null; phone: string | null; address: string | null; nextOfKin: string | null };
   allergies: string;
   reason: string;
   clinicalSummary: string | null;
@@ -655,6 +676,8 @@ export async function generateReferralLetterPdf(input: ReferralLetterInput): Pro
     clinicName: input.fromClinicName,
     facilityCode: input.fromFacilityCode,
     clinicLogo: input.fromClinicLogo,
+    clinicMotto: input.fromClinicMotto,
+    clinicPhone: input.fromClinicPhone,
     sample: input.sample,
     producedBy: input.producedBy,
     title: 'REFERRAL LETTER',
@@ -663,10 +686,11 @@ export async function generateReferralLetterPdf(input: ReferralLetterInput): Pro
     patientName: input.patient.name,
     details: [
       ['To', input.toClinicName],
-      ['From', `${input.fromClinicName} (${input.fromFacilityCode})${input.fromClinicPhone ? ` - ${input.fromClinicPhone}` : ''}`],
+      ['From', input.fromClinicName],
       ['Date', dateText(input.createdAt)],
       ['Referred by', input.referredByName],
       ['Patient', input.patient.name],
+      ['Patient ID', input.patient.number],
       ['Age / sex', input.patient.sexAge],
       ['Phone', input.patient.phone],
       ['Address', input.patient.address],
@@ -690,8 +714,10 @@ export type DischargeSummaryInput = SampleOption & {
   admissionId: string;
   clinicName: string;
   facilityCode: string;
+  clinicPhone?: string | null;
   clinicLogo?: Buffer | null;
-  patient: { name: string; sexAge: string | null; phone: string | null };
+  clinicMotto?: string | null;
+  patient: { name: string; number?: string | null; sexAge: string | null; phone: string | null };
   ward: string;
   admittedAt: Date;
   dischargedAt: Date;
@@ -714,6 +740,8 @@ export async function generateDischargeSummaryPdf(input: DischargeSummaryInput):
     clinicName: input.clinicName,
     facilityCode: input.facilityCode,
     clinicLogo: input.clinicLogo,
+    clinicMotto: input.clinicMotto,
+    clinicPhone: input.clinicPhone,
     sample: input.sample,
     producedBy: input.producedBy,
     title: 'DISCHARGE SUMMARY',
@@ -722,8 +750,8 @@ export async function generateDischargeSummaryPdf(input: DischargeSummaryInput):
     details: [
       ['Patient', input.patient.name],
       ['Age / sex', input.patient.sexAge],
+      ['Patient ID', input.patient.number],
       ['Phone', input.patient.phone],
-      ['Facility ID', input.facilityCode],
       ['Ward', input.ward],
       ['Admitted', dateText(input.admittedAt)],
       ['Discharged', `${dateText(input.dischargedAt)} (${days} day${days === 1 ? '' : 's'})`],
@@ -778,7 +806,7 @@ export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer
     ? `${documentDate(input.periodStart)} to ${documentDate(input.periodEnd)}`
     : `Until ${documentDate(input.periodEnd)}`;
 
-  drawLetterhead(doc, COMPANY_NAME, 'Bulamu subscriptions - bulamu.site');
+  drawLetterhead(doc, { name: 'Bulamu', motto: 'Transforming patient care.', lines: [`Subscriptions - issued by ${COMPANY_NAME}`, 'bulamu.site'] });
 
   doc.moveDown(2);
   doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text(isTrial ? 'FREE TRIAL RECEIPT' : 'SUBSCRIPTION RECEIPT', 50);
@@ -836,6 +864,7 @@ export type FinanceReportPdfInput = SampleOption & {
   facilityCode: string;
   facilityPhone?: string | null;
   facilityLogo?: Buffer | null;
+  facilityMotto?: string | null;
   /** EAT days, YYYY-MM-DD, both included. */
   from: string;
   to: string;
@@ -913,7 +942,7 @@ function drawTable(doc: PDFKit.PDFDocument, columns: Column[], rows: Array<{ cel
  */
 export async function generateFinanceReportPdf(input: FinanceReportPdfInput): Promise<Buffer> {
   const { doc, done } = newDocument();
-  drawLetterhead(doc, input.facilityName, [`Facility ID ${input.facilityCode}`, input.facilityPhone].filter(Boolean).join(' - '), input.facilityLogo);
+  drawLetterhead(doc, facilityLetterhead({ name: input.facilityName, facilityCode: input.facilityCode, phone: input.facilityPhone, motto: input.facilityMotto, logo: input.facilityLogo }));
 
   doc.moveDown(1);
   doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('FINANCIAL REPORT', 50);

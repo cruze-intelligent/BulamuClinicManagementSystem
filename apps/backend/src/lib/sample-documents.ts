@@ -8,13 +8,13 @@ import {
 // how documents look. Nothing here comes from, or resembles, a real record.
 
 const DAY = 24 * 60 * 60 * 1000;
-const FACILITY = { name: 'Sample Health Centre III', code: 'BLM-SAMPLE', phone: '0700 000 000' };
+const FACILITY = { name: 'Sample Health Centre III', code: 'BLM-SAMPLE', phone: '0700 000 000', motto: 'Caring for our community' };
 
 export type SampleDocument = { filename: string; title: string; content: Buffer };
 
 export async function buildSampleDocuments(now: Date = new Date()): Promise<SampleDocument[]> {
   const logo = sampleLogo();
-  const patient = { name: 'Jane Sample', phone: '0700 000 001', sexAge: '34 years, Female' };
+  const patient = { name: 'Jane Sample', number: '00042', phone: '0700 000 001', sexAge: '34 years, Female' };
   const common = { sample: true as const };
   // Facility documents name the staff member who produced the copy; Bulamu's receipts don't.
   const staff = { ...common, producedBy: { name: 'Sample Staff Member', role: 'Administrator' } };
@@ -28,37 +28,39 @@ export async function buildSampleDocuments(now: Date = new Date()): Promise<Samp
 
   const documents: Array<[string, string, Promise<Buffer>]> = [
     ['1-invoice-unpaid.pdf', 'Patient invoice (facility to patient, part paid) - with the facility logo', generateInvoicePdf({
-      ...staff, invoiceId: 'sample-invoice-0001', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo,
-      patientName: patient.name, patientPhone: patient.phone, diagnosis: 'Malaria, uncomplicated', doctorName: 'Dr Sample Clinician',
+      ...staff, invoiceId: 'sample-invoice-0001', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo, clinicMotto: FACILITY.motto,
+      patientName: patient.name, patientNumber: patient.number, patientPhone: patient.phone, diagnosis: 'Malaria, uncomplicated', doctorName: 'Dr Sample Clinician',
       amount: 26000, amountPaid: 10000, status: 'PENDING', createdAt: now, items: lines,
       payments: [{ receiptNumber: '000041', receivedAt: now, method: 'Mobile money - MTN Mobile Money', amount: 10000 }],
     })],
     ['2-invoice-paid-no-logo.pdf', 'Patient invoice (paid) - a facility without a logo', generateInvoicePdf({
-      ...staff, invoiceId: 'sample-invoice-0002', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone,
-      patientName: patient.name, patientPhone: patient.phone, diagnosis: 'Upper respiratory tract infection', doctorName: 'Dr Sample Clinician',
+      ...staff, invoiceId: 'sample-invoice-0002', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicMotto: FACILITY.motto,
+      patientName: patient.name, patientNumber: patient.number, patientPhone: patient.phone, diagnosis: 'Upper respiratory tract infection', doctorName: 'Dr Sample Clinician',
       amount: 15000, status: 'PAID', createdAt: new Date(now.getTime() - 2 * DAY), paidAt: now,
     })],
     ['3-prescription.pdf', 'Prescription', generatePrescriptionPdf({
-      ...staff, consultationId: 'sample-consultation-0001', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicLogo: logo,
-      patientName: patient.name, patientPhone: patient.phone, patientSex: 'FEMALE', patientAge: '34 years', prescriberName: 'Dr Sample Clinician', prescriberRole: 'Doctor / Clinical Officer', date: now,
+      ...staff, consultationId: 'sample-consultation-0001', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo, clinicMotto: FACILITY.motto,
+      patientName: patient.name, patientNumber: patient.number, patientPhone: patient.phone, patientSex: 'FEMALE', patientAge: '34 years', prescriberName: 'Dr Sample Clinician', prescriberRole: 'Doctor / Clinical Officer', date: now,
       diagnoses: [{ icd10Code: 'B54', description: 'Malaria, unspecified', type: 'PRIMARY', certainty: 'CONFIRMED', notes: null }],
       prescriptions: [
-        { medication: 'Artemether/Lumefantrine', strength: '20/120 mg', form: 'tablet', dosage: '4 tablets', route: 'oral', frequency: 'twice daily', duration: '3 days', quantity: 24, instructions: 'Take with food' },
-        { medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '2 tablets', route: 'oral', frequency: 'three times daily', duration: '3 days', quantity: 18, instructions: null },
+        { medication: 'Artesunate', strength: '60 mg', form: 'injection', dosage: '120 mg', route: 'IV', frequency: 'Q12H', duration: '1 day', quantity: 4, instructions: 'At 0, 12 and 24 hours, then daily until oral treatment can be taken' },
+        { medication: 'Artemether/Lumefantrine', strength: '20/120 mg', form: 'tablet', dosage: '4 tablets', route: 'PO', frequency: 'BD', duration: '3 days', quantity: 24, instructions: 'Take with food' },
+        { medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '2 tablets', route: 'PO', frequency: 'TDS', duration: '3 days', quantity: 18, instructions: null },
+        { medication: 'Normal saline', strength: '0.9%', form: 'infusion', dosage: '500 ml', route: 'IV', frequency: 'Q8H', duration: '1 day', quantity: 3, instructions: null },
       ],
     })],
     ['4-referral-letter.pdf', 'Referral letter', generateReferralLetterPdf({
-      ...staff, referralId: 'sample-referral-0001', fromClinicName: FACILITY.name, fromClinicPhone: FACILITY.phone, fromFacilityCode: FACILITY.code, fromClinicLogo: logo,
+      ...staff, referralId: 'sample-referral-0001', fromClinicName: FACILITY.name, fromClinicPhone: FACILITY.phone, fromFacilityCode: FACILITY.code, fromClinicLogo: logo, fromClinicMotto: FACILITY.motto,
       toClinicName: 'Sample Regional Referral Hospital', urgency: 'URGENT', createdAt: now, referredByName: 'Dr Sample Clinician', referredByRole: 'Doctor / Clinical Officer',
-      patient: { name: patient.name, sexAge: patient.sexAge, phone: patient.phone, address: 'Sample Village, Sample District', nextOfKin: 'John Sample - 0700 000 002' },
+      patient: { name: patient.name, number: patient.number, sexAge: patient.sexAge, phone: patient.phone, address: 'Sample Village, Sample District', nextOfKin: 'John Sample - 0700 000 002' },
       allergies: 'Penicillin - severe - rash',
       reason: 'Severe anaemia needing blood transfusion, not available at this facility.',
       clinicalSummary: 'Example text only. Presented with fever and weakness for 4 days. Hb 6.2 g/dL. Started on IV artesunate.',
       status: 'PENDING', responseNote: null,
     })],
     ['5-discharge-summary.pdf', 'Discharge summary', generateDischargeSummaryPdf({
-      ...staff, admissionId: 'sample-admission-0001', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicLogo: logo,
-      patient: { name: patient.name, sexAge: patient.sexAge, phone: patient.phone }, ward: 'Female Ward, bed 3',
+      ...staff, admissionId: 'sample-admission-0001', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo, clinicMotto: FACILITY.motto,
+      patient: { name: patient.name, number: patient.number, sexAge: patient.sexAge, phone: patient.phone }, ward: 'Female Ward, bed 3',
       admittedAt: new Date(now.getTime() - 3 * DAY), dischargedAt: now, attendingDoctor: 'Dr Sample Clinician', dischargedBy: 'Dr Sample Clinician', dischargedByRole: 'Doctor / Clinical Officer',
       admissionReason: 'Severe malaria', outcome: 'Discharged - recovered', dischargeDiagnosis: 'Severe malaria, resolved (B50.9)',
       dischargeSummary: 'Example text only. Completed IV artesunate, then oral treatment. Afebrile for 48 hours.',
@@ -74,12 +76,12 @@ export async function buildSampleDocuments(now: Date = new Date()): Promise<Samp
       amount: 0, currency: 'UGX', paidAt: now, periodStart: now, periodEnd: new Date(now.getTime() + 14 * DAY),
     })],
     ['8-patient-receipt.pdf', 'Patient receipt (facility to patient, part payment) - with the facility logo', generatePatientReceiptPdf({
-      ...staff, receiptNumber: '000041', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo,
-      patientName: patient.name, patientPhone: patient.phone, amount: 10000, method: 'Mobile money - MTN Mobile Money', reference: 'SAMPLE-MOMO-REF', referenceLabel: 'Transaction ID', receivedAt: now,
+      ...staff, receiptNumber: '000041', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo, clinicMotto: FACILITY.motto,
+      patientName: patient.name, patientNumber: patient.number, patientPhone: patient.phone, amount: 10000, method: 'Mobile money - MTN Mobile Money', reference: 'SAMPLE-MOMO-REF', referenceLabel: 'Transaction ID', receivedAt: now,
       receivedBy: { name: 'Sample Staff Member', role: 'Front Desk' }, invoiceId: 'sample-invoice-0001', billTotal: 26000, paidToDate: 10000, items: lines,
     })],
     ['9-financial-report.pdf', "Financial report (the facility's money in and out) - with the facility logo", generateFinanceReportPdf({
-      ...staff, ...sampleFinanceReport(now), facilityName: FACILITY.name, facilityCode: FACILITY.code, facilityPhone: FACILITY.phone, facilityLogo: logo,
+      ...staff, ...sampleFinanceReport(now), facilityName: FACILITY.name, facilityCode: FACILITY.code, facilityPhone: FACILITY.phone, facilityLogo: logo, facilityMotto: FACILITY.motto,
     })],
   ];
 

@@ -149,6 +149,11 @@ model Clinic {
   // The last patient receipt number issued; each payment takes the next one,
   // so a facility's receipts run 1, 2, 3... with no gaps or repeats.
   lastReceiptNumber Int @default(0)
+  // The last patient number issued: each new patient takes the next one, so a
+  // facility's Patient IDs run 1, 2, 3... (printed as 00001) and are never reused.
+  lastPatientNumber Int @default(0)
+  // The facility's motto, printed under its name at the top of its documents.
+  motto         String?
   patientPayments   PatientPayment[]
   expenses          Expense[]
   detailChanges     FacilityDetailChange[]
@@ -324,6 +329,14 @@ model Patient {
   email        String?
   sex          Sex?
   dateOfBirth  DateTime?
+  // The date of birth was worked out from an age the patient gave ("about 34"),
+  // as many patients do not know their date of birth.
+  dateOfBirthEstimated Boolean @default(false)
+  // The facility's own Patient ID (see Clinic.lastPatientNumber), issued by the
+  // database trigger patient_number on every insert (migration
+  // 20261117090000_patient_ids_age_motto). Empty only until a record made
+  // offline reaches the server.
+  patientNumber Int?
   village      String?
   parish       String?
   subCounty    String?
@@ -359,6 +372,7 @@ model Patient {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
+  @@unique([clinicId, patientNumber])
   @@index([clinicId])
   @@index([patientAccountId])
 }

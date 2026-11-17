@@ -11,10 +11,16 @@ import {
   subscribeToLocalChanges,
   LocalPatient,
 } from '@/lib/local-first';
+import { Input } from '@/components/ui/input';
+import { patientIdQuery, patientIdText } from '@/lib/patient-id';
+
+// "0772 123 456" and "0772123456" are the same number.
+const digitsOf = (text: string) => text.split('').filter((c) => c >= '0' && c <= '9').join('');
 
 export default function PatientsPage() {
   const [patients, setPatients] = useState<LocalPatient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
 
   const loadData = async () => {
     const clinicId = getCurrentClinicId();
@@ -42,6 +48,13 @@ export default function PatientsPage() {
     return () => unsubscribe();
   }, []);
 
+  // By name, phone or Patient ID ("42" or "00042"), on this device - so it works offline too.
+  const q = query.trim().toLowerCase();
+  const idQuery = patientIdQuery(query);
+  const shown = !q
+    ? patients
+    : patients.filter((p) => p.name.toLowerCase().includes(q) || digitsOf(p.phone).includes(digitsOf(q) || '-') || (idQuery !== null && p.patientNumber === idQuery));
+
   return (
     <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
@@ -55,6 +68,13 @@ export default function PatientsPage() {
           </Link>
         </div>
 
+        {patients.length > 0 && (
+          <div className="mb-4">
+            <label htmlFor="patient-filter" className="sr-only">Find a patient</label>
+            <Input id="patient-filter" type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find by name, phone or Patient ID" />
+          </div>
+        )}
+
         {loading ? (
           <p className="text-slate-500 dark:text-slate-400">Loading local records...</p>
         ) : patients.length === 0 ? (
@@ -63,7 +83,10 @@ export default function PatientsPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {patients.map((patient) => (
+            {q && shown.length === 0 && (
+              <Card className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">No patient matches "{query.trim()}".</Card>
+            )}
+            {shown.map((patient) => (
               <Card key={patient.id} className="p-4 flex justify-between items-center">
                 <div>
                   <div className="flex items-center gap-2">
@@ -74,7 +97,10 @@ export default function PatientsPage() {
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">{patient.phone}</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {patientIdText(patient.patientNumber) && <span className="mr-3 font-mono">ID {patientIdText(patient.patientNumber)}</span>}
+                    {patient.phone}
+                  </p>
                 </div>
                 {patient.syncStatus === 'pending' ? (
                   <Button size="sm" variant="outline" disabled title="Available once this record has been sent - when you're back online">

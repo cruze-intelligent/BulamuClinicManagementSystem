@@ -30,7 +30,7 @@ export async function facilityDetailsRoutes(fastify: FastifyInstance) {
     const clinicId = resolveClinicScope(request, reply, (request.params as { id: string }).id);
     if (!clinicId) return;
     try {
-      const clinic = await prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true, facilityCode: true, deletedAt: true, ...DETAIL_SELECT } });
+      const clinic = await prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true, facilityCode: true, motto: true, deletedAt: true, ...DETAIL_SELECT } });
       if (!clinic || clinic.deletedAt) return reply.status(404).send({ error: 'Facility not found' });
       const { deletedAt: _deletedAt, ...details } = clinic;
       const role = getAuthUser(request).role;

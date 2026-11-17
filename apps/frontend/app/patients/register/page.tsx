@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { createPatientOffline, getCurrentClinicId } from '@/lib/local-first';
 import { LinkExistingPatient } from '@/components/link-existing-patient';
 import { Select } from '@/components/ui/select';
+import { BirthDateInput, birthDatePayload, emptyBirthDate, type BirthDateValue } from '@/components/birth-date-input';
 
 export default function RegisterPatient() {
   const [mode, setMode] = useState<'new' | 'link'>('new');
@@ -45,7 +46,7 @@ function NewPatientForm() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [sex, setSex] = useState<'FEMALE' | 'MALE' | 'OTHER' | ''>('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [birth, setBirth] = useState<BirthDateValue>(emptyBirthDate);
   const [village, setVillage] = useState('');
   const [parish, setParish] = useState('');
   const [subCounty, setSubCounty] = useState('');
@@ -65,7 +66,10 @@ function NewPatientForm() {
         email: email.trim() || undefined,
         clinicId,
         sex: sex || undefined,
-        dateOfBirth: dateOfBirth || undefined,
+        ...(() => {
+          const { dateOfBirth, dateOfBirthEstimated } = birthDatePayload(birth);
+          return dateOfBirth ? { dateOfBirth, dateOfBirthEstimated } : {};
+        })(),
         village: village || undefined,
         parish: parish || undefined,
         subCounty: subCounty || undefined,
@@ -77,7 +81,7 @@ function NewPatientForm() {
       setPhone('');
       setEmail('');
       setSex('');
-      setDateOfBirth('');
+      setBirth(emptyBirthDate());
       setVillage('');
       setParish('');
       setSubCounty('');
@@ -150,13 +154,7 @@ function NewPatientForm() {
               </div>
 
               <div>
-                <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                <Input
-                  id="dateOfBirth"
-                  type="date"
-                  value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                />
+                <BirthDateInput id="dateOfBirth" value={birth} onChange={setBirth} />
               </div>
             </div>
 

@@ -14,13 +14,14 @@ import { StockError, returnStock, takeStock } from '../lib/stock';
 import { documentProducer, signer, type Signer } from '../lib/document-signer';
 import { sendMail, patientReceiptEmail } from '../lib/mailer';
 import { sendRouteError } from '../lib/http-error';
+import { patientIdText } from '../lib/patient-text';
 
 const MAX_QUANTITY = 10_000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Everything a bill screen shows: patient, visit, lines and payments (with who took each). */
 const INVOICE_INCLUDE = {
-  patient: { select: { id: true, name: true, phone: true, email: true } },
+  patient: { select: { id: true, name: true, phone: true, email: true, patientNumber: true } },
   consultation: {
     select: { id: true, diagnosis: true, createdAt: true, appointment: { select: { doctor: { select: { name: true } } } } },
   },
@@ -203,7 +204,7 @@ export async function buildReceipt(id: string, producedBy: Signer | string | nul
     where: { id },
     include: {
       receivedBy: { select: { name: true, role: true } },
-      clinic: { select: { id: true, name: true, facilityCode: true, phone: true } },
+      clinic: { select: { id: true, name: true, facilityCode: true, phone: true, motto: true } },
     },
   });
   if (!payment) return null;
@@ -218,7 +219,9 @@ export async function buildReceipt(id: string, producedBy: Signer | string | nul
     facilityCode: payment.clinic.facilityCode,
     clinicPhone: payment.clinic.phone,
     clinicLogo: await facilityLogo(payment.clinic.id),
+    clinicMotto: payment.clinic.motto,
     patientName: invoice.patient.name,
+    patientNumber: patientIdText(invoice.patient.patientNumber),
     patientPhone: invoice.patient.phone,
     payerName: payment.payerName,
     amount: payment.amount,
@@ -661,14 +664,16 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
       if (!assertClinicMatch(request, reply, invoice.clinicId)) return;
 
-      const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: invoice.clinicId }, select: { id: true, name: true, facilityCode: true, phone: true } });
+      const clinic = await prisma.clinic.findUniqueOrThrow({ where: { id: invoice.clinicId }, select: { id: true, name: true, facilityCode: true, phone: true, motto: true } });
       const pdf = await generateInvoicePdf({
         invoiceId: invoice.id,
         clinicName: clinic.name,
         facilityCode: clinic.facilityCode,
         clinicPhone: clinic.phone,
         clinicLogo: await facilityLogo(clinic.id),
+        clinicMotto: clinic.motto,
         patientName: invoice.patient.name,
+        patientNumber: patientIdText(invoice.patient.patientNumber),
         patientPhone: invoice.patient.phone,
         diagnosis: invoice.consultation?.diagnosis ?? null,
         doctorName: invoice.consultation?.appointment.doctor?.name,

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/useAuth';
-import { formatAge } from '@/lib/age';
+import { ageText } from '@/lib/age';
 import { formatPrescription } from '@/lib/prescription';
 import { allergySummary, describeConflict, findAllergyConflicts, SEVERITY_LABELS, type Allergy, type AllergyStatus } from '@/lib/allergy';
 
@@ -28,7 +28,7 @@ type Item = {
   dispensedBy?: { name: string } | null;
   medicine: { id: string; name: string; quantity: number; unit: string; reorderLevel: number } | null;
   consultation: { id: string; createdAt: string; prescriber: string | null; diagnosis: { icd10Code: string | null; description: string } | null };
-  patient: { id: string; name: string; sex: string | null; dateOfBirth: string | null; allergyStatus: AllergyStatus; allergies: Allergy[] | null };
+  patient: { id: string; name: string; sex: string | null; dateOfBirth: string | null; dateOfBirthEstimated?: boolean; patientNumber?: number | null; allergyStatus: AllergyStatus; allergies: Allergy[] | null };
 };
 
 type Group = { consultationId: string; patient: Item['patient']; consultation: Item['consultation']; items: Item[] };
@@ -177,7 +177,7 @@ export default function DispensingPage() {
           <div className="space-y-4">
             {groups.map((g) => {
               const summary = allergySummary(g.patient);
-              const age = g.patient.dateOfBirth ? formatAge(g.patient.dateOfBirth) : null;
+              const age = g.patient.dateOfBirth ? ageText(g.patient.dateOfBirth, g.patient.dateOfBirthEstimated) : null;
               return (
                 <Card key={g.consultationId} className="gap-4 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-2">

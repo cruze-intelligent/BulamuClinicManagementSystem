@@ -44,3 +44,33 @@ export function formatAge(dateOfBirth: string | Date, referenceDate: Date = new 
   const years = calculateAgeYears(dateOfBirth, referenceDate);
   return `${years} year${years === 1 ? '' : 's'}`;
 }
+
+export type AgeUnit = 'years' | 'months' | 'days';
+
+/**
+ * A date of birth worked out from an age the patient gives, when they do not
+ * know their date of birth ("about 34 years", "8 months"). Counted back from
+ * today; the record marks it as estimated.
+ */
+export function dateOfBirthFromAge(value: number, unit: AgeUnit, today: Date = new Date()): string {
+  const d = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+  if (unit === 'years') d.setUTCFullYear(d.getUTCFullYear() - value);
+  else if (unit === 'months') d.setUTCMonth(d.getUTCMonth() - value);
+  else d.setUTCDate(d.getUTCDate() - value);
+  return d.toISOString().slice(0, 10);
+}
+
+/** What is wrong with an age typed in, or null. */
+export function ageProblem(text: string, unit: AgeUnit): string | null {
+  if (!text.trim()) return null;
+  const n = Number(text);
+  const max = unit === 'years' ? 130 : unit === 'months' ? 36 : 120;
+  if (!Number.isInteger(n) || n < 0 || n > max) return `Enter the age as a whole number of ${unit}, up to ${max}`;
+  return null;
+}
+
+/** The age as shown, with "(estimated)" when it came from an age rather than a known date of birth. */
+export function ageText(dateOfBirth: string | Date, estimated?: boolean | null, referenceDate: Date = new Date()): string {
+  const age = formatAge(dateOfBirth, referenceDate);
+  return age && estimated ? `${age} (estimated)` : age;
+}

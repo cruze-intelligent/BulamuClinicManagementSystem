@@ -5,8 +5,10 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { MAX_LOGO_BYTES, parseLogo } from '../lib/facility-logo';
 
-// A facility's logo, shown on its own documents. The facility's administrator
-// manages it; anyone signed in at the facility can see it.
+const MAX_MOTTO_LENGTH = 80;
+
+// A facility's logo and motto, shown on its own documents. The facility's
+// administrator manages them; anyone signed in at the facility can see them.
 export async function facilityLogoRoutes(fastify: FastifyInstance) {
   fastify.get('/clinics/:clinicId/logo', { preHandler: [authenticate] }, async (request, reply) => {
     const clinicId = resolveClinicScope(request, reply, (request.params as { clinicId: string }).clinicId);
@@ -43,6 +45,27 @@ export async function facilityLogoRoutes(fastify: FastifyInstance) {
       return { success: true };
     }
   );
+
+  // The facility's motto, printed under its name at the top of its documents.
+  // Like the logo it is the facility's own branding, so it is not one of the
+  // details whose changes Bulamu reviews (see facility-details.ts). Empty clears it.
+  fastify.put('/clinics/:clinicId/motto', { preHandler: [requireRole('ADMIN')] }, async (request, reply) => {
+    const clinicId = resolveClinicScope(request, reply, (request.params as { clinicId: string }).clinicId);
+    if (!clinicId) return;
+    const raw = (request.body as { motto?: unknown } | undefined)?.motto;
+    if (raw !== null && raw !== undefined && typeof raw !== 'string') return reply.status(400).send({ error: 'The motto must be text' });
+    const motto = typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : '';
+    if (motto.length > MAX_MOTTO_LENGTH) return reply.status(400).send({ error: `Keep the motto to ${MAX_MOTTO_LENGTH} characters, so it fits under the name` });
+
+    await prisma.clinic.update({ where: { id: clinicId }, data: { motto: motto || null } });
+    const authUser = getAuthUser(request);
+    await recordAudit({
+      entity: 'Clinic', recordId: clinicId, clinicId,
+      action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role,
+      metadata: { fields: ['motto'], ...(motto ? {} : { removed: true }) },
+    });
+    return { success: true, motto: motto || null };
+  });
 
   fastify.delete('/clinics/:clinicId/logo', { preHandler: [requireRole('ADMIN')] }, async (request, reply) => {
     const clinicId = resolveClinicScope(request, reply, (request.params as { clinicId: string }).clinicId);

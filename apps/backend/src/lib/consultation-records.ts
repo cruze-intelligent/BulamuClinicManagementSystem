@@ -3,6 +3,7 @@ import type { PrescriptionInput } from './clinical';
 import { generatePrescriptionPdf, PrescriptionPdfInput } from './pdf';
 import { facilityLogo } from './facility-logo';
 import { roleTitle, type Signer } from './document-signer';
+import { patientIdText } from './patient-text';
 
 /**
  * Keeps a prescription's link to a stock item only when that item really is one
@@ -29,8 +30,13 @@ export const consultationChildren = {
 };
 
 /** "34 years", "8 months", "12 days" - a child's dose depends on age, so a prescription states it. */
-function ageLabel(dateOfBirth: Date | null, at: Date): string | undefined {
+function ageLabel(dateOfBirth: Date | null, at: Date, estimated = false): string | undefined {
   if (!dateOfBirth) return undefined;
+  const exact = exactAgeLabel(dateOfBirth, at);
+  return exact && estimated ? `${exact} (estimated)` : exact;
+}
+
+function exactAgeLabel(dateOfBirth: Date, at: Date): string | undefined {
   const days = Math.floor((at.getTime() - dateOfBirth.getTime()) / 86_400_000);
   if (days < 0) return undefined;
   if (days < 31) return `${days} day${days === 1 ? '' : 's'}`;
@@ -46,7 +52,7 @@ export async function buildPrescriptionPdf(consultationId: string, producedBy?: 
     where: { id: consultationId, deletedAt: null },
     include: {
       ...consultationChildren,
-      patient: { select: { name: true, phone: true, sex: true, dateOfBirth: true, clinic: { select: { name: true, facilityCode: true } } } },
+      patient: { select: { name: true, phone: true, sex: true, dateOfBirth: true, dateOfBirthEstimated: true, patientNumber: true, clinic: { select: { name: true, facilityCode: true, phone: true, motto: true } } } },
       appointment: { select: { clinicId: true, doctor: { select: { name: true, role: true } } } },
       recordedBy: { select: { name: true, role: true } },
     },
@@ -58,10 +64,13 @@ export async function buildPrescriptionPdf(consultationId: string, producedBy?: 
     clinicName: consultation.patient.clinic.name,
     facilityCode: consultation.patient.clinic.facilityCode,
     clinicLogo: await facilityLogo(consultation.appointment.clinicId),
+    clinicPhone: consultation.patient.clinic.phone,
+    clinicMotto: consultation.patient.clinic.motto,
     patientName: consultation.patient.name,
+    patientNumber: patientIdText(consultation.patient.patientNumber),
     patientPhone: consultation.patient.phone,
     patientSex: consultation.patient.sex,
-    patientAge: ageLabel(consultation.patient.dateOfBirth, consultation.createdAt),
+    patientAge: ageLabel(consultation.patient.dateOfBirth, consultation.createdAt, consultation.patient.dateOfBirthEstimated),
     // The clinician who recorded the visit; for older visits, the doctor it was booked with.
     prescriberName: (consultation.recordedBy ?? consultation.appointment.doctor)?.name,
     prescriberRole: (consultation.recordedBy ?? consultation.appointment.doctor) ? roleTitle((consultation.recordedBy ?? consultation.appointment.doctor)!.role) : undefined,

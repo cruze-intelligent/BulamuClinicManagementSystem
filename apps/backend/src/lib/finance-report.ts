@@ -102,7 +102,7 @@ export type ReportSectionResult = {
 };
 
 export type FinanceReport = {
-  facility: { id: string; name: string; facilityCode: string; phone: string | null };
+  facility: { id: string; name: string; facilityCode: string; phone: string | null; motto?: string | null };
   from: string;
   to: string;
   asOf: string;
@@ -143,7 +143,7 @@ export async function buildFinanceReport(clinicId: string, request: ReportReques
   const has = (key: ReportSection) => wanted.includes(key);
 
   const [facility, payments, items, expenses, owing] = await Promise.all([
-    prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { id: true, name: true, facilityCode: true, phone: true } }),
+    prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { id: true, name: true, facilityCode: true, phone: true, motto: true } }),
     has('income')
       ? prisma.patientPayment.findMany({
           where: { clinicId, receivedAt: { gte: start, lt: end }, ...(category ? { method: category as PaymentMethod } : {}) },

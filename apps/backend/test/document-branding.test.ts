@@ -25,7 +25,7 @@ const invoice = (extra: Partial<Parameters<typeof generateInvoicePdf>[0]> = {}) 
   amount: 25000, status: 'PENDING', createdAt: WHEN, producedBy: STAFF, ...extra,
 });
 
-const prescription = (items = 2) => generatePrescriptionPdf({
+const prescriptionInput = (items = 2): Parameters<typeof generatePrescriptionPdf>[0] => ({
   consultationId: 'consultation-0001', clinicName: 'Mbarara Family Clinic', facilityCode: 'BLM-MBR123',
   patientName: 'Achieng Mary', patientPhone: '0700', prescriberName: 'Dr Okello', prescriberRole: 'Doctor / Clinical Officer', date: WHEN,
   diagnoses: [{ icd10Code: 'B54', description: 'Malaria', type: 'PRIMARY', certainty: 'CONFIRMED', notes: null }],
@@ -33,7 +33,7 @@ const prescription = (items = 2) => generatePrescriptionPdf({
   producedBy: STAFF,
 });
 
-const referral = () => generateReferralLetterPdf({
+const referralInput = (): Parameters<typeof generateReferralLetterPdf>[0] => ({
   referralId: 'referral-0001', fromClinicName: 'Mbarara Family Clinic', fromClinicPhone: '0772', fromFacilityCode: 'BLM-MBR123',
   toClinicName: 'Mbarara Regional Referral Hospital', urgency: 'URGENT', createdAt: WHEN,
   referredByName: 'Dr Okello', referredByRole: 'Doctor / Clinical Officer',
@@ -42,7 +42,7 @@ const referral = () => generateReferralLetterPdf({
   producedBy: STAFF,
 });
 
-const discharge = () => generateDischargeSummaryPdf({
+const dischargeInput = (): Parameters<typeof generateDischargeSummaryPdf>[0] => ({
   admissionId: 'admission-0001', clinicName: 'Mbarara Family Clinic', facilityCode: 'BLM-MBR123',
   patient: { name: 'Achieng Mary', sexAge: '34 years, Female', phone: '0700' }, ward: 'Female Ward',
   admittedAt: new Date(WHEN.getTime() - 3 * 86400000), dischargedAt: WHEN, attendingDoctor: 'Dr Okello',
@@ -50,6 +50,10 @@ const discharge = () => generateDischargeSummaryPdf({
   dischargeDiagnosis: null, dischargeSummary: null, followUpInstructions: null, referredTo: null, allergies: 'No known allergies',
   producedBy: 'downloaded by the patient from the Bulamu Patient Portal',
 });
+
+const prescription = (items = 2) => generatePrescriptionPdf(prescriptionInput(items));
+const referral = () => generateReferralLetterPdf(referralInput());
+const discharge = () => generateDischargeSummaryPdf(dischargeInput());
 
 const receipt = (amount = 100000) => generateReceiptPdf({
   paymentId: 'payment-1', clinicName: 'Mbarara Family Clinic', facilityCode: 'BLM-MBR123', amount, currency: 'UGX',
@@ -59,14 +63,12 @@ const receipt = (amount = 100000) => generateReceiptPdf({
 describe('every document Bulamu produces is branded the same way', () => {
   const all = () => Promise.all([invoice(), prescription(), referral(), discharge(), receipt(), receipt(0)]);
 
-  it('carries the Bulamu letterhead and, on every page, the footer: maker, site, when, page number', async () => {
+  it('names Bulamu in the footer of every page, with the site, when it was produced and the page number', async () => {
     for (const pdf of [...(await all()), await prescription(16)]) {
       const pages = pdfPages(pdf);
       const text = pages.join('\n');
-      expect(text).toContain('Bulamu');
-      expect(text).toContain('TRANSFORMING PATIENT CARE.');
       pages.forEach((page, i) => {
-        expect(page).toContain('Bulamu is a product of Cruze Intelligent Systems (U) Ltd. bulamu.site');
+        expect(page).toContain('Powered by Bulamu - transforming patient care. bulamu.site, a product of Cruze Intelligent Systems (U) Ltd');
         expect(page).toContain('Produced 14 October 2026');
         expect(page).toContain(`Page ${i + 1} of ${pages.length}`);
       });
@@ -92,6 +94,25 @@ describe('every document Bulamu produces is branded the same way', () => {
 });
 
 describe('who issues and who signs', () => {
+  it("heads a facility's documents with the facility - its name, motto, Facility ID once, and phone - and names the patient by their Patient ID", async () => {
+    const facility = { clinicMotto: 'Caring for our community', patientNumber: '00042' };
+    const docs = [
+      await invoice(facility),
+      await generatePrescriptionPdf({ ...prescriptionInput(2), clinicPhone: '0772 111 222', clinicMotto: 'Caring for our community', patientNumber: '00042' }),
+      await generateDischargeSummaryPdf({ ...dischargeInput(), clinicPhone: '0772 111 222', clinicMotto: 'Caring for our community', patient: { ...dischargeInput().patient, number: '00042' } }),
+      await generateReferralLetterPdf({ ...referralInput(), fromClinicMotto: 'Caring for our community', patient: { ...referralInput().patient, number: '00042' } }),
+    ];
+    for (const pdf of docs) {
+      const text = pdfText(pdf);
+      expect(text).toContain('Mbarara Family Clinic');
+      expect(text).toContain('Caring for our community');
+      expect(text.match(/BLM-MBR123/g)).toHaveLength(1);
+      expect(text).toMatch(/Patient ID\s*\n?00042/);
+      // Bulamu no longer heads the facility's own documents.
+      expect(text).not.toContain('TRANSFORMING PATIENT CARE.');
+    }
+  });
+
   it("puts the facility at the head of its own documents, and says Bulamu doesn't collect patient payments", async () => {
     for (const pdf of [await invoice(), await prescription(), await referral(), await discharge()]) {
       expect(pdfText(pdf)).toContain('Mbarara Family Clinic');
@@ -107,6 +128,8 @@ describe('who issues and who signs', () => {
   it("makes Bulamu's receipts Cruze's, billed to the facility, with the period and the Pesapal reference", async () => {
     const text = pdfText(await receipt());
     expect(text).toContain('Cruze Intelligent Systems (U) Ltd');
+    // Bulamu issues its own receipts, so it heads them.
+    expect(text).toMatch(/^Bulamu\nTransforming patient care\./);
     expect(text).toMatch(/Billed to\s*\n?Mbarara Family Clinic/);
     expect(text).toContain('14 October 2026 to 13 November 2026');
     expect(text).toContain('PESAPAL-123');

@@ -4,7 +4,7 @@ import { getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { createReferral, ReferralError, registerReferredPatient, updateReferralStatus } from '../lib/referrals';
 import { generateReferralLetterPdf } from '../lib/pdf';
-import { addressText, allergyText, nextOfKinText, sexAgeText } from '../lib/patient-text';
+import { addressText, allergyText, nextOfKinText, patientIdText, sexAgeText } from '../lib/patient-text';
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer, roleTitle } from '../lib/document-signer';
 import { sendRouteError } from '../lib/http-error';
@@ -50,7 +50,7 @@ export async function referralRoutes(fastify: FastifyInstance) {
         include: {
           patient: {
             select: {
-              name: true, phone: true, sex: true, dateOfBirth: true, village: true, parish: true, subCounty: true, district: true,
+              name: true, phone: true, sex: true, dateOfBirth: true, dateOfBirthEstimated: true, patientNumber: true, village: true, parish: true, subCounty: true, district: true,
               nextOfKinName: true, nextOfKinPhone: true, allergyStatus: true, allergies: true,
             },
           },
@@ -137,6 +137,7 @@ export function referralLetterInput(referral: any) {
     fromClinicName: referral.fromClinic.name,
     fromClinicPhone: referral.fromClinic.phone,
     fromFacilityCode: referral.fromClinic.facilityCode,
+    fromClinicMotto: referral.fromClinic.motto ?? null,
     toClinicName: referral.toClinic.name,
     urgency: referral.urgency,
     createdAt: referral.createdAt,
@@ -144,6 +145,7 @@ export function referralLetterInput(referral: any) {
     referredByRole: referral.referredBy?.role ? roleTitle(referral.referredBy.role) : null,
     patient: {
       name: referral.patient.name,
+      number: patientIdText(referral.patient.patientNumber),
       sexAge: sexAgeText(referral.patient),
       phone: referral.patient.phone,
       address: addressText(referral.patient),

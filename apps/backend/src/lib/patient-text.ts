@@ -3,7 +3,12 @@ import { calculateAgeDays, calculateAgeYears } from './age';
 // How a patient is described on letters and summaries that leave the system
 // (referral letters, discharge summaries, shared history).
 
-export function sexAgeText(patient: { sex?: string | null; dateOfBirth?: Date | null }, at: Date = new Date()): string | null {
+/** The facility's Patient ID as printed: 42 -> "00042". */
+export function patientIdText(number: number | null | undefined): string | null {
+  return number ? String(number).padStart(5, '0') : null;
+}
+
+export function sexAgeText(patient: { sex?: string | null; dateOfBirth?: Date | null; dateOfBirthEstimated?: boolean | null }, at: Date = new Date()): string | null {
   const sex = patient.sex ? patient.sex.charAt(0) + patient.sex.slice(1).toLowerCase() : null;
   let age: string | null = null;
   if (patient.dateOfBirth) {
@@ -13,6 +18,8 @@ export function sexAgeText(patient: { sex?: string | null; dateOfBirth?: Date | 
       const days = calculateAgeDays(patient.dateOfBirth, at);
       age = days < 60 ? `${days} days` : `${Math.floor(days / 30.44)} months`;
     }
+    // Worked out from an age the patient gave, not a known date of birth.
+    if (patient.dateOfBirthEstimated) age = `${age} (estimated)`;
   }
   return [age, sex].filter(Boolean).join(', ') || null;
 }

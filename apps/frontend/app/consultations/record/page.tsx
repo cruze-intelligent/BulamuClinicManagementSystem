@@ -22,7 +22,8 @@ import {
 } from '@/lib/local-first';
 import { diagnosesToPayload, diagnosisProblems, emptyDiagnosis, type DiagnosisDraft } from '@/lib/diagnosis';
 import { draftProblems, draftToPayload, emptyDraft, isBlankDraft, type PrescriptionDraft } from '@/lib/prescription';
-import { formatAge } from '@/lib/age';
+import { ageText } from '@/lib/age';
+import { patientIdText } from '@/lib/patient-id';
 
 function StepHeading({ n, title, hint }: { n: number; title: string; hint?: string }) {
   return (
@@ -110,7 +111,8 @@ function RecordConsultationForm() {
     ? [
         patient.name,
         patient.sex ? patient.sex.charAt(0) + patient.sex.slice(1).toLowerCase() : null,
-        patient.dateOfBirth ? formatAge(patient.dateOfBirth) : null,
+        patientIdText(patient.patientNumber) ? `ID ${patientIdText(patient.patientNumber)}` : null,
+        patient.dateOfBirth ? ageText(patient.dateOfBirth, patient.dateOfBirthEstimated) : null,
       ].filter(Boolean).join('  |  ')
     : null;
 

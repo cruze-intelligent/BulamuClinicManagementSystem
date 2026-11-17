@@ -10,7 +10,7 @@ import { HttpError } from '../lib/http-error';
 import { ICD10_PATTERN } from '../lib/clinical';
 import { normalizeVitals } from '../lib/vitals';
 import { generateDischargeSummaryPdf } from '../lib/pdf';
-import { allergyText, sexAgeText } from '../lib/patient-text';
+import { allergyText, patientIdText, sexAgeText } from '../lib/patient-text';
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer, roleTitle } from '../lib/document-signer';
 
@@ -41,7 +41,7 @@ const icd10 = (value: unknown) => {
 };
 
 const admissionInclude = {
-  patient: { select: { id: true, name: true, phone: true, sex: true, dateOfBirth: true, allergyStatus: true, allergies: true, patientAccountId: true } },
+  patient: { select: { id: true, name: true, phone: true, sex: true, dateOfBirth: true, dateOfBirthEstimated: true, patientNumber: true, allergyStatus: true, allergies: true, patientAccountId: true } },
   ward: { select: { id: true, name: true, type: true } },
   attendingDoctor: { select: { id: true, name: true, role: true } },
   admittedBy: { select: { id: true, name: true } },
@@ -361,7 +361,7 @@ export async function admissionRoutes(fastify: FastifyInstance) {
   fastify.get('/admissions/:id/discharge-summary', { preHandler: [requireRole(...CLINICAL)] }, async (request, reply) => {
     const { clinicId } = getAuthUser(request);
     const { id } = request.params as any;
-    const admission = await prisma.admission.findUnique({ where: { id }, include: { ...admissionInclude, clinic: { select: { name: true, facilityCode: true } } } });
+    const admission = await prisma.admission.findUnique({ where: { id }, include: { ...admissionInclude, clinic: { select: { name: true, facilityCode: true, phone: true, motto: true } } } });
     if (!admission || admission.clinicId !== clinicId) return reply.status(404).send({ error: 'Admission not found' });
     if (admission.status !== 'DISCHARGED') return reply.status(409).send({ error: 'The patient has not been discharged yet' });
 
@@ -392,7 +392,9 @@ export function dischargeSummaryInput(admission: any) {
     admissionId: admission.id,
     clinicName: admission.clinic.name,
     facilityCode: admission.clinic.facilityCode,
-    patient: { name: admission.patient.name, sexAge: sexAgeText(admission.patient), phone: admission.patient.phone },
+    clinicPhone: admission.clinic.phone ?? null,
+    clinicMotto: admission.clinic.motto ?? null,
+    patient: { name: admission.patient.name, number: patientIdText(admission.patient.patientNumber), sexAge: sexAgeText(admission.patient), phone: admission.patient.phone },
     ward: `${admission.ward.name}${admission.bed ? `, bed ${admission.bed}` : ''}`,
     admittedAt: admission.admittedAt,
     dischargedAt: admission.dischargedAt,

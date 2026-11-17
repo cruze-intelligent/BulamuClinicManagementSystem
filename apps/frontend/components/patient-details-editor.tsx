@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { cachePatients, removeLocalPatient } from '@/lib/local-first';
+import { BirthDateInput, birthDateFrom, birthDatePayload, type BirthDateValue } from '@/components/birth-date-input';
 
 type Patient = {
   id: string;
@@ -15,6 +16,7 @@ type Patient = {
   email?: string | null;
   sex?: string | null;
   dateOfBirth?: string | null;
+  dateOfBirthEstimated?: boolean | null;
   village?: string | null;
   parish?: string | null;
   subCounty?: string | null;
@@ -28,7 +30,6 @@ const FIELDS: Array<{ key: keyof Patient; label: string; type?: string; required
   { key: 'name', label: 'Full name', required: true },
   { key: 'phone', label: 'Phone', type: 'tel', required: true },
   { key: 'email', label: 'Email (optional)', type: 'email' },
-  { key: 'dateOfBirth', label: 'Date of birth', type: 'date' },
   { key: 'village', label: 'Village' },
   { key: 'parish', label: 'Parish' },
   { key: 'subCounty', label: 'Sub-county' },
@@ -58,6 +59,7 @@ export function PatientDetailsEditor({
 }) {
   const [mode, setMode] = useState<'idle' | 'edit' | 'delete'>('idle');
   const [form, setForm] = useState<Record<string, string>>(() => formFrom(patient));
+  const [birth, setBirth] = useState<BirthDateValue>(() => birthDateFrom(patient.dateOfBirth));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -79,7 +81,9 @@ export function PatientDetailsEditor({
     setBusy(true);
     setError('');
     try {
-      const { patient: saved } = await request('PATCH', form);
+      // A date typed in is a known date; an age typed in gives an estimated one; left alone, the estimate stands.
+      const birthChanged = birth.mode === 'age' || birth.date !== birthDateFrom(patient.dateOfBirth).date;
+      const { patient: saved } = await request('PATCH', { ...form, ...(birthChanged ? birthDatePayload(birth) : {}) });
       // Keep this device's copy in step (lists read from it, including offline).
       await cachePatients([saved]).catch(() => {});
       onSaved(saved);
@@ -109,7 +113,7 @@ export function PatientDetailsEditor({
       {mode === 'idle' && (
         <div className="flex flex-wrap gap-2">
           {canEdit && (
-            <Button type="button" size="sm" variant="outline" onClick={() => { setForm(formFrom(patient)); setError(''); setMode('edit'); }}>
+            <Button type="button" size="sm" variant="outline" onClick={() => { setForm(formFrom(patient)); setBirth(birthDateFrom(patient.dateOfBirth)); setError(''); setMode('edit'); }}>
               <Pencil className="size-4" aria-hidden="true" /> Edit details
             </Button>
           )}
@@ -147,6 +151,12 @@ export function PatientDetailsEditor({
                 <option value="MALE">Male</option>
                 <option value="OTHER">Other</option>
               </Select>
+            </div>
+            <div>
+              <BirthDateInput id="edit-dateOfBirth" value={birth} onChange={setBirth} />
+              {patient.dateOfBirthEstimated && birth.mode === 'date' && birth.date === birthDateFrom(patient.dateOfBirth).date && (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">This date was worked out from an age. Enter the real date if the patient now knows it.</p>
+              )}
             </div>
           </div>
           {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}

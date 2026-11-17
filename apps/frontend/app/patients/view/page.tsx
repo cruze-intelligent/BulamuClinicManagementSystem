@@ -12,7 +12,8 @@ import { DocumentItem } from '@/components/document-item';
 import { shortDate } from '@/lib/finance';
 import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, downloadError, openDocumentPreview } from '@/lib/document-preview';
 import { useAuth } from '@/lib/useAuth';
-import { calculateAgeYears } from '@/lib/age';
+import { ageText } from '@/lib/age';
+import { patientIdText } from '@/lib/patient-id';
 import { roleLabel } from '@/lib/role-labels';
 import { validateReproductiveHealthForm } from '@/lib/reproductive-health-validation';
 import { CommentsSection } from '@/components/comments-section';
@@ -382,10 +383,13 @@ function PatientHistoryContent() {
           {/* One block, so the card's spacing between sections doesn't pull these lines apart. */}
           <div>
             <h1 className="text-3xl font-bold mb-1">{patient.name}</h1>
-            <p className="text-muted-foreground">{patient.phone}</p>
+            <p className="text-muted-foreground">
+              {patientIdText(patient.patientNumber) && <span className="mr-3 font-mono font-medium text-slate-700 dark:text-slate-300">Patient ID {patientIdText(patient.patientNumber)}</span>}
+              {patient.phone}
+            </p>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm mt-3 text-slate-600 dark:text-slate-400">
               {patient.sex && <span>Sex: {patient.sex.charAt(0) + patient.sex.slice(1).toLowerCase()}</span>}
-              {patient.dateOfBirth && <span>Age: {calculateAgeYears(patient.dateOfBirth)} years</span>}
+              {patient.dateOfBirth && <span>Age: {ageText(patient.dateOfBirth, patient.dateOfBirthEstimated)}</span>}
               {(patient.village || patient.parish || patient.subCounty || patient.district) && (
                 <span>
                   Address: {[patient.village, patient.parish, patient.subCounty, patient.district].filter(Boolean).join(', ')}
