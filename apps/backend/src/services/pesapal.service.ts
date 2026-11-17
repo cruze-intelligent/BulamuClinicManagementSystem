@@ -112,6 +112,8 @@ export async function submitOrderRequest(
 export type PesapalTransactionStatus = {
   statusCode: number; // 0 = invalid/pending, 1 = completed, 2 = failed, 3 = reversed
   paymentStatusDescription: string;
+  /** Pesapal's own words on the outcome, e.g. why a payment was declined. */
+  description?: string;
   merchantReference: string;
   amount: number;
   currency: string;
@@ -136,6 +138,7 @@ export async function getTransactionStatus(
     status: {
       statusCode: body.status_code,
       paymentStatusDescription: body.payment_status_description,
+      description: body.description,
       merchantReference: body.merchant_reference,
       amount: body.amount,
       currency: body.currency,

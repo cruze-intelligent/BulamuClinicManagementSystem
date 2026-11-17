@@ -52,6 +52,7 @@ export default function BillingPage() {
   const { hasRole } = useAuth();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [unsuccessful, setUnsuccessful] = useState<Array<{ id: string; amount: number; currency: string; status: string; startedAt: string; reason: string | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [subscribing, setSubscribing] = useState(false);
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
@@ -72,7 +73,10 @@ export default function BillingPage() {
       const statusData = await statusRes.json();
       if (statusData.success) setSubscription(statusData.subscription);
       const paymentsData = await paymentsRes.json();
-      if (paymentsData.success) setPayments(paymentsData.payments);
+      if (paymentsData.success) {
+        setPayments(paymentsData.payments);
+        setUnsuccessful(paymentsData.unsuccessful ?? []);
+      }
     } catch {
       setError("We couldn't reach Bulamu. Please check your internet connection and try again.");
     } finally {
@@ -283,6 +287,24 @@ export default function BillingPage() {
               features outside the standard plan, reach out and we&apos;ll set up a custom plan for you.
             </p>
             <ContactIcons />
+          </Card>
+        )}
+
+        {unsuccessful.length > 0 && (
+          <Card className="mt-6 p-6" data-testid="unsuccessful-payments">
+            <h2 className="mb-1 text-lg font-semibold text-slate-800 dark:text-slate-200">Payments that did not go through</h2>
+            <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">From the last 90 days.</p>
+            <div className="space-y-2">
+              {unsuccessful.map((p) => (
+                <div key={p.id} className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm dark:border-rose-900 dark:bg-rose-950/30">
+                  <p className="font-medium text-slate-800 dark:text-slate-200">
+                    {p.amount.toLocaleString()} {p.currency} - {p.status === 'REVERSED' ? 'reversed' : 'not completed'}
+                    <span className="ml-2 text-xs font-normal text-slate-500 dark:text-slate-400">{formatDate(p.startedAt)}</span>
+                  </p>
+                  {p.reason && <p className="mt-1 text-rose-800 dark:text-rose-300">{p.reason}</p>}
+                </div>
+              ))}
+            </div>
           </Card>
         )}
 

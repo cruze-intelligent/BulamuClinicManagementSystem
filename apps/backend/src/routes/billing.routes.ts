@@ -6,6 +6,7 @@ import { authenticate, resolveClinicScope, assertClinicMatch, getAuthUser } from
 import { requireRole } from '../middleware/rbac.middleware';
 import { invalidateSubscriptionCache, lapseIfDue } from '../lib/subscription';
 import { applyPesapalStatus } from '../lib/subscription-payments';
+import { paymentReason } from '../lib/payment-reason';
 import { generateReceiptPdf } from '../lib/pdf';
 import { getAccessToken, registerIpnUrl, submitOrderRequest, describePesapalError } from '../services/pesapal.service';
 import { REAL_FACILITY } from '../lib/facility';
@@ -202,7 +203,14 @@ export async function billingRoutes(fastify: FastifyInstance) {
         where: { clinicId, status: 'COMPLETED' },
         orderBy: { updatedAt: 'desc' },
       });
-      return { success: true, payments };
+      // Recent payments that did not go through, and why - so the administrator knows what to do.
+      const notThrough = await prisma.payment.findMany({
+        where: { clinicId, status: { in: ['FAILED', 'REVERSED'] }, amount: { gt: 0 }, createdAt: { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) } },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      });
+      const unsuccessful = notThrough.map((p) => ({ id: p.id, amount: p.amount, currency: p.currency, status: p.status, startedAt: p.createdAt, reason: paymentReason(p) }));
+      return { success: true, payments, unsuccessful };
     } catch (error: any) {
       return sendRouteError(reply, error);
     }

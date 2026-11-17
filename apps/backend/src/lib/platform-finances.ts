@@ -2,6 +2,7 @@ import type { Payment, Subscription } from '@prisma/client';
 import { prisma } from './prisma';
 import { REAL_FACILITY } from './facility';
 import { eastAfricaDay } from './usage-tracking';
+import { paymentReason } from './payment-reason';
 
 /**
  * Bulamu's own money, for the platform operator: the subscriptions facilities
@@ -163,6 +164,8 @@ export function paymentRow(p: PaymentWithFacility) {
     // Pesapal's reference, or the receipt-book number for cash.
     reference: p.pesapalOrderTrackingId ?? p.reference,
     hasReceipt: p.status === 'COMPLETED',
+    // Why it failed or was reversed.
+    reason: paymentReason(p),
   };
 }
 
