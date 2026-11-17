@@ -8,6 +8,31 @@ import { buildDataValueSet, pushDataValueSet } from '../services/dhis2.service';
 import { recordAudit } from '../lib/audit';
 import { rankDiagnoses, formatPrescriptionLine } from '../lib/clinical';
 import { sendRouteError } from '../lib/http-error';
+import { eatDateKey, eatMonthRange } from '../lib/invoices';
+import { sortDepartments } from '../lib/departments';
+
+/** This month in Kampala, for a report asked for without one. */
+const thisMonth = () => { const day = eatDateKey(new Date()); return { month: Number(day.slice(5, 7)), year: Number(day.slice(0, 4)) }; };
+
+/**
+ * Appointments and patients seen in each unit, for a facility that has units:
+ * every open unit (even a quiet one), any closed unit that still had visits,
+ * and the visits given no unit.
+ */
+function visitsPerUnit(
+  units: Array<{ id: string; code: string | null; name: string; isActive: boolean }>,
+  appointments: Array<{ departmentId: string | null; _count: number }>,
+  visits: Array<{ departmentId: string | null; _count: number }>,
+) {
+  if (units.length === 0) return [];
+  const count = (rows: typeof visits, id: string | null) => rows.find((r) => r.departmentId === id)?._count ?? 0;
+  const rows = sortDepartments(units)
+    .map((u) => ({ name: u.name, appointments: count(appointments, u.id), visits: count(visits, u.id), isActive: u.isActive }))
+    .filter((r) => r.isActive || r.appointments > 0 || r.visits > 0)
+    .map(({ isActive: _, ...r }) => r);
+  const none = { name: 'No unit given', appointments: count(appointments, null), visits: count(visits, null) };
+  return none.appointments || none.visits ? [...rows, none] : rows;
+}
 
 export async function reportsRoutes(fastify: FastifyInstance) {
 
@@ -16,13 +41,14 @@ export async function reportsRoutes(fastify: FastifyInstance) {
     const { clinicId: requestedClinicId } = request.params as any;
     const clinicId = resolveClinicScope(request, reply, requestedClinicId);
     if (!clinicId) return;
-    const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = request.query as any;
+    const { month = thisMonth().month, year = thisMonth().year } = request.query as any;
 
     try {
-      const startDate = new Date(Number(year), Number(month) - 1, 1);
-      const endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
+      const range = eatMonthRange(`${Number(year)}-${String(Number(month)).padStart(2, '0')}`);
+      const startDate = range.start;
+      const endDate = new Date(range.end.getTime() - 1);
 
-      const [totalPatients, totalAppointments, totalConsultations, revenue, primaryDiagnoses] = await Promise.all([
+      const [totalPatients, totalAppointments, totalConsultations, revenue, primaryDiagnoses, units, appointmentsByUnit, visitsByUnit] = await Promise.all([
         prisma.patient.count({
           where: {
             clinicId,
@@ -58,7 +84,18 @@ export async function reportsRoutes(fastify: FastifyInstance) {
             consultation: { createdAt: { gte: startDate, lte: endDate }, deletedAt: null, appointment: { clinicId } }
           },
           select: { icd10Code: true, description: true }
-        })
+        }),
+        prisma.department.findMany({ where: { clinicId }, select: { id: true, code: true, name: true, isActive: true } }),
+        prisma.appointment.groupBy({
+          by: ['departmentId'],
+          where: { clinicId, deletedAt: null, date: { gte: startDate, lte: endDate } },
+          _count: true,
+        }),
+        prisma.appointment.groupBy({
+          by: ['departmentId'],
+          where: { clinicId, deletedAt: null, consultation: { createdAt: { gte: startDate, lte: endDate }, deletedAt: null } },
+          _count: true,
+        }),
       ]);
 
       return {
@@ -69,7 +106,8 @@ export async function reportsRoutes(fastify: FastifyInstance) {
           totalAppointments,
           totalConsultations,
           revenue: revenue._sum.amount || 0,
-          topDiagnoses: rankDiagnoses(primaryDiagnoses)
+          topDiagnoses: rankDiagnoses(primaryDiagnoses),
+          byUnit: visitsPerUnit(units, appointmentsByUnit, visitsByUnit),
         }
       };
     } catch (error: any) {
@@ -82,7 +120,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
     const { clinicId: requestedClinicId } = request.params as any;
     const clinicId = resolveClinicScope(request, reply, requestedClinicId);
     if (!clinicId) return;
-    const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = request.query as any;
+    const { month = thisMonth().month, year = thisMonth().year } = request.query as any;
 
     try {
       const report = await computeHmis105Report(clinicId, Number(month), Number(year));
@@ -146,7 +184,7 @@ export async function reportsRoutes(fastify: FastifyInstance) {
     const { clinicId: requestedClinicId } = request.params as any;
     const clinicId = resolveClinicScope(request, reply, requestedClinicId);
     if (!clinicId) return;
-    const { month = new Date().getMonth() + 1, year = new Date().getFullYear() } = request.query as any;
+    const { month = thisMonth().month, year = thisMonth().year } = request.query as any;
 
     try {
       const integration = await prisma.dhis2Integration.findUnique({ where: { clinicId } });

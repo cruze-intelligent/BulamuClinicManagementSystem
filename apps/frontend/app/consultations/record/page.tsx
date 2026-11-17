@@ -16,6 +16,7 @@ import {
   createAppointmentOffline,
   createConsultationOffline,
   createLabTestOffline,
+  getLocalAppointment,
   listLocalPatients,
   listLocalInventory,
   getCurrentClinicId,
@@ -33,6 +34,7 @@ import { draftProblems, draftToPayload, emptyDraft, isBlankDraft, type Prescript
 import { ageText } from '@/lib/age';
 import { formatTime, serverNow } from '@/lib/time';
 import { patientIdText } from '@/lib/patient-id';
+import { activeDepartments, defaultDepartmentId, departmentName, knownDepartments, type Department } from '@/lib/departments';
 
 function StepHeading({ n, title, hint }: { n: number; title: string; hint?: string }) {
   return (
@@ -70,6 +72,10 @@ function RecordConsultationForm() {
   const [prescriptions, setPrescriptions] = useState<PrescriptionDraft[]>([emptyDraft()]);
   const [attempted, setAttempted] = useState(false);
   const [loading, setLoading] = useState(false);
+  // The unit the visit is in (from the queue, or chosen for a walk-in), and one to send the patient on to.
+  const [units, setUnits] = useState<Department[]>([]);
+  const [visitUnit, setVisitUnit] = useState('');
+  const [sendTo, setSendTo] = useState('');
 
   useEffect(() => {
     const clinicId = getCurrentClinicId();
@@ -82,9 +88,16 @@ function RecordConsultationForm() {
     });
     void loadPatients();
     listLocalInventory(clinicId).then(setStock).catch(() => setStock([]));
+    const active = activeDepartments(clinicId);
+    setUnits(active);
+    if (appointmentId) {
+      getLocalAppointment(appointmentId).then((a) => setVisitUnit(a?.departmentId ?? '')).catch(() => undefined);
+    } else {
+      setVisitUnit(defaultDepartmentId(active));
+    }
     // A patient who reaches this device after the page opened (a first sync) still appears.
     return subscribeToLocalChanges(() => { void loadPatients(); });
-  }, [queryPatientId]);
+  }, [queryPatientId, appointmentId]);
 
   const diagnosisIssues = attempted ? diagnosisProblems(diagnoses) : [];
   // Whole shillings; a slip of the finger adding zeros is caught before saving.
@@ -126,6 +139,7 @@ function RecordConsultationForm() {
           patientId: patient.id, doctorId: user.id || '', clinicId, date: now.toISOString(),
           time: formatTime(now), notes: 'Walk-in',
           patientName: patient.name, doctorName: user.name, checkedInAt: now.toISOString(),
+          departmentId: visitUnit || null,
         });
         visitAppointmentId = made.id;
       }
@@ -146,6 +160,17 @@ function RecordConsultationForm() {
       // Tests requested at the visit go to the lab's worklist, linked to this visit.
       for (const testName of labRequests) {
         await createLabTestOffline({ patientId: patient.id, clinicId, testName, results: '', orderedBy: user.name || 'Clinician', patientName: patient.name, consultationId: consultation.id });
+      }
+
+      // Sent on to another unit (OPD to Dentistry, say): they join its queue now.
+      if (sendTo) {
+        const now = serverNow();
+        const from = departmentName(knownDepartments(clinicId), visitUnit);
+        await createAppointmentOffline({
+          patientId: patient.id, doctorId: user.id || '', clinicId, date: now.toISOString(), time: formatTime(now),
+          notes: `Sent from ${from ?? 'another unit'} by ${user.name || 'a clinician'}`,
+          patientName: patient.name, doctorName: user.name, checkedInAt: now.toISOString(), departmentId: sendTo,
+        });
       }
 
       router.push('/consultations');
@@ -187,6 +212,19 @@ function RecordConsultationForm() {
               <div role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
                 Nothing has been saved yet. Please complete {summary.join(' and ')}.
               </div>
+            )}
+
+            {units.length > 0 && (
+              <section className="flex flex-wrap items-end gap-3">
+                <div className="min-w-[12rem]">
+                  <Label htmlFor="visit-unit">Unit</Label>
+                  <Select id="visit-unit" className="mt-2" value={visitUnit} disabled={!!appointmentId} onChange={(e) => setVisitUnit(e.target.value)}>
+                    <option value="">No unit given</option>
+                    {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </Select>
+                </div>
+                {appointmentId && <p className="pb-2 text-xs text-slate-500 dark:text-slate-400">From the {departmentName(units, visitUnit) ?? ''} queue.</p>}
+              </section>
             )}
 
             {!queryPatientId && (
@@ -321,6 +359,17 @@ function RecordConsultationForm() {
               </div>
               {attempted && feeProblem && <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">{feeProblem}</p>}
             </section>
+
+            {units.length > 1 && (
+              <section>
+                <StepHeading n={10} title="Send to another unit" hint="Optional. After this visit the patient joins that unit's waiting queue - from OPD to Dentistry, say." />
+                <Label htmlFor="send-to" className="sr-only">Send the patient to another unit</Label>
+                <Select id="send-to" className="max-w-xs" value={sendTo} onChange={(e) => setSendTo(e.target.value)}>
+                  <option value="">Not sent on - the visit ends here</option>
+                  {units.filter((u) => u.id !== visitUnit).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </Select>
+              </section>
+            )}
 
             <Button type="submit" disabled={loading} className="w-full">
               {loading ? 'Saving record...' : 'Save consultation (works offline)'}

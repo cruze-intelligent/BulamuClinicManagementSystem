@@ -14,6 +14,7 @@ import {
   LocalPatient,
 } from '@/lib/local-first';
 import { Select } from '@/components/ui/select';
+import { activeDepartments, defaultDepartmentId, type Department } from '@/lib/departments';
 
 export default function BookAppointment() {
   const router = useRouter();
@@ -23,11 +24,16 @@ export default function BookAppointment() {
   const [time, setTime] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [units, setUnits] = useState<Department[]>([]);
+  const [departmentId, setDepartmentId] = useState('');
 
   useEffect(() => {
     const clinicId = getCurrentClinicId();
     if (clinicId) {
       listLocalPatients(clinicId).then(setPatients).catch(console.error);
+      const active = activeDepartments(clinicId);
+      setUnits(active);
+      setDepartmentId(defaultDepartmentId(active));
     }
   }, []);
 
@@ -48,6 +54,7 @@ export default function BookAppointment() {
         date,
         time,
         notes,
+        departmentId: departmentId || null,
         patientName: selectedPatient?.name,
         doctorName: user.name || 'Staff Clinician',
       });
@@ -83,6 +90,16 @@ export default function BookAppointment() {
                 ))}
               </Select>
             </div>
+
+            {units.length > 0 && (
+              <div>
+                <Label htmlFor="unit">Unit</Label>
+                <Select id="unit" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} required>
+                  <option value="">Choose the unit the patient is booked into</option>
+                  {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </Select>
+              </div>
+            )}
 
             <div>
               <Label htmlFor="date">Date</Label>

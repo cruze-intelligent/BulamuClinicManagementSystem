@@ -17,6 +17,7 @@ import {
   LocalAppointment,
 } from '@/lib/local-first';
 import { formatDate, formatTime, kampalaDay, serverNow, serverNowIso } from '@/lib/time';
+import { activeDepartments, defaultDepartmentId, departmentName, knownDepartments } from '@/lib/departments';
 
 type AppointmentRequest = {
   id: string;
@@ -128,6 +129,18 @@ export default function AppointmentsPage() {
     }
   };
 
+  // The patient has arrived: they join the waiting queue, in their unit. Come on another day than booked, the visit is today.
+  const checkIn = (apt: LocalAppointment) => {
+    const now = serverNow();
+    const sameDay = kampalaDay(apt.date) === kampalaDay(now);
+    const units = activeDepartments(apt.clinicId);
+    return updateAppointmentOffline(apt, {
+      checkedInAt: serverNowIso(),
+      ...(sameDay ? {} : { date: now.toISOString(), time: formatTime(now) }),
+      ...(units.length > 0 && !apt.departmentId ? { departmentId: defaultDepartmentId(units) || null } : {}),
+    });
+  };
+
   useEffect(() => {
     loadAppointments();
     loadRequests();
@@ -214,14 +227,15 @@ export default function AppointmentsPage() {
                     </div>
                     <p className="text-sm text-slate-500 dark:text-slate-400">
                       {formatDate(apt.date)} at {apt.time}
+                      {departmentName(knownDepartments(apt.clinicId), apt.departmentId) ? ` - ${departmentName(knownDepartments(apt.clinicId), apt.departmentId)}` : ''}
                     </p>
                     <p className="text-sm text-slate-600 dark:text-slate-400">Dr. {apt.doctor?.name || 'Assigned Clinician'}</p>
                     {apt.notes && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{apt.notes}</p>}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {apt.status === 'SCHEDULED' && !apt.checkedInAt && kampalaDay(apt.date) === kampalaDay(serverNow()) && (
-                      <Button size="sm" variant="outline" onClick={() => updateAppointmentOffline(apt, { checkedInAt: serverNowIso() }).catch((e) => alert(e.message))}>
-                        Check in
+                    {apt.status === 'SCHEDULED' && !apt.checkedInAt && (
+                      <Button size="sm" variant="outline" onClick={() => checkIn(apt).catch((e) => alert(e.message))}>
+                        {kampalaDay(apt.date) === kampalaDay(serverNow()) ? 'Check in' : 'Check in now'}
                       </Button>
                     )}
                     {apt.status === 'SCHEDULED' && apt.checkedInAt && (

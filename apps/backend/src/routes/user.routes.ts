@@ -28,6 +28,7 @@ export async function userRoutes(fastify: FastifyInstance) {
         select: {
           id: true,
           email: true,
+          departmentIds: true,
           name: true,
           role: true,
           isActive: true,

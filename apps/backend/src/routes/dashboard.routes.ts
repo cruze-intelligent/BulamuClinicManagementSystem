@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, resolveClinicScope } from '../middleware/auth.middleware';
 import { sendRouteError } from '../lib/http-error';
+import { eatDayRange } from '../lib/invoices';
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
 
@@ -10,8 +11,8 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     const { clinicId: requestedClinicId } = request.params as any;
     const clinicId = resolveClinicScope(request, reply, requestedClinicId);
     if (!clinicId) return;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Today starts at midnight in Kampala, wherever the server runs.
+    const today = eatDayRange().start;
 
     try {
       const [totalPatients, todayAppointments, pendingInvoices, totalRevenue] = await Promise.all([

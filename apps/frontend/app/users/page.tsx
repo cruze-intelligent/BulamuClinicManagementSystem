@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, ChevronRight, KeyRound, Pencil, Search, Trash2, UserCheck, UserPlus, UserX, X } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronRight, KeyRound, Pencil, Search, Trash2, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,9 +11,10 @@ import { roleLabel } from '@/lib/role-labels';
 import { Select } from '@/components/ui/select';
 import { useAuth } from '@/lib/useAuth';
 import { timeAgo } from '@/lib/analytics-format';
+import { rememberDepartments, sortDepartments, type Department } from '@/lib/departments';
 
-type StaffUser = { id: string; name: string; email: string; role: string; isActive: boolean; createdAt: string; lastLoginAt?: string | null };
-type Panel = { userId: string; kind: 'edit' | 'password' | 'deactivate' | 'delete' } | null;
+type StaffUser = { id: string; name: string; email: string; role: string; isActive: boolean; createdAt: string; lastLoginAt?: string | null; departmentIds?: string[] };
+type Panel = { userId: string; kind: 'edit' | 'units' | 'password' | 'deactivate' | 'delete' } | null;
 
 // The roles a facility administrator can give (never the platform administrator).
 const ROLE_OPTIONS = [
@@ -67,12 +68,19 @@ export default function UsersPage() {
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
   const [showInactive, setShowInactive] = useState(false);
+  // The facility's units, to say who works in which.
+  const [units, setUnits] = useState<Department[]>([]);
 
   const fetchUsers = async () => {
     const clinicId = JSON.parse(localStorage.getItem('user') || '{}').clinicId;
     try {
       const data = await call(`/users/${clinicId}`, 'GET');
       setUsers(Array.isArray(data.users) ? data.users : []);
+      const depts = await call(`/departments?clinicId=${clinicId}`, 'GET').catch(() => null);
+      if (depts) {
+        setUnits(sortDepartments(depts.departments as Department[]));
+        rememberDepartments(clinicId, depts.departments, depts.mine);
+      }
       setLoadError('');
     } catch {
       setLoadError(navigator.onLine ? 'Could not load your staff - please try again.' : 'You are offline. Staff accounts load when the connection returns.');
@@ -116,6 +124,7 @@ export default function UsersPage() {
     <StaffCard
       key={user.id}
       user={user}
+      units={units}
       isMe={user.id === me?.id}
       panel={panel?.userId === user.id ? panel.kind : null}
       setPanel={(kind) => { setNotice(''); setPanel(kind ? { userId: user.id, kind } : null); }}
@@ -213,9 +222,10 @@ export default function UsersPage() {
 }
 
 function StaffCard({
-  user, isMe, panel, setPanel, onChanged,
+  user, units, isMe, panel, setPanel, onChanged,
 }: {
   user: StaffUser;
+  units: Department[];
   isMe: boolean;
   panel: NonNullable<Panel>['kind'] | null;
   setPanel: (kind: NonNullable<Panel>['kind'] | null) => void;
@@ -226,6 +236,9 @@ function StaffCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [hasRecords, setHasRecords] = useState(false);
+  const [picked, setPicked] = useState<string[]>(user.departmentIds ?? []);
+  const theirUnits = units.filter((u) => (user.departmentIds ?? []).includes(u.id));
+  const openUnits = units.filter((u) => u.isActive || picked.includes(u.id));
 
   const run = async (action: () => Promise<unknown>, message: string) => {
     setBusy(true);
@@ -246,6 +259,7 @@ function StaffCard({
     setHasRecords(false);
     setEdit({ name: user.name, email: user.email, role: user.role });
     setPassword('');
+    setPicked(user.departmentIds ?? []);
     setPanel(kind);
   };
 
@@ -267,6 +281,7 @@ function StaffCard({
             <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
               <span className={`rounded px-2 py-0.5 font-medium ${ROLE_BADGE[user.role] ?? ROLE_BADGE.STAFF}`}>{roleLabel(user.role)}</span>
               {!user.isActive && <span className="rounded bg-red-100 px-2 py-0.5 font-medium text-red-800 dark:bg-red-950 dark:text-red-300">Deactivated</span>}
+              {theirUnits.map((u) => <span key={u.id} className="rounded border border-slate-200 px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:text-slate-300">{u.name}</span>)}
               {user.lastLoginAt !== undefined && (
                 <span className="text-slate-500 dark:text-slate-400">{user.lastLoginAt ? `Last signed in ${timeAgo(user.lastLoginAt)}` : 'Never signed in'}</span>
               )}
@@ -275,6 +290,7 @@ function StaffCard({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={() => open('edit')} aria-label={`Edit ${user.name}`}><Pencil className="size-4" aria-hidden="true" /> Edit</Button>
+          {units.some((u) => u.isActive) && <Button size="sm" variant="outline" onClick={() => open('units')} aria-label={`Units ${user.name} works in`}><Building2 className="size-4" aria-hidden="true" /> Units</Button>}
           {!isMe && <Button size="sm" variant="outline" onClick={() => open('password')} aria-label={`Reset password for ${user.name}`}><KeyRound className="size-4" aria-hidden="true" /> Password</Button>}
           {!isMe && (user.isActive ? (
             <Button size="sm" variant="outline" onClick={() => open('deactivate')} aria-label={`Deactivate ${user.name}`}><UserX className="size-4" aria-hidden="true" /> Deactivate</Button>
@@ -321,6 +337,36 @@ function StaffCard({
           </div>
           {error && <p role="alert" className="text-sm text-red-600 sm:col-span-3">{error}</p>}
           <div className="flex gap-2 sm:col-span-3">
+            <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving...' : 'Save'}</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setPanel(null)}>Cancel</Button>
+          </div>
+        </form>
+      )}
+
+      {panel === 'units' && (
+        <form
+          className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-800"
+          aria-label={`Units ${user.name} works in`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(() => call(`/users/${user.id}/departments`, 'PUT', { departmentIds: picked }), picked.length ? `${user.name} works in ${units.filter((u) => picked.includes(u.id)).map((u) => u.name).join(', ')}.` : `${user.name} works across the facility.`);
+          }}
+        >
+          <p className="text-sm font-medium">Units {user.name} works in</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Their own unit's waiting queue opens first for them, and their bookings and walk-ins go to it. Choose none if they work across the facility.</p>
+          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Units">
+            {openUnits.map((u) => {
+              const on = picked.includes(u.id);
+              return (
+                <button key={u.id} type="button" aria-pressed={on} onClick={() => setPicked((list) => (on ? list.filter((id) => id !== u.id) : [...list, u.id]))}
+                  className={`rounded-full border px-3 py-1 text-sm transition-colors ${on ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300 text-slate-700 hover:border-emerald-600 dark:border-slate-700 dark:text-slate-300'}`}>
+                  {u.name}
+                </button>
+              );
+            })}
+          </div>
+          {error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}
+          <div className="mt-3 flex gap-2">
             <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving...' : 'Save'}</Button>
             <Button type="button" size="sm" variant="outline" onClick={() => setPanel(null)}>Cancel</Button>
           </div>

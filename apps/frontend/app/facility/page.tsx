@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/useAuth';
 import { FacilityDetailsEditor } from '@/components/facility-details-editor';
+import { UnitsSettings } from '@/components/units-settings';
 
 const MAX_BYTES = 500 * 1024;
 const MAX_MOTTO = 80;
@@ -216,6 +217,8 @@ export default function FacilityPage() {
             </p>
           )}
         </Card>
+
+        {clinicId && <UnitsSettings clinicId={clinicId} isAdmin={isAdmin} />}
       </div>
     </div>
   );

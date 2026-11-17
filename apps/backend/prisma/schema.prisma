@@ -27,6 +27,9 @@ model User {
   // Notification types this user has switched email off for (in-app
   // notifications are always kept - only the email copy is optional).
   emailOptOuts NotificationType[] @default([])
+  // The units (departments) this person works in; their queue opens first for
+  // them. Empty: they work across the facility.
+  departmentIds String[] @default([])
   // Platform usage, for the operator's analytics: when they last signed in and
   // when they were last seen using the app (updated at most every few minutes).
   lastLoginAt DateTime?
@@ -157,6 +160,7 @@ model Clinic {
   patientPayments   PatientPayment[]
   expenses          Expense[]
   detailChanges     FacilityDetailChange[]
+  departments       Department[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -438,6 +442,27 @@ enum ReferralUrgency {
 // --- Inpatients ------------------------------------------------------------
 
 // A ward at a facility, with its bed capacity.
+// One of the facility's units - the clinics and departments that see patients:
+// General OPD, Dentistry, Orthopaedics, Eye clinic... A standard unit carries its
+// code (lib/departments.ts), so figures compare across facilities; a facility can
+// also name its own. Each has its own waiting queue. Closed, never deleted: past
+// visits keep its name.
+model Department {
+  id           String        @id @default(uuid())
+  clinicId     String
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  code         String?
+  name         String
+  isActive     Boolean       @default(true)
+  appointments Appointment[]
+  wards        Ward[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([clinicId, name])
+  @@unique([clinicId, code])
+}
+
 model Ward {
   id         String      @id @default(uuid())
   clinicId   String
@@ -445,6 +470,9 @@ model Ward {
   name       String
   type       WardType    @default(GENERAL)
   beds       Int
+  // The unit the ward belongs to (the orthopaedic ward to Orthopaedics); empty: shared.
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   isActive   Boolean     @default(true)
   admissions Admission[]
   createdAt  DateTime    @default(now())
@@ -625,6 +653,9 @@ model Appointment {
   // When the patient arrived and joined the waiting queue (checked in at
   // reception, or a walk-in). Clinicians see patients in this order.
   checkedInAt DateTime?
+  // The unit the visit is in - its own queue. Empty: the facility works as one.
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   consultation Consultation?
   appointmentRequest AppointmentRequest?
   deletedAt   DateTime?
@@ -633,6 +664,7 @@ model Appointment {
 
   @@index([clinicId, date])
   @@index([clinicId, checkedInAt])
+  @@index([clinicId, departmentId])
   @@index([patientId])
   @@index([doctorId])
 }

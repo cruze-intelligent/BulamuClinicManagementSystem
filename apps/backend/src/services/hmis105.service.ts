@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { getHmisAgeCohort, HMIS_AGE_COHORTS } from '../lib/age';
 import { HMIS_SERVICE_TAGS } from '../lib/hmis';
 import { classifyHmisCondition } from '../lib/clinical';
+import { eatMonthRange } from '../lib/invoices';
 
 /**
  * Computes the HMIS 105 Health Unit Outpatient Monthly Report for a clinic.
@@ -9,8 +10,10 @@ import { classifyHmisCondition } from '../lib/clinical';
  * two never drift out of sync with each other.
  */
 export async function computeHmis105Report(clinicId: string, month: number, year: number) {
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0, 23, 59, 59);
+  // The month in Kampala time, wherever the server runs.
+  const range = eatMonthRange(`${year}-${String(month).padStart(2, '0')}`);
+  const startDate = range.start;
+  const endDate = new Date(range.end.getTime() - 1);
 
   const clinic = await prisma.clinic.findUnique({ where: { id: clinicId } });
   const consultations = await prisma.consultation.findMany({

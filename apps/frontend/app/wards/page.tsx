@@ -12,11 +12,12 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/lib/useAuth';
 import { WARD_TYPES, wardTypeLabel } from '@/lib/wards';
+import { activeDepartments, departmentName, knownDepartments, type Department } from '@/lib/departments';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
-type Ward = { id: string; name: string; type: string; beds: number; occupied: number; isActive: boolean };
+type Ward = { id: string; name: string; type: string; beds: number; occupied: number; isActive: boolean; departmentId?: string | null };
 type Admission = {
   id: string; bed: string | null; reason: string; admittedAt: string; daysAdmitted: number;
   ward: { id: string; name: string }; attendingDoctor: { name: string } | null;
@@ -46,7 +47,10 @@ function Wards() {
   const [showAdmit, setShowAdmit] = useState(!!presetPatient);
   const [showManage, setShowManage] = useState(false);
   const [admit, setAdmit] = useState({ patientId: presetPatient, wardId: '', bed: '', reason: '', admissionIcd10Code: '', attendingDoctorId: '' });
-  const [newWard, setNewWard] = useState({ name: '', type: 'GENERAL', beds: '10' });
+  const [newWard, setNewWard] = useState({ name: '', type: 'GENERAL', beds: '10', departmentId: '' });
+  const [units, setUnits] = useState<Department[]>([]);
+  const [allUnits, setAllUnits] = useState<Department[]>([]);
+  useEffect(() => { setUnits(activeDepartments(clinicId)); setAllUnits(knownDepartments(clinicId)); }, [clinicId]);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState('');
 
@@ -101,8 +105,8 @@ function Wards() {
   const addWard = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await post('/wards', { ...newWard, beds: Number(newWard.beds) });
-      setNewWard({ name: '', type: 'GENERAL', beds: '10' });
+      await post('/wards', { ...newWard, beds: Number(newWard.beds), departmentId: newWard.departmentId || null });
+      setNewWard({ name: '', type: 'GENERAL', beds: '10', departmentId: '' });
       await load();
     } catch (error: any) {
       alert(error.message);
@@ -159,13 +163,27 @@ function Wards() {
                 </Select>
               </div>
               <div><Label htmlFor="ward-beds">Beds</Label><Input id="ward-beds" type="number" min={1} max={500} required value={newWard.beds} onChange={(e) => setNewWard((w) => ({ ...w, beds: e.target.value }))} /></div>
+              {units.length > 0 && (
+                <div className="sm:col-span-2"><Label htmlFor="ward-unit">Unit</Label>
+                  <Select id="ward-unit" value={newWard.departmentId} onChange={(e) => setNewWard((w) => ({ ...w, departmentId: e.target.value }))}>
+                    <option value="">Shared by the whole facility</option>
+                    {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </Select>
+                </div>
+              )}
               <Button type="submit" className="sm:col-span-4 sm:w-fit">Add ward</Button>
             </form>
             <ul className="divide-y divide-slate-200 dark:divide-slate-800">
               {wards.map((w) => (
                 <li key={w.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                  <span>{w.name} <span className="text-slate-500">· {wardTypeLabel(w.type)} · {w.occupied}/{w.beds} beds{w.isActive ? '' : ' · closed'}</span></span>
-                  <span className="flex gap-2">
+                  <span>{w.name} <span className="text-slate-500">· {wardTypeLabel(w.type)}{departmentName(allUnits, w.departmentId) ? ` · ${departmentName(allUnits, w.departmentId)}` : ''} · {w.occupied}/{w.beds} beds{w.isActive ? '' : ' · closed'}</span></span>
+                  <span className="flex flex-wrap gap-2">
+                    {units.length > 0 && (
+                      <Select aria-label={`Unit of ${w.name}`} className="h-8 w-auto py-0 text-xs" value={w.departmentId ?? ''} onChange={(e) => editWard(w, { departmentId: e.target.value || null })}>
+                        <option value="">Whole facility</option>
+                        {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </Select>
+                    )}
                     <Button size="sm" variant="outline" onClick={() => { const beds = prompt(`Number of beds on ${w.name}:`, String(w.beds)); if (beds) editWard(w, { beds: Number(beds) }); }}>Beds</Button>
                     <Button size="sm" variant="ghost" onClick={() => editWard(w, { isActive: !w.isActive })}>{w.isActive ? 'Close ward' : 'Reopen'}</Button>
                   </span>
@@ -222,7 +240,7 @@ function Wards() {
                   <div className="mb-3 flex items-center justify-between">
                     <div>
                       <h2 className="font-semibold">{w.name}</h2>
-                      <p className="text-xs text-slate-500">{wardTypeLabel(w.type)}</p>
+                      <p className="text-xs text-slate-500">{wardTypeLabel(w.type)}{departmentName(allUnits, w.departmentId) ? ` · ${departmentName(allUnits, w.departmentId)}` : ''}</p>
                     </div>
                     <span className={`rounded px-2 py-0.5 text-xs font-medium ${w.occupied >= w.beds ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'}`}>
                       {w.occupied}/{w.beds} beds{w.occupied >= w.beds ? ' - full' : ''}

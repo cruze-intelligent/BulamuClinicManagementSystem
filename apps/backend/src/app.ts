@@ -9,6 +9,7 @@ import { authRoutes } from './routes/auth.routes';
 import { clinicRoutes } from './routes/clinic.routes';
 import { facilityDetailsRoutes } from './routes/facility-details.routes';
 import { clinicalSummaryRoutes } from './routes/clinical-summary.routes';
+import { departmentRoutes } from './routes/department.routes';
 import { consultationRoutes } from './routes/consultation.routes';
 import { dispensingRoutes } from './routes/dispensing.routes';
 import { admissionRoutes } from './routes/admission.routes';
@@ -183,6 +184,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(clinicRoutes);
   await server.register(facilityDetailsRoutes);
   await server.register(clinicalSummaryRoutes);
+  await server.register(departmentRoutes);
   await server.register(authRoutes);
   await server.register(patientRoutes);
   await server.register(appointmentRoutes);

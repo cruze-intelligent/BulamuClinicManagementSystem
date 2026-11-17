@@ -12,6 +12,7 @@ import { consultationChildren, linkStockItems } from '../lib/consultation-record
 import { parseFee } from '../lib/invoices';
 import { sendRouteError } from '../lib/http-error';
 import { parseConsultationNotes } from '../lib/consultation-notes';
+import { sortDepartments } from '../lib/departments';
 
 /**
  * A time a device recorded (when a record was made, when a patient arrived).
@@ -158,6 +159,10 @@ export async function syncRoutes(fastify: FastifyInstance) {
               if (stale) continue;
             }
             const clinicIdForRecord = existing ? existing.clinicId : scopedClinicId;
+            // The unit must be one of this facility's; anything else leaves the visit without one.
+            const departmentId = payload.departmentId
+              ? (await prisma.department.findFirst({ where: { id: payload.departmentId, clinicId: clinicIdForRecord }, select: { id: true } }))?.id ?? null
+              : null;
 
             record = await prisma.appointment.upsert({
               where: { id: payload.id },
@@ -167,6 +172,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 status: payload.status || 'SCHEDULED',
                 notes: payload.notes || null,
                 ...(payload.checkedInAt !== undefined ? { checkedInAt: payload.checkedInAt ? deviceTime(payload.checkedInAt) : null } : {}),
+                ...(payload.departmentId !== undefined ? { departmentId } : {}),
                 updatedAt: incomingUpdatedAt,
               },
               create: {
@@ -179,6 +185,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 status: payload.status || 'SCHEDULED',
                 notes: payload.notes || null,
                 checkedInAt: payload.checkedInAt ? deviceTime(payload.checkedInAt) : null,
+                departmentId,
                 createdAt: deviceTime(payload.createdAt),
                 updatedAt: incomingUpdatedAt,
               },
@@ -589,7 +596,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
     const now = new Date();
 
     try {
-      const [patients, appointments, consultations, labTests, inventory, reproductiveHealth] = await Promise.all([
+      const [patients, appointments, consultations, labTests, inventory, reproductiveHealth, departments, me] = await Promise.all([
         prisma.patient.findMany({
           where: { clinicId, updatedAt: { gte: sinceDate } },
         }),
@@ -612,6 +619,9 @@ export async function syncRoutes(fastify: FastifyInstance) {
           where: { patient: { clinicId }, updatedAt: { gte: sinceDate } },
           include: { patient: { select: { name: true, phone: true } } },
         }),
+        // A short list, sent whole each time: the units, closed ones too (old visits name them).
+        prisma.department.findMany({ where: { clinicId }, select: { id: true, code: true, name: true, isActive: true } }),
+        prisma.user.findUnique({ where: { id: getAuthUser(request).userId }, select: { departmentIds: true } }),
       ]);
 
       return {
@@ -623,6 +633,8 @@ export async function syncRoutes(fastify: FastifyInstance) {
         labTests,
         inventory,
         reproductiveHealth,
+        departments: sortDepartments(departments),
+        myDepartmentIds: me?.departmentIds ?? [],
       };
     } catch (error: any) {
       return sendRouteError(reply, error);

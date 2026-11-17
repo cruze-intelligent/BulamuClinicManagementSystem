@@ -27,7 +27,12 @@ export async function appointmentRoutes(fastify: FastifyInstance) {
       }
 
       const appointment = await prisma.appointment.create({
-        data: { patientId, doctorId, clinicId, date: new Date(date), time, notes },
+        data: {
+          patientId, doctorId, clinicId, date: new Date(date), time, notes,
+          departmentId: typeof (request.body as any)?.departmentId === 'string'
+            ? (await prisma.department.findFirst({ where: { id: (request.body as any).departmentId, clinicId }, select: { id: true } }))?.id ?? null
+            : null,
+        },
         include: { patient: true, doctor: { select: { id: true, name: true } } }
       });
 

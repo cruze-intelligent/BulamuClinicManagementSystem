@@ -14,6 +14,7 @@ import { DOCUMENT_ACCEPT, DOCUMENT_TYPES_HELP, downloadError, openDocumentPrevie
 import { useAuth } from '@/lib/useAuth';
 import { ageText } from '@/lib/age';
 import { patientIdText } from '@/lib/patient-id';
+import { AddToQueue } from '@/components/add-to-queue';
 import { roleLabel } from '@/lib/role-labels';
 import { validateReproductiveHealthForm } from '@/lib/reproductive-health-validation';
 import { CommentsSection } from '@/components/comments-section';
@@ -481,6 +482,10 @@ function PatientHistoryContent() {
                 )}
               </>
             ) : null}
+          </div>
+
+          <div className="mt-4 border-t pt-4">
+            <AddToQueue patient={patient} />
           </div>
 
           {canEditClinicalData && (

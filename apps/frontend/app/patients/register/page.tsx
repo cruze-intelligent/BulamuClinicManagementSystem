@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
-import { createPatientOffline, getCurrentClinicId } from '@/lib/local-first';
+import { createAppointmentOffline, createPatientOffline, getCurrentClinicId, getCurrentUser } from '@/lib/local-first';
+import { activeDepartments, defaultDepartmentId, type Department } from '@/lib/departments';
+import { formatTime, serverNow } from '@/lib/time';
 import { LinkExistingPatient } from '@/components/link-existing-patient';
 import { Select } from '@/components/ui/select';
 import { BirthDateInput, birthDatePayload, emptyBirthDate, type BirthDateValue } from '@/components/birth-date-input';
@@ -53,14 +55,27 @@ function NewPatientForm() {
   const [district, setDistrict] = useState('');
   const [consentGiven, setConsentGiven] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Most patients are registered as they arrive: they join today's waiting queue at once.
+  const [queueNow, setQueueNow] = useState(true);
+  const [units, setUnits] = useState<Department[]>([]);
+  const [unit, setUnit] = useState('');
+  useEffect(() => {
+    const active = activeDepartments(getCurrentClinicId());
+    setUnits(active);
+    setUnit(defaultDepartmentId(active));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (queueNow && units.length > 0 && !unit) {
+      alert('Choose the unit the patient is here for, or untick "Add to today\'s waiting queue"');
+      return;
+    }
     setLoading(true);
 
     try {
       const clinicId = getCurrentClinicId() || 'default-clinic';
-      await createPatientOffline({
+      const registered = await createPatientOffline({
         name,
         phone,
         email: email.trim() || undefined,
@@ -76,6 +91,14 @@ function NewPatientForm() {
         district: district || undefined,
         consentGiven,
       });
+      if (queueNow) {
+        const user = getCurrentUser();
+        const now = serverNow();
+        await createAppointmentOffline({
+          patientId: registered.id, doctorId: user.id || '', clinicId, date: now.toISOString(), time: formatTime(now), notes: 'Walk-in',
+          patientName: registered.name, doctorName: user.name, checkedInAt: now.toISOString(), departmentId: units.length > 0 ? unit : null,
+        });
+      }
 
       setName('');
       setPhone('');
@@ -86,7 +109,7 @@ function NewPatientForm() {
       setParish('');
       setSubCounty('');
       setDistrict('');
-      router.push('/patients');
+      router.push(queueNow ? '/appointments' : '/patients');
     } catch (error: any) {
       alert(`Error saving patient: ${error.message}`);
     } finally {
@@ -184,6 +207,23 @@ function NewPatientForm() {
               <input type="checkbox" checked={consentGiven} onChange={(e) => setConsentGiven(e.target.checked)} />
               Patient has given consent for their data to be recorded and shared for care coordination
             </label>
+
+            <div className="flex flex-wrap items-end gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-800">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={queueNow} onChange={(e) => setQueueNow(e.target.checked)} />
+                Add to today&apos;s waiting queue
+              </label>
+              {queueNow && units.length > 0 && (
+                <div className="min-w-[12rem]">
+                  <Label htmlFor="queue-unit" className="text-xs">Unit</Label>
+                  <Select id="queue-unit" className="mt-1" value={unit} onChange={(e) => setUnit(e.target.value)}>
+                    <option value="">Choose the unit</option>
+                    {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </Select>
+                </div>
+              )}
+              <p className="w-full text-xs text-slate-500 dark:text-slate-400">Untick when registering a patient who is not here now, for example to book them for another day.</p>
+            </div>
 
           <Button type="submit" disabled={loading} className="w-full">
             {loading ? 'Saving...' : 'Register Patient (Offline Ready)'}

@@ -1,6 +1,7 @@
 import type { Allergy, AllergyStatus } from "./allergy";
 import { assertCanSave, markSubscriptionLapsed, SubscriptionRequiredError } from "./subscription-state";
 import { rememberServerTime, serverNowIso } from "./time";
+import { rememberDepartments } from "./departments";
 
 export type LocalPatient = {
   id: string;
@@ -44,6 +45,8 @@ export type LocalAppointment = {
   notes?: string;
   /** When the patient arrived and joined the waiting queue. */
   checkedInAt?: string | null;
+  /** The unit (department) the visit is in - its own queue. Empty: the facility works as one. */
+  departmentId?: string | null;
   patient?: { name: string; phone: string };
   doctor?: { name: string };
   createdAt: string;
@@ -335,6 +338,10 @@ export async function listLocalPatients(clinicId: string): Promise<LocalPatient[
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+export async function getLocalAppointment(id: string): Promise<LocalAppointment | undefined> {
+  return getRecord<LocalAppointment>(APPOINTMENT_STORE, id);
+}
+
 export async function getLocalPatientById(id: string): Promise<LocalPatient | undefined> {
   return getRecord<LocalPatient>(PATIENT_STORE, id);
 }
@@ -534,6 +541,8 @@ export async function createAppointmentOffline(input: {
   doctorName?: string;
   /** A walk-in joins the waiting queue at once. */
   checkedInAt?: string;
+  /** The unit the patient is booked into. */
+  departmentId?: string | null;
 }): Promise<LocalAppointment> {
   await assertCanSave();
   const now = serverNowIso();
@@ -547,6 +556,7 @@ export async function createAppointmentOffline(input: {
     status: "SCHEDULED",
     notes: input.notes,
     checkedInAt: input.checkedInAt ?? null,
+    departmentId: input.departmentId || null,
     patient: input.patientName ? { name: input.patientName, phone: "" } : undefined,
     doctor: input.doctorName ? { name: input.doctorName } : undefined,
     createdAt: now,
@@ -570,6 +580,7 @@ export async function createAppointmentOffline(input: {
       status: appointment.status,
       notes: appointment.notes,
       checkedInAt: appointment.checkedInAt,
+      departmentId: appointment.departmentId ?? null,
       createdAt: appointment.createdAt,
       updatedAt: appointment.updatedAt,
     },
@@ -594,7 +605,7 @@ export async function createAppointmentOffline(input: {
  */
 export async function updateAppointmentOffline(
   appointment: LocalAppointment,
-  change: Partial<Pick<LocalAppointment, "status" | "checkedInAt">>,
+  change: Partial<Pick<LocalAppointment, "status" | "checkedInAt" | "departmentId" | "date" | "time">>,
 ): Promise<LocalAppointment> {
   await assertCanSave();
   const now = serverNowIso();
@@ -608,7 +619,8 @@ export async function updateAppointmentOffline(
     payload: {
       id: updated.id, patientId: updated.patientId, doctorId: updated.doctorId, clinicId: updated.clinicId,
       date: updated.date, time: updated.time, status: updated.status, notes: updated.notes,
-      checkedInAt: updated.checkedInAt ?? null, createdAt: updated.createdAt, updatedAt: updated.updatedAt,
+      checkedInAt: updated.checkedInAt ?? null, departmentId: updated.departmentId ?? null,
+      createdAt: updated.createdAt, updatedAt: updated.updatedAt,
     },
     createdAt: now,
     attempts: 0,
@@ -1061,6 +1073,8 @@ export async function pullSyncUpdates(clinicId: string) {
     if (response.ok) rememberServerTime(data.syncedAt, pulledAt);
 
     if (response.ok && data.success) {
+      // The facility's units, and the ones this person works in, for booking and the queue offline.
+      if (Array.isArray(data.departments)) rememberDepartments(clinicId, data.departments, data.myDepartmentIds);
       if (data.patients?.length) await cachePatients(data.patients);
       if (data.appointments?.length) await cacheAppointments(data.appointments);
       if (data.consultations?.length) await cacheConsultations(data.consultations);

@@ -28,6 +28,14 @@ const NOTE_KINDS: AdmissionNoteKind[] = ['NURSING_NOTE', 'WARD_ROUND', 'OBSERVAT
 const OPERATION_NOTE_ROLES = ['DOCTOR', 'ADMIN'];
 const CLINICAL = ['DOCTOR', 'NURSE', 'ADMIN'];
 
+/** The unit given for a ward: null for none, false when it is not one of the facility's. */
+async function unitOf(clinicId: string, value: unknown): Promise<string | null | false> {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value !== 'string') return false;
+  const unit = await prisma.department.findFirst({ where: { id: value, clinicId }, select: { id: true } });
+  return unit ? unit.id : false;
+}
+
 const OUTCOME_LABEL: Record<DischargeOutcome, string> = {
   RECOVERED: 'Discharged - recovered',
   IMPROVED: 'Discharged - improved',
@@ -79,7 +87,9 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     const clash = await prisma.ward.findUnique({ where: { clinicId_name: { clinicId: authUser.clinicId, name } } });
     if (clash) return reply.status(409).send({ error: 'A ward with this name already exists' });
 
-    const ward = await prisma.ward.create({ data: { clinicId: authUser.clinicId, name, type, beds } });
+    const departmentId = await unitOf(authUser.clinicId, body.departmentId);
+    if (departmentId === false) return reply.status(400).send({ error: 'That unit is not part of this facility' });
+    const ward = await prisma.ward.create({ data: { clinicId: authUser.clinicId, name, type, beds, departmentId } });
     await recordAudit({ entity: 'Ward', recordId: ward.id, clinicId: authUser.clinicId, action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { name, beds } });
     return { success: true, ward: { ...ward, occupied: 0 } };
   });
@@ -99,6 +109,11 @@ export async function admissionRoutes(fastify: FastifyInstance) {
       data.name = name;
     }
     if (body.type !== undefined && WARD_TYPES.includes(body.type)) data.type = body.type;
+    if (body.departmentId !== undefined) {
+      const departmentId = await unitOf(authUser.clinicId, body.departmentId);
+      if (departmentId === false) return reply.status(400).send({ error: 'That unit is not part of this facility' });
+      data.departmentId = departmentId;
+    }
     if (body.beds !== undefined) {
       const beds = Number(body.beds);
       if (!Number.isInteger(beds) || beds < 1 || beds > 500) return reply.status(400).send({ error: 'Beds must be a whole number between 1 and 500' });

@@ -102,9 +102,9 @@ export default function ReportsPage() {
   };
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen p-4 sm:p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Reports & Surveillance</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -118,7 +118,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Tab Selection */}
-        <div className="flex gap-2 mb-6 border-b border-slate-200 dark:border-slate-800 pb-2">
+        <div className="flex flex-wrap gap-2 mb-6 border-b border-slate-200 dark:border-slate-800 pb-2">
           <Button
             variant={activeTab === 'overview' ? 'default' : 'ghost'}
             onClick={() => setActiveTab('overview')}
@@ -138,7 +138,7 @@ export default function ReportsPage() {
 
         {/* Control Card */}
         <Card className="p-6 mb-6">
-          <div className="flex gap-4 items-end">
+          <div className="flex flex-wrap gap-4 items-end">
             <div>
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Reporting Month</label>
               <Select className="mt-1"
@@ -210,6 +210,33 @@ export default function ReportsPage() {
                 ))}
               </div>
             </Card>
+
+            {report.byUnit?.length > 0 && (
+              <Card className="mt-6 p-6" data-testid="visits-by-unit">
+                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Visits by unit</h2>
+                <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">Booked: appointments in the unit this month. Seen: visits recorded there.</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                        <th scope="col" className="py-2 pr-4 font-medium">Unit</th>
+                        <th scope="col" className="py-2 pr-4 text-right font-medium">Booked</th>
+                        <th scope="col" className="py-2 text-right font-medium">Seen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.byUnit.map((row: { name: string; appointments: number; visits: number }) => (
+                        <tr key={row.name} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
+                          <td className="py-2 pr-4 font-medium text-slate-800 dark:text-slate-200">{row.name}</td>
+                          <td className="py-2 pr-4 text-right tabular-nums">{row.appointments}</td>
+                          <td className="py-2 text-right tabular-nums">{row.visits}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            )}
           </>
         )}
 
