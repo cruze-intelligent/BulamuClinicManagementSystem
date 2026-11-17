@@ -728,6 +728,8 @@ export type DischargeSummaryInput = SampleOption & {
   outcome: string;
   dischargeDiagnosis: string | null;
   dischargeSummary: string | null;
+  /** Procedures and operations during the stay, one per paragraph. */
+  procedures?: string | null;
   followUpInstructions: string | null;
   referredTo: string | null;
   allergies: string;
@@ -765,6 +767,7 @@ export async function generateDischargeSummaryPdf(input: DischargeSummaryInput):
       { heading: 'Reason for admission', body: input.admissionReason },
       { heading: 'Final diagnosis', body: input.dischargeDiagnosis },
       { heading: 'Summary of the stay and treatment', body: input.dischargeSummary },
+      { heading: 'Procedures and operations', body: input.procedures },
       { heading: 'Follow-up and medicines to continue at home', body: input.followUpInstructions },
     ],
     signatures: [

@@ -13,12 +13,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/lib/useAuth';
 import { openPdfWithAuth } from '@/lib/download';
 import { facilityTypeLabel } from '@/lib/facility-types';
-import { DISCHARGE_OUTCOMES, NOTE_KINDS, VITAL_FIELDS, abnormalVitals, vitalsText } from '@/lib/wards';
+import {
+  ANAESTHESIA_TYPES, DISCHARGE_OUTCOMES, KIND_LABEL, NOTE_KINDS, VITAL_FIELDS, abnormalVitals, structuredFields, structuredProblem, structuredTitle, vitalsText,
+} from '@/lib/wards';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const KIND_LABEL: Record<string, string> = { OBSERVATION: 'Observations', NURSING_NOTE: 'Nursing note', WARD_ROUND: 'Ward round', TRANSFER: 'Transfer' };
 
 export default function AdmissionPage() {
   return (
@@ -38,7 +39,8 @@ function AdmissionChart() {
   const [wards, setWards] = useState<any[]>([]);
   const [clinics, setClinics] = useState<any[]>([]);
   const [error, setError] = useState('');
-  const [note, setNote] = useState<{ kind: string; note: string; vitals: Record<string, string> }>({ kind: 'OBSERVATION', note: '', vitals: {} });
+  const [note, setNote] = useState<{ kind: string; note: string; vitals: Record<string, string>; details: Record<string, string> }>({ kind: 'OBSERVATION', note: '', vitals: {}, details: {} });
+  const [noteProblem, setNoteProblem] = useState('');
   const [panel, setPanel] = useState<'none' | 'transfer' | 'discharge'>('none');
   const [transfer, setTransfer] = useState({ wardId: '', bed: '', note: '' });
   const [discharge, setDischarge] = useState({
@@ -86,9 +88,18 @@ function AdmissionChart() {
 
   const addNote = async (e: React.FormEvent) => {
     e.preventDefault();
+    const fields = structuredFields(note.kind);
+    if (fields) {
+      const problem = structuredProblem(note.kind, note.details);
+      setNoteProblem(problem ?? '');
+      if (problem) return;
+      const ok = await send(`/admissions/${id}/notes`, { kind: note.kind, details: note.details });
+      if (ok) setNote({ kind: note.kind, note: '', vitals: {}, details: {} });
+      return;
+    }
     const vitals = Object.fromEntries(Object.entries(note.vitals).filter(([, v]) => v !== ''));
     const ok = await send(`/admissions/${id}/notes`, { kind: note.kind, note: note.note || undefined, vitals: Object.keys(vitals).length ? vitals : undefined });
-    if (ok) setNote({ kind: note.kind, note: '', vitals: {} });
+    if (ok) setNote({ kind: note.kind, note: '', vitals: {}, details: {} });
   };
 
   const doTransfer = async (e: React.FormEvent) => {
@@ -245,8 +256,8 @@ function AdmissionChart() {
             <h2 className="mb-3 font-semibold">Add to the chart</h2>
             <form onSubmit={addNote} className="space-y-3">
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Entry type">
-                {NOTE_KINDS.map((k) => (
-                  <button key={k.value} type="button" role="radio" aria-checked={note.kind === k.value} onClick={() => setNote((n) => ({ ...n, kind: k.value }))}
+                {NOTE_KINDS.filter((k) => !('roles' in k) || (role && (k.roles as readonly string[]).includes(role))).map((k) => (
+                  <button key={k.value} type="button" role="radio" aria-checked={note.kind === k.value} onClick={() => { setNoteProblem(''); setNote((n) => ({ ...n, kind: k.value, details: k.value === 'OPERATION_NOTE' && !n.details.surgeon && user?.name ? { surgeon: user.name } : n.details })); }}
                     className={`rounded-md border px-3 py-1.5 text-sm ${note.kind === k.value ? 'border-emerald-700 bg-emerald-50 font-medium text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200' : 'border-slate-300 dark:border-slate-700'}`}>
                     {k.label}
                   </button>
@@ -263,8 +274,29 @@ function AdmissionChart() {
                   ))}
                 </div>
               )}
-              <Textarea rows={note.kind === 'OBSERVATION' ? 2 : 4} value={note.note} onChange={(e) => setNote((n) => ({ ...n, note: e.target.value }))}
-                placeholder={note.kind === 'WARD_ROUND' ? 'Assessment and plan' : note.kind === 'OBSERVATION' ? 'Comment (optional)' : 'What was done and how the patient is'} aria-label="Note" />
+              {structuredFields(note.kind) ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {structuredFields(note.kind)!.map((f) => (
+                    <div key={f.key} className={f.long ? 'sm:col-span-2' : ''}>
+                      <Label htmlFor={`d-${f.key}`} className="text-xs">{f.label}{!f.required && <span className="font-normal text-slate-500"> (optional)</span>}</Label>
+                      {note.kind === 'OPERATION_NOTE' && f.key === 'anaesthesia' ? (
+                        <Select id={`d-${f.key}`} value={note.details[f.key] ?? ''} onChange={(e) => setNote((n) => ({ ...n, details: { ...n.details, [f.key]: e.target.value } }))}>
+                          <option value="">Choose</option>
+                          {ANAESTHESIA_TYPES.map((a) => <option key={a} value={a}>{a}</option>)}
+                        </Select>
+                      ) : f.long ? (
+                        <Textarea id={`d-${f.key}`} rows={3} value={note.details[f.key] ?? ''} placeholder={f.placeholder} onChange={(e) => setNote((n) => ({ ...n, details: { ...n.details, [f.key]: e.target.value } }))} />
+                      ) : (
+                        <Input id={`d-${f.key}`} value={note.details[f.key] ?? ''} placeholder={f.placeholder} onChange={(e) => setNote((n) => ({ ...n, details: { ...n.details, [f.key]: e.target.value } }))} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Textarea rows={note.kind === 'OBSERVATION' ? 2 : 4} value={note.note} onChange={(e) => setNote((n) => ({ ...n, note: e.target.value }))}
+                  placeholder={note.kind === 'WARD_ROUND' ? 'Assessment and plan' : note.kind === 'OBSERVATION' ? 'Comment (optional)' : 'Care given or intervention done, and how the patient is'} aria-label="Note" />
+              )}
+              {noteProblem && <p role="alert" className="text-sm text-rose-700 dark:text-rose-400">{noteProblem}</p>}
               <Button type="submit" disabled={busy}>{busy ? 'Saving...' : 'Save to chart'}</Button>
             </form>
           </Card>
@@ -283,6 +315,17 @@ function AdmissionChart() {
                     <p className="text-xs text-slate-500">{when(n.createdAt)} · {KIND_LABEL[n.kind] ?? n.kind} · {n.authorName}</p>
                     {n.vitals && <p className="text-sm font-medium">{vitalsText(n.vitals)}</p>}
                     {flags.length > 0 && <p className="text-xs font-semibold text-rose-700 dark:text-rose-400">{flags.join(' · ')}</p>}
+                    {n.details && <p className="text-sm font-semibold">{structuredTitle(n.kind, n.details)}</p>}
+                    {n.details && (
+                      <dl className="mt-1 grid gap-x-3 gap-y-0.5 text-sm sm:grid-cols-[11rem_minmax(0,1fr)]">
+                        {(structuredFields(n.kind) ?? []).filter((f) => n.details[f.key]).map((f) => (
+                          <div key={f.key} className="contents">
+                            <dt className="text-slate-500 dark:text-slate-400">{f.label}</dt>
+                            <dd className="whitespace-pre-wrap break-words">{n.details[f.key]}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
                     {n.note && <p className="whitespace-pre-wrap text-sm">{n.note}</p>}
                   </li>
                 );

@@ -280,7 +280,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     const admission = await prisma.admission.findUnique({
       where: { id },
       include: {
-        patient: true, ward: { select: { name: true } }, clinic: { select: { name: true, facilityCode: true, phone: true, motto: true } },
+        patient: true, ward: { select: { name: true } }, clinic: { select: { name: true, facilityCode: true, phone: true, motto: true } }, notes: { select: { kind: true, details: true, createdAt: true } },
         attendingDoctor: { select: { name: true, role: true } }, dischargedBy: { select: { name: true, role: true } },
         referral: { select: { toClinic: { select: { name: true } } } },
       },

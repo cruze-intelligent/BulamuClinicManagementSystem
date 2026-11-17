@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalVitals, vitalsText, wardTypeLabel } from './wards';
+import { KIND_LABEL, NOTE_KINDS, abnormalVitals, structuredFields, structuredProblem, structuredTitle, vitalsText, wardTypeLabel } from './wards';
 
 describe('ward chart helpers', () => {
   it('writes vitals the way they are written on a chart', () => {
@@ -15,5 +15,21 @@ describe('ward chart helpers', () => {
   it('labels ward types', () => {
     expect(wardTypeLabel('ICU')).toBe('ICU / high dependency');
     expect(wardTypeLabel('MATERNITY')).toBe('Maternity');
+  });
+});
+
+describe('procedures and operation notes on the chart', () => {
+  it('asks for what a standard note needs before saving', () => {
+    expect(structuredProblem('PROCEDURE', { procedure: 'Wound dressing' })).toBe('What was done and found is needed');
+    expect(structuredProblem('OPERATION_NOTE', { operation: 'Caesarean section', surgeon: 'Dr Ogwang', procedure: 'LSCS' })).toBe('Anaesthesia is needed');
+    expect(structuredProblem('OPERATION_NOTE', { operation: 'Caesarean section', surgeon: 'Dr Ogwang', anaesthesia: 'Spinal', procedure: 'LSCS' })).toBeNull();
+    expect(structuredFields('NURSING_NOTE')).toBeNull();
+  });
+
+  it('heads each one in a line, and only clinicians write operation notes', () => {
+    expect(structuredTitle('OPERATION_NOTE', { operation: 'Emergency caesarean section', surgeon: 'Dr Ogwang', anaesthesia: 'Spinal' })).toBe('Emergency caesarean section - Dr Ogwang, spinal');
+    expect(structuredTitle('PROCEDURE', { procedure: 'Urethral catheterisation' })).toBe('Urethral catheterisation');
+    expect(NOTE_KINDS.find((k) => k.value === 'OPERATION_NOTE')).toMatchObject({ roles: ['DOCTOR', 'ADMIN'] });
+    expect(KIND_LABEL.NURSING_NOTE).toBe('Nursing note / intervention');
   });
 });

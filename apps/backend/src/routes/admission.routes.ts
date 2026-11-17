@@ -13,6 +13,7 @@ import { generateDischargeSummaryPdf } from '../lib/pdf';
 import { allergyText, patientIdText, sexAgeText } from '../lib/patient-text';
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer, roleTitle } from '../lib/document-signer';
+import { parseStructuredNote, structuredNoteLines, structuredNoteTitle, type StructuredNote } from '../lib/procedure-notes';
 
 /**
  * Inpatients: wards and beds, admission, notes and observations during the
@@ -22,7 +23,9 @@ import { documentProducer, roleTitle } from '../lib/document-signer';
 
 const WARD_TYPES = Object.values(WardType);
 const OUTCOMES = Object.values(DischargeOutcome);
-const NOTE_KINDS: AdmissionNoteKind[] = ['NURSING_NOTE', 'WARD_ROUND', 'OBSERVATION'];
+const NOTE_KINDS: AdmissionNoteKind[] = ['NURSING_NOTE', 'WARD_ROUND', 'OBSERVATION', 'PROCEDURE', 'OPERATION_NOTE'];
+// An operation note is the surgeon's; procedures are done by nurses and clinicians alike.
+const OPERATION_NOTE_ROLES = ['DOCTOR', 'ADMIN'];
 const CLINICAL = ['DOCTOR', 'NURSE', 'ADMIN'];
 
 const OUTCOME_LABEL: Record<DischargeOutcome, string> = {
@@ -219,7 +222,8 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     return { success: true, admission: present(admission) };
   });
 
-  // A nursing note, ward-round note or set of observations.
+  // A nursing note or intervention, ward-round note, set of observations,
+  // procedure or operation note.
   fastify.post('/admissions/:id/notes', { preHandler: [requireRole(...CLINICAL)] }, async (request, reply) => {
     const authUser = getAuthUser(request);
     const { id } = request.params as any;
@@ -229,13 +233,22 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     if (admission.status !== 'ADMITTED') return reply.status(409).send({ error: 'This patient has been discharged - notes can no longer be added' });
 
     const kind: AdmissionNoteKind = NOTE_KINDS.includes(body.kind) ? body.kind : 'NURSING_NOTE';
-    const vitals = normalizeVitals(body.vitals);
+    let details: StructuredNote | undefined;
+    if (kind === 'PROCEDURE' || kind === 'OPERATION_NOTE') {
+      if (kind === 'OPERATION_NOTE' && !OPERATION_NOTE_ROLES.includes(authUser.role)) {
+        return reply.status(403).send({ error: 'Operation notes are written by the operating clinician' });
+      }
+      const parsed = parseStructuredNote(kind, body.details);
+      if ('error' in parsed) return reply.status(400).send({ error: parsed.error });
+      details = parsed.details;
+    }
+    const vitals = details ? { ok: true as const, value: null } : normalizeVitals(body.vitals);
     if (!vitals.ok) return reply.status(400).send({ error: vitals.error });
     const note = text(body.note, 4000);
-    if (!note && !vitals.value) return reply.status(400).send({ error: 'Write a note or record at least one observation' });
+    if (!note && !vitals.value && !details) return reply.status(400).send({ error: 'Write a note or record at least one observation' });
 
     const created = await prisma.admissionNote.create({
-      data: { admissionId: id, authorUserId: authUser.userId, authorRole: authUser.role as any, kind, note, vitals: vitals.value ?? undefined },
+      data: { admissionId: id, authorUserId: authUser.userId, authorRole: authUser.role as any, kind, note, vitals: vitals.value ?? undefined, details },
       include: { author: { select: { name: true } } },
     });
     const { author, ...rest } = created;
@@ -361,7 +374,7 @@ export async function admissionRoutes(fastify: FastifyInstance) {
   fastify.get('/admissions/:id/discharge-summary', { preHandler: [requireRole(...CLINICAL)] }, async (request, reply) => {
     const { clinicId } = getAuthUser(request);
     const { id } = request.params as any;
-    const admission = await prisma.admission.findUnique({ where: { id }, include: { ...admissionInclude, clinic: { select: { name: true, facilityCode: true, phone: true, motto: true } } } });
+    const admission = await prisma.admission.findUnique({ where: { id }, include: { ...admissionInclude, clinic: { select: { name: true, facilityCode: true, phone: true, motto: true } }, notes: { select: { kind: true, details: true, createdAt: true } } } });
     if (!admission || admission.clinicId !== clinicId) return reply.status(404).send({ error: 'Admission not found' });
     if (admission.status !== 'DISCHARGED') return reply.status(409).send({ error: 'The patient has not been discharged yet' });
 
@@ -387,6 +400,20 @@ function present(admission: any) {
   };
 }
 
+/** The procedures and operations recorded on the chart, oldest first, as the discharge summary prints them. */
+function proceduresDuringStay(notes: Array<{ kind: string; details: unknown; createdAt: Date }> | undefined): string | null {
+  const done = (notes ?? [])
+    .filter((n) => n.kind === 'PROCEDURE' || n.kind === 'OPERATION_NOTE')
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  if (done.length === 0) return null;
+  return done
+    .map((n) => [
+      `${structuredNoteTitle(n.kind, n.details)} - ${new Date(n.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })}`,
+      ...structuredNoteLines(n.kind, n.details).filter(([label]) => !['Operation', 'Procedure', 'Surgeon', 'Anaesthesia'].includes(label) || n.kind === 'OPERATION_NOTE' && label === 'Procedure').map(([label, value]) => `${label}: ${value}`),
+    ].join('\n'))
+    .join('\n');
+}
+
 export function dischargeSummaryInput(admission: any) {
   return {
     admissionId: admission.id,
@@ -405,6 +432,8 @@ export function dischargeSummaryInput(admission: any) {
     outcome: OUTCOME_LABEL[admission.outcome as DischargeOutcome],
     dischargeDiagnosis: [admission.dischargeDiagnosis, admission.dischargeIcd10Code ? `(ICD-10 ${admission.dischargeIcd10Code})` : null].filter(Boolean).join(' '),
     dischargeSummary: admission.dischargeSummary,
+    // Procedures and operations during the stay, oldest first, each with its own record.
+    procedures: proceduresDuringStay(admission.notes),
     followUpInstructions: admission.followUpInstructions,
     referredTo: admission.referral?.toClinic?.name ?? null,
     allergies: allergyText(admission.patient),

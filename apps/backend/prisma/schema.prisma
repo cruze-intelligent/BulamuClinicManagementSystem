@@ -523,8 +523,9 @@ enum DischargeOutcome {
   DIED
 }
 
-// Nursing notes, doctor's ward-round notes, observations (vitals) and ward
-// transfers during a stay. Never edited - a correction is a new note.
+// Nursing notes and interventions, doctor's ward-round notes, observations
+// (vitals), procedures, operation notes and ward transfers during a stay.
+// Never edited - a correction is a new note.
 model AdmissionNote {
   id           String            @id @default(uuid())
   admissionId  String
@@ -536,6 +537,9 @@ model AdmissionNote {
   note         String?
   // { temperatureC, pulse, respiratoryRate, systolic, diastolic, spo2, weightKg }
   vitals       Json?
+  // A procedure or operation note's structured record (see lib/procedure-notes.ts):
+  // { procedure, indication, ... } - the fields a standard operation note has.
+  details      Json?
   createdAt    DateTime          @default(now())
 
   @@index([admissionId, createdAt])
@@ -546,6 +550,8 @@ enum AdmissionNoteKind {
   WARD_ROUND
   OBSERVATION
   TRANSFER
+  PROCEDURE
+  OPERATION_NOTE
 }
 
 enum Sex {
