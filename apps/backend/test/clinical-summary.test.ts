@@ -75,7 +75,7 @@ describe("a patient's clinical summary", () => {
     expect(summary.visits[0]).toMatchObject({
       clinician: 'Dr Ogwang Peter', complaints: 'Fever for 3 days', history: 'Fever with chills, worse at night.',
       vitals: 'T 38.6°C · P 104 · BP 118/76', examination: 'Febrile, mild pallor. Chest clear.', diagnoses: ['Malaria (B54)'],
-      treatment: ['P.O Artemether/Lumefantrine 20/120mg 4 tablets BD x 3 days - Take with food'], plan: 'Review in 3 days if the fever persists.',
+      treatment: ['P.O Artemether/Lumefantrine 4 tabs BD x 3 days - Take with food'], plan: 'Review in 3 days if the fever persists.',
     });
     expect(summary.visits[0].labs).toEqual([
       expect.objectContaining({ name: 'Malaria RDT', status: 'Verified', result: 'Positive (P. falciparum)' }),

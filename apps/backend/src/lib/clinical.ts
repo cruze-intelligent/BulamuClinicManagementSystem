@@ -346,7 +346,6 @@ export type PrescriptionLine = {
 // "500 mg" -> "500mg", as prescribers write it.
 const compact = (text: string) => text.trim().replace(/(\d)\s+(mg|g|mcg|ml|IU|%)(?![a-z])/gi, '$1$2').replace(/\s+/g, ' ');
 
-const COUNT_UNIT = /^(tablets?|capsules?|suppositor(y|ies)|pessar(y|ies)|sachets?)$/i;
 
 /** "1", "0.5", "1/2", "1 1/2" -> a number; anything else -> NaN. */
 function amountOf(text: string): number {
@@ -365,27 +364,43 @@ function measure(value: number, unit: string): string {
   return `${rounded}${unit}`;
 }
 
+// How a count is written on the line: "1 tab", "2 caps".
+const COUNT_SHORT: Array<[RegExp, string, string]> = [
+  [/^tablets?$/i, 'tab', 'tabs'], [/^capsules?$/i, 'cap', 'caps'], [/^suppositor(y|ies)$/i, 'supp', 'supps'],
+  [/^pessar(y|ies)$/i, 'pessary', 'pessaries'], [/^sachets?$/i, 'sachet', 'sachets'],
+];
+
 /**
- * The dose as written on the line: the dose itself when it is a measure
- * (120 mg, 5 ml); for a count of tablets or capsules of a simple strength,
- * the total (2 x 500 mg -> 1000mg, with "2 tablets" shown); otherwise the
- * strength followed by the dose.
+ * The dose as prescribers write it on the line - the dose only, never the
+ * strength of the tablet or how many to take (those are for the dispenser):
+ * - a measured dose as given (120mg, 4mg);
+ * - tablets or capsules of one strength: the total (2 x 500 mg -> 1g);
+ * - a liquid of one concentration: the dose it holds (5 ml of 125 mg/5 ml -> 125mg);
+ *   a fluid by percentage keeps it in front (0.9% 1000ml);
+ * - a combination (no single strength): the count, "1 tab", "2 caps";
+ * - anything else as written ("2 drops", "1 puff").
  */
-function doseOnLine(strength: string, dosage: string): { dose: string; count: string | null } {
-  if (!dosage) return { dose: compact(strength), count: null };
+function doseOnLine(strength: string, dosage: string): string {
+  // One strength - "500 mg", "250 mg dispersible" - not a concentration or a combination.
+  const simple = strength.match(/^(\d+(?:\.\d+)?)\s*(mg|g|mcg|IU)(?!\s*\/)(?:\s+[a-z][a-z -]*)?$/i);
+  if (!dosage) return simple ? measure(Number(simple[1]), simple[2]) : '';
   const parsed = dosage.match(/^([\d./]+(?:\s+\d+\/\d+)?)\s*(.*)$/);
   const unit = parsed?.[2]?.trim() ?? '';
-  // A measured dose stands on its own (a vial's strength is not the dose);
-  // a liquid keeps its concentration in front: "125mg/5ml 5ml".
-  if (/^(mg|g|mcg|ml|IU|units?)$/i.test(unit)) {
-    return { dose: [/^ml$/i.test(unit) && /[/%]/.test(strength) ? compact(strength) : '', compact(dosage)].filter(Boolean).join(' '), count: null };
-  }
-  const simple = strength.match(/^(\d+(?:\.\d+)?)\s*(mg|g|mcg|IU)$/i);
   const n = parsed ? amountOf(parsed[1]) : NaN;
-  if (simple && COUNT_UNIT.test(unit) && n > 0) {
-    return { dose: measure(n * Number(simple[1]), simple[2]), count: n === 1 ? null : dosage.trim() };
+  if (/^ml$/i.test(unit)) {
+    const concentration = strength.match(/^(\d+(?:\.\d+)?)\s*(mg|g|mcg|IU)\s*\/\s*(\d+(?:\.\d+)?)?\s*ml$/i);
+    if (concentration && n > 0) return measure((n * Number(concentration[1])) / Number(concentration[3] || 1), concentration[2]);
+    // A fluid by percentage keeps it: Dextrose 50% is not Dextrose 5%.
+    if (/%/.test(strength)) return `${compact(strength)} ${compact(dosage)}`;
+    return compact(dosage);
   }
-  return { dose: [compact(strength), dosage.trim()].filter(Boolean).join(' '), count: null };
+  if (/^(mg|g|mcg|IU|units?)$/i.test(unit)) return compact(dosage);
+  const count = COUNT_SHORT.find(([pattern]) => pattern.test(unit));
+  if (count && n > 0) {
+    if (simple) return measure(n * Number(simple[1]), simple[2]);
+    return `${parsed![1].trim()} ${n > 1 ? count[2] : count[1]}`;
+  }
+  return dosage.trim();
 }
 
 /**
@@ -409,12 +424,11 @@ export function formatPrescriptionLine(rx: {
   ].filter(Boolean);
   const frequency = rx.frequency?.trim() ?? '';
   const code = frequency.toUpperCase();
-  const { dose, count } = doseOnLine(rx.strength?.trim() ?? '', rx.dosage?.trim() ?? '');
+  const dose = doseOnLine(rx.strength?.trim() ?? '', rx.dosage?.trim() ?? '');
   const order = [
     route?.abbr ?? (rx.route?.trim() || ''),
     rx.medication.trim(),
     dose,
-    count ? `(${count})` : '',
     FREQUENCY_SHORT[code] ?? (FREQUENCY_LABELS[code] ? code : frequency),
     rx.duration?.trim() && code !== 'STAT' ? `x ${rx.duration.trim()}` : '',
   ].filter(Boolean).join(' ');

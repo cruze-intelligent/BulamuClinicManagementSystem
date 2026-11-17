@@ -124,3 +124,10 @@ describe('recording allergies', () => {
     expect(draftsFromRecord(undefined)[0].substance).toBe('');
   });
 });
+
+describe('branded medicines', () => {
+  it('are checked against allergies by what they contain', () => {
+    expect(findAllergyConflicts(known('Penicillin'), 'Flucamox (Amoxicillin/Flucloxacillin)').length).toBeGreaterThan(0);
+    expect(findAllergyConflicts(known('Paracetamol'), 'TRAP (Tramadol/Paracetamol)').length).toBeGreaterThan(0);
+  });
+});

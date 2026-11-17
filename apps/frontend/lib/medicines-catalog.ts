@@ -213,6 +213,59 @@ export const MEDICINES_CATALOG: CatalogMedicine[] = [
   { name: 'Chlorpromazine', aka: 'largactil', route: 'PO', variants: [v('25 mg', 'tablet'), v('100 mg', 'tablet'), v('25 mg/ml', 'injection', 'IM')] },
   { name: 'Risperidone', route: 'PO', variants: [v('1 mg', 'tablet'), v('2 mg', 'tablet')] },
   { name: 'Olanzapine', route: 'PO', variants: [v('5 mg', 'tablet'), v('10 mg', 'tablet')] },
+
+  // More pain, inflammation and muscle relaxants
+  { name: 'Etoricoxib', aka: 'arcoxia nucoxia brutaflam cox-2 nsaid', route: 'PO', variants: [v('60 mg', 'tablet'), v('90 mg', 'tablet'), v('120 mg', 'tablet')] },
+  { name: 'Tramadol/Paracetamol', aka: 'trap ultracet tramadol panadol', route: 'PO', variants: [v('37.5/325 mg', 'tablet')] },
+  { name: 'Chlorzoxazone/Paracetamol', aka: 'myospaz muscle relaxant', route: 'PO', variants: [v('', 'tablet')] },
+
+  // More heart, blood pressure and diabetes
+  { name: 'Telmisartan', aka: 'telvas micardis', route: 'PO', variants: [v('40 mg', 'tablet'), v('80 mg', 'tablet')] },
+  { name: 'Telmisartan/Hydrochlorothiazide', aka: 'telvas-h telvas h micardis plus', route: 'PO', variants: [v('40/12.5 mg', 'tablet'), v('80/12.5 mg', 'tablet')] },
+  { name: 'Losartan/Hydrochlorothiazide', aka: 'losartan-h losartan h hyzaar', route: 'PO', variants: [v('50/12.5 mg', 'tablet')] },
+  { name: 'Nebivolol', aka: 'nebilong nebilet beta blocker', route: 'PO', variants: [v('5 mg', 'tablet')] },
+  { name: 'Nebivolol/Hydrochlorothiazide', aka: 'nebilong-h nebilong h', route: 'PO', variants: [v('5/12.5 mg', 'tablet')] },
+  { name: 'Dapagliflozin', aka: 'forxiga dapaglifozin sglt2 diabetes', route: 'PO', variants: [v('5 mg', 'tablet'), v('10 mg', 'tablet')] },
+  { name: 'Dapagliflozin/Metformin', aka: 'dapagliflozin-m plus dapa m xigduo diabetes', route: 'PO', variants: [v('10/1000 mg', 'tablet')] },
+  { name: 'Glimepiride', aka: 'diapride amaryl diabetes', route: 'PO', variants: [v('1 mg', 'tablet'), v('2 mg', 'tablet'), v('4 mg', 'tablet')] },
+  { name: 'Glimepiride/Metformin', aka: 'diapride plus diapride m amaryl m diabetes', route: 'PO', variants: [v('1/500 mg', 'tablet'), v('2/500 mg', 'tablet')] },
+
+  // More stomach, antibiotics, allergy and vitamins
+  { name: 'Omeprazole/Domperidone', aka: 'limzar', route: 'PO', variants: [v('20/10 mg', 'capsule')] },
+  { name: 'Amoxicillin/Flucloxacillin', aka: 'flucamox ampiclox penicillin', route: 'PO', variants: [v('250/250 mg', 'capsule')] },
+  { name: 'Doxylamine/Pyridoxine', aka: 'vomi-6 vomiting pregnancy nausea', route: 'PO', variants: [v('10/10 mg', 'tablet')] },
+  { name: 'Chlorphenamine/Paracetamol/Vitamin C', aka: 'apfu piriton panadol cold flu syrup', route: 'PO', variants: [v('', 'syrup')] },
+  { name: 'Vitamin B1/B6/B12', aka: 'neurobion neurobine neuroforte neurotropic thiamine pyridoxine cyanocobalamin', route: 'PO', variants: [v('', 'tablet')] },
+
+  // Brands asked for by facilities. The contents are in the name where known, so the
+  // pharmacist knows what is meant and allergy checks see them (Flucamox holds amoxicillin).
+  { name: 'Nucoxia (Etoricoxib)', aka: 'nucoxia', route: 'PO', variants: [v('60 mg', 'tablet'), v('90 mg', 'tablet'), v('120 mg', 'tablet')] },
+  { name: 'Brutaflam (Etoricoxib)', aka: 'brutaflam', route: 'PO', variants: [v('60 mg', 'tablet'), v('90 mg', 'tablet'), v('120 mg', 'tablet')] },
+  { name: 'TRAP (Tramadol/Paracetamol)', aka: 'trap', route: 'PO', variants: [v('37.5/325 mg', 'tablet')] },
+  { name: 'Dynapar (Diclofenac)', aka: 'dynapar aq', route: 'PO', variants: [v('50 mg', 'tablet'), v('75 mg/ml', 'injection', 'IM')] },
+  { name: 'Myospaz (Chlorzoxazone/Paracetamol)', aka: 'myospaz', route: 'PO', variants: [v('', 'tablet')] },
+  { name: 'Flexilor', aka: 'flexilor', route: 'PO', variants: [v('', 'tablet')] },
+  { name: 'Flexilor SR', aka: 'flexilor sr', route: 'PO', variants: [v('', 'tablet')] },
+  { name: 'Flexion MR', aka: 'flexion mr flexon mr', route: 'PO', variants: [v('', 'tablet')] },
+  { name: 'Telvas (Telmisartan)', aka: 'telvas', route: 'PO', variants: [v('40 mg', 'tablet'), v('80 mg', 'tablet')] },
+  { name: 'Telvas-H (Telmisartan/Hydrochlorothiazide)', aka: 'telvas-h telvas h', route: 'PO', variants: [v('40/12.5 mg', 'tablet'), v('80/12.5 mg', 'tablet')] },
+  { name: 'Nebilong (Nebivolol)', aka: 'nebilong', route: 'PO', variants: [v('5 mg', 'tablet')] },
+  { name: 'Nebilong-H (Nebivolol/Hydrochlorothiazide)', aka: 'nebilong-h nebilong h', route: 'PO', variants: [v('5/12.5 mg', 'tablet')] },
+  { name: 'Dapagliflozin-M Plus (Dapagliflozin/Metformin)', aka: 'dapaglifozin m plus dapa', route: 'PO', variants: [v('10/1000 mg', 'tablet')] },
+  { name: 'Diapride (Glimepiride)', aka: 'diapride', route: 'PO', variants: [v('2 mg', 'tablet'), v('4 mg', 'tablet')] },
+  { name: 'Diapride Plus (Glimepiride/Metformin)', aka: 'diapride plus diapride m', route: 'PO', variants: [v('', 'tablet')] },
+  { name: 'Limzar (Omeprazole/Domperidone)', aka: 'limzar', route: 'PO', variants: [v('20/10 mg', 'capsule')] },
+  { name: 'Flucamox (Amoxicillin/Flucloxacillin)', aka: 'flucamox', route: 'PO', variants: [v('250/250 mg', 'capsule')] },
+  { name: 'APFU (Chlorphenamine/Paracetamol/Vitamin C)', aka: 'apfu piriton panadol', route: 'PO', variants: [v('', 'syrup')] },
+  { name: 'Vomi-6', aka: 'vomi 6 vomi-6 doxylamine pyridoxine vomiting', route: 'PO', variants: [v('', 'tablet')] },
+  { name: 'Neurobine (Vitamin B1/B6/B12)', aka: 'neurobine neurobion', route: 'PO', variants: [v('', 'tablet')] },
+  { name: 'Neuroforte (Vitamin B1/B6/B12)', aka: 'neuroforte', route: 'PO', variants: [v('', 'tablet')] },
+  { name: 'Neurotone', aka: 'neurotone neurtone', route: 'PO', variants: [v('', 'tablet')] },
+  { name: 'NAT B', aka: 'nat b natb', route: 'PO', variants: [v('', 'capsule')] },
+  { name: 'Koff-Go', aka: 'koff go koffgo cough', route: 'PO', variants: [v('', 'syrup')] },
+  { name: 'Apidone', aka: 'apidone', route: 'PO', variants: [v('', 'syrup')] },
+  { name: 'SK-Derm', aka: 'sk derm skderm', route: 'TOP', variants: [v('15 g', 'cream'), v('30 g', 'cream')] },
+  { name: 'MCG', aka: 'mcg cream', route: 'TOP', variants: [v('15 g', 'cream')] },
 ];
 
 /** Medicines matching what has been typed - by name or brand - best matches first. */

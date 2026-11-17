@@ -38,7 +38,7 @@ describe('reading a prescription', () => {
 
   it('reads prescriptions written before structured prescribing, keeping wording it does not know', () => {
     expect(formatPrescription({ medication: 'Coartem', dosage: '4 tablets', frequency: 'twice daily', duration: '3 days' })).toEqual({
-      order: 'Coartem 4 tablets twice daily x 3 days', details: null, title: 'Coartem', sig: '4 tablets twice daily for 3 days', quantity: null, instructions: null,
+      order: 'Coartem 4 tabs twice daily x 3 days', details: null, title: 'Coartem', sig: '4 tablets twice daily for 3 days', quantity: null, instructions: null,
     });
     expect(formatPrescription({ medication: 'Coartem', dosage: '4 tablets', frequency: 'bd', duration: '3 days' }).sig).toBe('4 tablets twice daily (BD) for 3 days');
     expect(describeFrequency('every other day')).toBe('every other day');
@@ -51,14 +51,24 @@ describe('the prescription line, as prescribers write it', () => {
   it('puts route, drug and dose, frequency and duration in that order', () => {
     expect(order({ medication: 'Artesunate', strength: '60 mg', form: 'injection', dosage: '120 mg', route: 'IV', frequency: 'Q12H', duration: '1 day' })).toBe('I.V Artesunate 120mg 12hrly x 1 day');
     expect(order({ medication: 'Amoxicillin', strength: '500 mg', form: 'capsule', dosage: '1 capsule', route: 'PO', frequency: 'TDS', duration: '5 days' })).toBe('P.O Amoxicillin 500mg TDS x 5 days');
-    expect(order({ medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '2 tablets', route: 'PO', frequency: 'TDS', duration: '3 days' })).toBe('P.O Paracetamol 1g (2 tablets) TDS x 3 days');
-    expect(order({ medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '1/2 tablet', route: 'PO', frequency: 'PRN', duration: '3 days' })).toBe('P.O Paracetamol 250mg (1/2 tablet) PRN x 3 days');
-    expect(order({ medication: 'Amoxicillin', strength: '125 mg/5 ml', form: 'suspension', dosage: '5 ml', route: 'PO', frequency: 'TDS', duration: '5 days' })).toBe('P.O Amoxicillin 125mg/5ml 5ml TDS x 5 days');
+    expect(order({ medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '2 tablets', route: 'PO', frequency: 'TDS', duration: '3 days' })).toBe('P.O Paracetamol 1g TDS x 3 days');
+    expect(order({ medication: 'Paracetamol', strength: '500 mg', form: 'tablet', dosage: '1/2 tablet', route: 'PO', frequency: 'PRN', duration: '3 days' })).toBe('P.O Paracetamol 250mg PRN x 3 days');
+    expect(order({ medication: 'Amoxicillin', strength: '125 mg/5 ml', form: 'suspension', dosage: '5 ml', route: 'PO', frequency: 'TDS', duration: '5 days' })).toBe('P.O Amoxicillin 125mg TDS x 5 days');
     expect(order({ medication: 'Artemether', strength: '80 mg/ml', form: 'injection', dosage: '160 mg', route: 'IM', frequency: 'STAT', duration: '' })).toBe('I.M Artemether 160mg STAT');
     expect(order({ medication: 'Normal saline 0.9%', form: 'infusion', dosage: '1000 ml', route: 'IV', frequency: 'Q8H', duration: '1 day' })).toBe('I.V Normal saline 0.9% 1000ml 8hrly x 1 day');
     expect(order({ medication: 'Normal saline', strength: '0.9%', form: 'infusion', dosage: '1000 ml', route: 'IV', frequency: 'Q8H', duration: '1 day' })).toBe('I.V Normal saline 0.9% 1000ml 8hrly x 1 day');
     expect(order({ medication: "Ringer's lactate", strength: 'compound sodium lactate', form: 'infusion', dosage: '500 ml', route: 'IV', frequency: 'STAT', duration: '' })).toBe("I.V Ringer's lactate 500ml STAT");
     expect(order({ medication: 'Hydralazine', strength: '20 mg/ml', form: 'injection', dosage: '5 mg', route: 'IV', frequency: 'STAT', duration: '' })).toBe('I.V Hydralazine 5mg STAT');
+    // Combinations have no single strength: the count is the dose.
+    expect(order({ medication: 'Flucamox (Amoxicillin/Flucloxacillin)', strength: '250/250 mg', form: 'capsule', dosage: '1 capsule', route: 'PO', frequency: 'TDS', duration: '5 days' })).toBe('P.O Flucamox (Amoxicillin/Flucloxacillin) 1 cap TDS x 5 days');
+    expect(order({ medication: 'Tramadol/Paracetamol', strength: '37.5/325 mg', form: 'tablet', dosage: '2 tablets', route: 'PO', frequency: 'BD', duration: '3 days' })).toBe('P.O Tramadol/Paracetamol 2 tabs BD x 3 days');
+    expect(order({ medication: 'Koff-Go', form: 'syrup', dosage: '10 ml', route: 'PO', frequency: 'TDS', duration: '5 days' })).toBe('P.O Koff-Go 10ml TDS x 5 days');
+    // An injection by volume: the dose it holds.
+    expect(order({ medication: 'Gentamicin', strength: '80 mg/2 ml', form: 'injection', dosage: '2 ml', route: 'IM', frequency: 'OD', duration: '5 days' })).toBe('I.M Gentamicin 80mg OD x 5 days');
+    // A dispersible tablet is still one strength.
+    expect(order({ medication: 'Amoxicillin', strength: '250 mg dispersible', form: 'tablet', dosage: '2 tablets', route: 'PO', frequency: 'BD', duration: '5 days' })).toBe('P.O Amoxicillin 500mg BD x 5 days');
+    expect(order({ medication: 'Dextrose', strength: '50%', form: 'injection', dosage: '50 ml', route: 'IV', frequency: 'STAT', duration: '' })).toBe('I.V Dextrose 50% 50ml STAT');
+    expect(order({ medication: 'Nucoxia (Etoricoxib)', strength: '90 mg', form: 'tablet', dosage: '1 tablet', route: 'PO', frequency: 'OD', duration: '5 days' })).toBe('P.O Nucoxia (Etoricoxib) 90mg OD x 5 days');
   });
 });
 
@@ -199,7 +209,8 @@ describe('medicines reference list', () => {
       expect(m.variants.length, m.name).toBeGreaterThan(0);
       for (const variant of m.variants) {
         expect((DOSAGE_FORMS as readonly string[]).includes(variant.form), `${m.name}: form "${variant.form}"`).toBe(true);
-        expect(variant.strength.trim(), m.name).not.toBe('');
+        // Blank when it varies or is not known: the prescriber writes it.
+        expect(typeof variant.strength, m.name).toBe('string');
       }
     }
   });
@@ -212,5 +223,16 @@ describe('medicines reference list', () => {
     expect(names('septrin')).toContain('Cotrimoxazole');
     expect(names('zzzz')).toEqual([]);
     expect(names('')).toEqual([]);
+  });
+});
+
+describe('branded medicines in the list', () => {
+  it('are found by brand or by what they contain, and carry their contents in their name', () => {
+    const names = (q: string) => searchMedicinesCatalog(q).map((m) => m.name);
+    expect(names('nucoxia')).toEqual(expect.arrayContaining(['Nucoxia (Etoricoxib)', 'Etoricoxib']));
+    expect(names('flucamox')[0]).toBe('Flucamox (Amoxicillin/Flucloxacillin)');
+    expect(names('telvas')).toEqual(expect.arrayContaining(['Telvas (Telmisartan)', 'Telvas-H (Telmisartan/Hydrochlorothiazide)']));
+    expect(names('limzar')).toContain('Limzar (Omeprazole/Domperidone)');
+    expect(names('etoricoxib')).toEqual(expect.arrayContaining(['Etoricoxib', 'Nucoxia (Etoricoxib)', 'Brutaflam (Etoricoxib)']));
   });
 });

@@ -30,7 +30,7 @@ function stockDoseUnit(unit: string): string {
 const catalogEntry = (name: string): CatalogMedicine | undefined =>
   MEDICINES_CATALOG.find((m) => m.name.toLowerCase() === name.trim().toLowerCase());
 
-const variantLabel = (v: CatalogVariant) => `${v.strength} ${v.form}`;
+const variantLabel = (v: CatalogVariant) => `${v.strength} ${v.form}`.trim();
 
 /**
  * Builds the prescription the way it is written on paper: the medicine (its
