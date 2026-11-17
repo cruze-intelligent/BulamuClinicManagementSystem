@@ -87,7 +87,7 @@ export default function PatientsPage() {
               <Card className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">No patient matches "{query.trim()}".</Card>
             )}
             {shown.map((patient) => (
-              <Card key={patient.id} className="p-4 flex justify-between items-center">
+              <Card key={patient.id} className="p-4 flex flex-row flex-wrap justify-between items-center gap-3">
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-slate-800 dark:text-slate-200">{patient.name}</h3>

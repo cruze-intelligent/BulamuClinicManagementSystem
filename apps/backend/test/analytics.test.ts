@@ -306,7 +306,8 @@ describe('super admin analytics', () => {
     const events = await prisma.loginEvent.findMany({ orderBy: { createdAt: 'asc' } });
     expect(events.map((e) => e.outcome).sort()).toEqual(['BLOCKED', 'SUCCESS', 'WRONG_PASSWORD']);
     expect(JSON.stringify(events)).not.toContain('nowhere.ug');
-    expect((await prisma.user.findUniqueOrThrow({ where: { id: a.nurse.id } })).lastLoginAt).not.toBeNull();
+    // Written just after the sign-in event, in the background too.
+    await vi.waitFor(async () => expect((await prisma.user.findUniqueOrThrow({ where: { id: a.nurse.id } })).lastLoginAt).not.toBeNull(), { timeout: 10_000 });
 
     const r = (await get(token, '/super-admin/analytics')).json().analytics;
     expect(r.security).toMatchObject({ signIns: 1, wrongPassword: 1, blocked: 1, pendingApprovals: 1 });
