@@ -215,6 +215,24 @@ describe('medicines reference list', () => {
     }
   });
 
+  it('includes the national essential medicines list (EMHSLU 2023), each medicine once', () => {
+    const find = (name: string) => MEDICINES_CATALOG.find((m) => m.name === name);
+    for (const name of ['Mefenamic acid', 'Montelukast', 'Rosuvastatin', 'Levothyroxine', 'Bedaquiline', 'Timolol', 'Xylometazoline', 'Allopurinol', 'Tamoxifen']) {
+      expect(find(name)?.nationalList, name).toBe(true);
+    }
+    // On both lists: one entry, with the national strengths added beside the ones already there.
+    const ceftriaxone = MEDICINES_CATALOG.filter((m) => m.name === 'Ceftriaxone');
+    expect(ceftriaxone).toHaveLength(1);
+    expect(ceftriaxone[0].variants.map((x) => x.strength)).toEqual(['250 mg', '500 mg', '1 g', '2 g']);
+    expect(find('Cotrimoxazole')!.variants.map((x) => x.strength)).toContain('120 mg');
+    // A national strength given by another route keeps that route.
+    expect(find('Omeprazole')!.variants.find((x) => x.form === 'injection')?.route).toBe('IV');
+    expect(MEDICINES_CATALOG.length).toBeGreaterThan(450);
+    // Found by the name on the national list as well.
+    expect(searchMedicinesCatalog('lignocaine').map((m) => m.name)).toContain('Lidocaine');
+    expect(searchMedicinesCatalog('epinephrine').map((m) => m.name)).toContain('Adrenaline');
+  });
+
   it('finds a medicine by generic name or a brand people know', () => {
     const names = (q: string) => searchMedicinesCatalog(q).map((m) => m.name);
     expect(names('amoxi')[0]).toBe('Amoxicillin');

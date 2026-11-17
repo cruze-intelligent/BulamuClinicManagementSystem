@@ -5,6 +5,8 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { notifyLabOrdered, notifyLabResultReady, notifyLabResultToOrderer } from '../lib/notifications';
 import { sendRouteError } from '../lib/http-error';
+import { buildLabResultsPdf } from '../lib/consultation-records';
+import { documentProducer } from '../lib/document-signer';
 
 export async function labRoutes(fastify: FastifyInstance) {
 
@@ -70,6 +72,26 @@ export async function labRoutes(fastify: FastifyInstance) {
         take: 500,
       });
       return { success: true, tests };
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
+  // The patient's results to print and take away - this test and the patient's
+  // other results from the same day or visit (?only=1 for this test alone).
+  fastify.get('/lab/:id/results/pdf', { preHandler: [authenticate] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const only = (request.query as { only?: string }).only === '1';
+    try {
+      const existing = await prisma.labTest.findFirst({ where: { id, deletedAt: null }, select: { patient: { select: { clinicId: true } } } });
+      if (!existing) return reply.status(404).send({ error: 'Lab test not found' });
+      if (!assertClinicMatch(request, reply, existing.patient.clinicId)) return;
+      const built = await buildLabResultsPdf(id, { only, producedBy: await documentProducer(getAuthUser(request).userId) });
+      if (!built) return reply.status(404).send({ error: 'Lab test not found' });
+      if ('error' in built) return reply.status(built.status).send({ error: built.error });
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `inline; filename="lab-results-${id.slice(0, 8)}.pdf"`);
+      return reply.send(built.pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);
     }

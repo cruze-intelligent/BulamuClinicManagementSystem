@@ -38,6 +38,7 @@ export const CHARGE_KINDS: Record<ChargeKind, string> = {
   MEDICINE: 'Medicine',
   PROCEDURE: 'Procedure',
   ADMISSION: 'Admission / ward',
+  IMAGING: 'Imaging',
   OTHER: 'Other',
 };
 

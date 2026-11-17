@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import { ChevronRight, Loader2, Plus, Search, Tags, Trash2, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,8 @@ import { Select } from '@/components/ui/select';
 import { BillPanel, STATE_STYLE, type Bill } from '@/components/bill-panel';
 import { useAuth } from '@/lib/useAuth';
 import { CHARGE_KINDS, parseShillings, shortDate, ugx, type ChargeKind } from '@/lib/finance';
+import { ListedServices, PriceListPanel } from '@/components/price-list-panel';
+import { listedPrice, usePriceList } from '@/lib/price-list';
 import { StockPicker, sellable, useStockList } from '@/components/stock-picker';
 
 const FILTERS = [
@@ -39,6 +41,7 @@ export default function BillsPage() {
   const [error, setError] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [pricing, setPricing] = useState(false);
   const clinicName = (user as any)?.clinic?.name ?? 'Your facility';
 
   const load = useCallback(async () => {
@@ -84,11 +87,14 @@ export default function BillsPage() {
           <div>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Bills &amp; Payments</h1>
             <p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">
-              What each patient was charged - the visit, lab tests, medicines, ward stays - and every payment your facility received, each with a numbered receipt.
+              What each patient was charged - the consultation, lab tests, imaging, medicines, procedures, ward stays - and every payment your facility received, each with a numbered receipt.
               Patients pay the facility as they always have; Bulamu keeps the record.
             </p>
           </div>
-          <Button onClick={() => setCreating(true)}><Plus className="size-4" aria-hidden="true" />New bill</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setPricing(true)}><Tags className="size-4" aria-hidden="true" />Price list</Button>
+            <Button onClick={() => setCreating(true)}><Plus className="size-4" aria-hidden="true" />New bill</Button>
+          </div>
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -173,6 +179,7 @@ export default function BillsPage() {
       </div>
 
       {openId && <BillPanel billId={openId} clinicName={clinicName} isAdmin={isAdmin} onClose={() => setOpenId(null)} onChanged={() => void load()} />}
+      {pricing && <PriceListPanel isAdmin={isAdmin} onClose={() => setPricing(false)} />}
       {creating && (
         <NewBill
           onClose={() => setCreating(false)}
@@ -196,6 +203,7 @@ function NewBill({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
   const [busy, setBusy] = useState(false);
   // Medicine sold from stock comes off the shelf when the bill is opened.
   const stockList = useStockList();
+  const { prices: priceList } = usePriceList();
 
   useEffect(() => {
     const clinicId = JSON.parse(localStorage.getItem('user') || '{}').clinicId;
@@ -306,7 +314,14 @@ function NewBill({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
                 )}
                 <div className={line.kind === 'MEDICINE' && stockList.length > 0 ? 'col-span-6' : 'col-span-6 sm:col-span-4'}>
                   <Label htmlFor={`description-${i}`} className="text-xs">Description</Label>
-                  <Input id={`description-${i}`} value={line.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="e.g. Paracetamol 500 mg" />
+                  <Input
+                    id={`description-${i}`} list={`listed-${i}`} autoComplete="off" value={line.description} placeholder="e.g. Paracetamol 500 mg"
+                    onChange={(e) => {
+                      const listed = listedPrice(priceList, line.kind, e.target.value);
+                      setLine(i, listed ? { description: e.target.value, unitPrice: String(listed) } : { description: e.target.value });
+                    }}
+                  />
+                  <ListedServices id={`listed-${i}`} prices={priceList} kind={line.kind} />
                 </div>
                 <div className="col-span-2">
                   <Label htmlFor={`quantity-${i}`} className="text-xs">Quantity</Label>

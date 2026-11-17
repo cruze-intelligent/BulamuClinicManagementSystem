@@ -473,6 +473,8 @@ export type PrescriptionPdfInput = SampleOption & {
   /** The prescriber's role, as written on the document (e.g. "Doctor / Clinical Officer"). */
   prescriberRole?: string;
   date: Date;
+  /** Why the patient came, printed above the diagnosis. */
+  presentingComplaint?: string | null;
   diagnoses: Array<{ icd10Code: string | null; description: string; type: string; certainty: string; notes: string | null }>;
   prescriptions: Array<{
     medication: string; strength: string | null; form: string | null; dosage: string; route: string | null;
@@ -521,6 +523,14 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
     doc.moveDown(0.8);
   };
 
+  const complaint = input.presentingComplaint?.trim();
+  if (complaint) {
+    rule();
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text('Presenting complaint', labelX, doc.y);
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10).fillColor(INK).text(complaint, labelX, doc.y, { width: 495 });
+  }
+
   rule();
   doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text('Diagnosis', labelX, doc.y);
   doc.moveDown(0.3);
@@ -562,6 +572,95 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
   drawSignatures(doc, [
     { label: 'Prescriber - signature', signer: input.prescriberName ? { name: input.prescriberName, role: input.prescriberRole ?? 'Prescriber' } : null },
     { label: 'Dispensed by - name, signature and date' },
+  ]);
+
+  await finishDocument(doc, input);
+  return done;
+}
+
+export type LabResultsPdfInput = SampleOption & {
+  clinicName: string;
+  facilityCode: string;
+  clinicPhone?: string | null;
+  clinicLogo?: Buffer | null;
+  clinicMotto?: string | null;
+  patientName: string;
+  patientNumber?: string | null;
+  patientPhone?: string | null;
+  patientSex?: string | null;
+  patientAge?: string;
+  tests: Array<{
+    id: string; testName: string; results: string; orderedBy: string; requestedAt: Date;
+    resultedBy?: Signer | null; resultedAt?: Date | null; verifiedBy?: Signer | null; verifiedAt?: Date | null;
+  }>;
+};
+
+/**
+ * A patient's laboratory results, to take away: who the patient is, then each
+ * test with its result as the lab recorded it, who entered it and who verified
+ * it. A result not yet verified by a clinician is printed, clearly marked as
+ * preliminary, so a patient who came for tests alone can leave with them.
+ */
+export async function generateLabResultsPdf(input: LabResultsPdfInput): Promise<Buffer> {
+  const { doc, done } = newDocument();
+  drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
+
+  doc.moveDown(1.5);
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('LABORATORY RESULTS', 50);
+  doc.moveDown(0.8);
+
+  const sexAge = [input.patientSex ? input.patientSex.charAt(0) + input.patientSex.slice(1).toLowerCase() : '', input.patientAge].filter(Boolean).join(', ');
+  const first = input.tests.reduce((min, t) => (t.requestedAt < min ? t.requestedAt : min), input.tests[0]?.requestedAt ?? new Date());
+  drawRows(doc, [
+    ['Patient', input.patientName],
+    ['Patient ID', input.patientNumber],
+    ['Age / sex', sexAge || '-'],
+    ['Phone', input.patientPhone],
+    ['Requested', documentDate(first)],
+    ['Requested by', [...new Set(input.tests.map((t) => t.orderedBy).filter(Boolean))].join(', ')],
+  ], 170, 0.5);
+
+  const pageEnd = () => doc.page.maxY() - 70;
+  const continuePage = () => {
+    doc.addPage();
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED).text(`Laboratory results for ${input.patientName} (continued)`, 50, 50, { width: 495 });
+    doc.y = 80;
+  };
+
+  for (const test of input.tests) {
+    if (doc.y > pageEnd() - 90) continuePage();
+    doc.moveDown(0.8);
+    doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
+    doc.moveDown(0.7);
+    const top = doc.y;
+    doc.font('Helvetica-Bold').fontSize(11.5).fillColor(BRAND_TEAL_DARK).text(test.testName, 50, top, { width: 360 });
+    const status = test.verifiedAt ? 'VERIFIED' : 'PRELIMINARY - NOT YET VERIFIED';
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(test.verifiedAt ? BRAND_TEAL : '#b45309').text(status, 330, top + 2, { width: 215, align: 'right' });
+    doc.y = Math.max(doc.y, top + 14);
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(10.5).fillColor(INK).text(test.results.trim(), 50, doc.y, { width: 495 });
+    doc.moveDown(0.4);
+    const who = [
+      test.resultedBy ? `Result entered by ${test.resultedBy.name} (${test.resultedBy.role})${test.resultedAt ? `, ${documentDateTime(test.resultedAt)}` : ''}` : null,
+      test.verifiedBy ? `Verified by ${test.verifiedBy.name} (${test.verifiedBy.role})${test.verifiedAt ? `, ${documentDateTime(test.verifiedAt)}` : ''}` : null,
+    ].filter(Boolean).join('\n');
+    if (who) doc.font('Helvetica').fontSize(8.5).fillColor(MUTED).text(who, 50, doc.y, { width: 495 });
+  }
+
+  if (input.tests.some((t) => !t.verifiedAt)) {
+    if (doc.y > pageEnd() - 40) continuePage();
+    doc.moveDown(1);
+    doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(MUTED)
+      .text('A preliminary result has not yet been checked by a clinician and may be corrected. Discuss your results with the clinician who requested them.', 50, doc.y, { width: 495 });
+  }
+
+  if (doc.y > pageEnd() - 80) continuePage();
+  doc.moveDown(2);
+  const lastEntered = input.tests.find((t) => t.resultedBy)?.resultedBy ?? null;
+  const lastVerified = input.tests.find((t) => t.verifiedBy)?.verifiedBy ?? null;
+  drawSignatures(doc, [
+    { label: 'Laboratory - signature', signer: lastEntered },
+    { label: 'Verified by - signature', signer: lastVerified },
   ]);
 
   await finishDocument(doc, input);

@@ -12,6 +12,8 @@ import {
   smsLink, ugx, whatsappLink, type ChargeKind, type PaymentMethod,
 } from '@/lib/finance';
 import { StockPicker, sellable, useStockList } from '@/components/stock-picker';
+import { ListedServices } from '@/components/price-list-panel';
+import { listedPrice, usePriceList } from '@/lib/price-list';
 
 export type BillItem = { id: string; kind: ChargeKind; description: string; quantity: number; unitPrice: number; amount: number; medicineId?: string | null; prescriptionId?: string | null };
 export type BillPayment = {
@@ -25,7 +27,10 @@ export type Bill = {
   consultation: { id: string; diagnosis: string; appointment: { doctor: { name: string } | null } } | null;
   items: BillItem[]; payments: BillPayment[];
 };
-type Suggestion = { kind: ChargeKind; description: string; quantity: number; unitPrice: number | null; labTestId?: string; prescriptionId?: string; admissionId?: string; medicineId?: string };
+type Suggestion = {
+  kind: ChargeKind; description: string; quantity: number; unitPrice: number | null;
+  labTestId?: string; prescriptionId?: string; admissionId?: string; medicineId?: string; imagingRequestId?: string; admissionNoteId?: string;
+};
 
 /** A line sold from stock (not a prescription, which comes off stock when dispensed). */
 const fromStock = (item: BillItem) => !!item.medicineId && !item.prescriptionId;
@@ -87,6 +92,8 @@ export function BillPanel({
   // Medicine sold from stock comes off the shelf when the charge is added.
   const [medicineId, setMedicineId] = useState('');
   const stockList = useStockList();
+  // The facility's price list: a charge picked from it is priced automatically.
+  const { prices: priceList } = usePriceList();
 
   const load = useCallback(async () => {
     try {
@@ -303,7 +310,7 @@ export function BillPanel({
                     <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Not on the bill yet</p>
                     <ul className="mt-2 space-y-2">
                       {suggestions.map((s, i) => (
-                        <li key={s.labTestId ?? s.prescriptionId ?? s.admissionId ?? i} className="flex flex-wrap items-center gap-2 text-sm">
+                        <li key={s.labTestId ?? s.prescriptionId ?? s.admissionId ?? s.imagingRequestId ?? s.admissionNoteId ?? `${s.kind}-${i}`} className="flex flex-wrap items-center gap-2 text-sm">
                           <span className="min-w-0 flex-1">
                             {s.description}
                             <span className="text-slate-500 dark:text-slate-400"> · {kindLabel(s.kind)}{s.quantity > 1 ? ` × ${s.quantity}` : ''}</span>
@@ -364,7 +371,15 @@ export function BillPanel({
                     )}
                     <div className="sm:col-span-4">
                       <Label htmlFor="charge-description" className="text-xs">Description</Label>
-                      <Input id="charge-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Malaria RDT, wound dressing" />
+                      <Input
+                        id="charge-description" list="charge-listed" autoComplete="off" value={description} placeholder="e.g. Malaria RDT, wound dressing"
+                        onChange={(e) => {
+                          setDescription(e.target.value);
+                          const listed = listedPrice(priceList, kind, e.target.value);
+                          if (listed) setUnitPrice(String(listed));
+                        }}
+                      />
+                      <ListedServices id="charge-listed" prices={priceList} kind={kind} />
                     </div>
                     <div className="sm:col-span-2">
                       <Label htmlFor="charge-quantity" className="text-xs">Quantity</Label>

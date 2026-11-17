@@ -1,6 +1,7 @@
 import { deflateSync } from 'zlib';
 import {
   generateDischargeSummaryPdf, generateFinanceReportPdf, generateInvoicePdf, generatePatientReceiptPdf, generatePrescriptionPdf, generateReceiptPdf, generateReferralLetterPdf,
+  generateLabResultsPdf,
 } from './pdf';
 
 // One of every document Bulamu produces, filled with plainly made-up details
@@ -41,6 +42,7 @@ export async function buildSampleDocuments(now: Date = new Date()): Promise<Samp
     ['3-prescription.pdf', 'Prescription', generatePrescriptionPdf({
       ...staff, consultationId: 'sample-consultation-0001', clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo, clinicMotto: FACILITY.motto,
       patientName: patient.name, patientNumber: patient.number, patientPhone: patient.phone, patientSex: 'FEMALE', patientAge: '34 years', prescriberName: 'Dr Sample Clinician', prescriberRole: 'Doctor / Clinical Officer', date: now,
+      presentingComplaint: 'Fever, headache and joint pains for 3 days; vomiting since this morning',
       diagnoses: [{ icd10Code: 'B54', description: 'Malaria, unspecified', type: 'PRIMARY', certainty: 'CONFIRMED', notes: null }],
       prescriptions: [
         { medication: 'Artesunate', strength: '60 mg', form: 'injection', dosage: '120 mg', route: 'IV', frequency: 'Q12H', duration: '1 day', quantity: 4, instructions: 'At 0, 12 and 24 hours, then daily until oral treatment can be taken' },
@@ -82,6 +84,21 @@ export async function buildSampleDocuments(now: Date = new Date()): Promise<Samp
     })],
     ['9-financial-report.pdf', "Financial report (the facility's money in and out) - with the facility logo", generateFinanceReportPdf({
       ...staff, ...sampleFinanceReport(now), facilityName: FACILITY.name, facilityCode: FACILITY.code, facilityPhone: FACILITY.phone, facilityLogo: logo, facilityMotto: FACILITY.motto,
+    })],
+    ['10-lab-results.pdf', 'Laboratory results (to take away) - one verified, one preliminary', generateLabResultsPdf({
+      ...staff, clinicName: FACILITY.name, facilityCode: FACILITY.code, clinicPhone: FACILITY.phone, clinicLogo: logo, clinicMotto: FACILITY.motto,
+      patientName: patient.name, patientNumber: patient.number, patientPhone: patient.phone, patientSex: 'FEMALE', patientAge: '34 years',
+      tests: [
+        {
+          id: 'sample-lab-1', testName: 'Malaria RDT', results: 'Positive (P. falciparum)', orderedBy: 'Dr Sample Clinician', requestedAt: now,
+          resultedBy: { name: 'Sample Lab Technician', role: 'Laboratory Technician' }, resultedAt: now,
+          verifiedBy: { name: 'Dr Sample Clinician', role: 'Doctor / Clinical Officer' }, verifiedAt: now,
+        },
+        {
+          id: 'sample-lab-2', testName: 'Complete blood count (CBC)', results: 'WBC 6.8 x10^9/L\nHb 10.9 g/dL\nPlatelets 142 x10^9/L', orderedBy: 'Dr Sample Clinician', requestedAt: now,
+          resultedBy: { name: 'Sample Lab Technician', role: 'Laboratory Technician' }, resultedAt: now,
+        },
+      ],
     })],
   ];
 

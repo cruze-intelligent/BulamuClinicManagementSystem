@@ -135,6 +135,7 @@ model Clinic {
   patientAccessOtps      PatientAccessOtp[]
   wards                  Ward[]
   admissions             Admission[]
+  servicePrices          ServicePrice[]
   historyShares          HistoryShare[]
   isActive  Boolean  @default(true)
   registrationStatus RegistrationStatus @default(PENDING)
@@ -496,6 +497,8 @@ model ImagingRequest {
   reportedByUserId  String?
   reportedAt        DateTime?
   cancelReason      String?
+  // The bill line it was charged on, if any.
+  invoiceItem       InvoiceItem?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -625,6 +628,8 @@ model AdmissionNote {
   // A procedure or operation note's structured record (see lib/procedure-notes.ts):
   // { procedure, indication, ... } - the fields a standard operation note has.
   details      Json?
+  // For a procedure or operation: the bill line it was charged on, if any.
+  invoiceItem  InvoiceItem?
   createdAt    DateTime          @default(now())
 
   @@index([admissionId, createdAt])
@@ -886,6 +891,11 @@ model InvoiceItem {
   // For a ward stay: the admission it charges for (nights charged add up across lines).
   admissionId    String?
   admission      Admission?    @relation(fields: [admissionId], references: [id], onDelete: SetNull)
+  // An imaging examination, or a procedure or operation done on the ward, it charges for.
+  imagingRequestId String?         @unique
+  imagingRequest   ImagingRequest? @relation(fields: [imagingRequestId], references: [id], onDelete: SetNull)
+  admissionNoteId  String?         @unique
+  admissionNote    AdmissionNote?  @relation(fields: [admissionNoteId], references: [id], onDelete: SetNull)
   // Medicine sold from stock without a prescription (over the counter): taken
   // off the shelf when the line is added, put back if the line is removed.
   // Prescribed medicine is taken off stock when dispensed, not here.
@@ -904,6 +914,24 @@ enum ChargeKind {
   PROCEDURE
   ADMISSION
   OTHER
+  IMAGING
+}
+
+// The facility's price list: what it charges for a consultation, a lab test,
+// an imaging examination, a procedure, a night on a ward... set once by its
+// administrator, then offered whenever that charge goes on a bill. Medicines
+// are priced in stock instead. One price per name and kind of charge.
+model ServicePrice {
+  id        String     @id @default(uuid())
+  clinicId  String
+  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  kind      ChargeKind
+  name      String
+  price     Int
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([clinicId, kind, name])
 }
 
 // Money a facility received from (or for) a patient against a bill. Each has

@@ -22,6 +22,7 @@ import { dashboardRoutes } from './routes/dashboard.routes';
 import { documentRoutes } from './routes/document.routes';
 import { inventoryRoutes } from './routes/inventory.routes';
 import { invoiceRoutes } from './routes/invoice.routes';
+import { priceListRoutes } from './routes/price-list.routes';
 import { financeRoutes } from './routes/finance.routes';
 import { labRoutes } from './routes/lab.routes';
 import { leadsRoutes } from './routes/leads.routes';
@@ -198,6 +199,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(superAdminFinanceRoutes);
   await server.register(dashboardRoutes);
   await server.register(invoiceRoutes);
+  await server.register(priceListRoutes);
   await server.register(financeRoutes);
   await server.register(userRoutes);
   await server.register(reportsRoutes);

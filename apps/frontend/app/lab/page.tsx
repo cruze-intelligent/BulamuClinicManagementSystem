@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, FlaskConical, Pencil, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, FlaskConical, Pencil, Printer, ShieldCheck } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,7 @@ import { useAuth } from '@/lib/useAuth';
 import { roleLabel } from '@/lib/role-labels';
 import { LAB_TESTS_CATALOG, LAB_TEST_GROUPS, findLabTest } from '@/lib/lab-tests-catalog';
 import { formatDayTime } from '@/lib/time';
+import { openPdfWithAuth } from '@/lib/download';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -309,6 +310,15 @@ function LabTestCard({
                 <Button size="sm" variant="outline" onClick={() => setMode('enter')}>Correct</Button>
               )}
               {verified && canVerify && <Button size="sm" variant="outline" onClick={() => setMode('amend')}>Amend</Button>}
+              {test.status === 'COMPLETED' && test.syncStatus !== 'pending' && (
+                <Button
+                  size="sm" variant="outline"
+                  title="Prints this result with the patient's other results from the same day"
+                  onClick={() => openPdfWithAuth(`${API}/lab/${test.id}/results/pdf`, localStorage.getItem('token'), `lab-results-${test.id.slice(0, 8)}.pdf`).catch((err) => setError(err.message))}
+                >
+                  <Printer className="size-4" aria-hidden="true" />Print results
+                </Button>
+              )}
             </div>
           )}
         </div>

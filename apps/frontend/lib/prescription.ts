@@ -51,6 +51,7 @@ export const FREQUENCIES: Array<{ code: string; label: string; phrase: string; d
 export const DOSAGE_FORMS = [
   'tablet', 'capsule', 'suspension', 'syrup', 'oral solution', 'injection', 'infusion', 'cream', 'ointment', 'gel', 'lotion',
   'eye drops', 'eye ointment', 'ear drops', 'inhaler', 'nebuliser solution', 'suppository', 'pessary', 'sachet', 'solution', 'powder',
+  'nasal drops', 'nasal spray', 'mouthwash', 'patch',
 ] as const;
 
 // What one dose of a form is usually counted in.
@@ -59,6 +60,7 @@ const FORM_DOSE_UNIT: Record<string, string> = {
   cream: 'application', ointment: 'application', gel: 'application', lotion: 'application',
   'eye drops': 'drop', 'eye ointment': 'application', 'ear drops': 'drop', inhaler: 'puff',
   'nebuliser solution': 'ml', suppository: 'suppository', pessary: 'pessary', sachet: 'sachet', solution: 'ml', powder: 'sachet',
+  'nasal drops': 'drop', 'nasal spray': 'puff', mouthwash: 'ml', patch: 'application',
 };
 
 export const DOSE_UNITS = ['tablet', 'capsule', 'ml', 'mg', 'g', 'mcg', 'IU', 'drop', 'puff', 'sachet', 'application', 'suppository', 'pessary'] as const;

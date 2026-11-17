@@ -15,6 +15,7 @@ import { documentProducer, signer, type Signer } from '../lib/document-signer';
 import { sendMail, patientReceiptEmail } from '../lib/mailer';
 import { sendRouteError } from '../lib/http-error';
 import { patientIdText } from '../lib/patient-text';
+import { priceLookup } from '../lib/price-list';
 
 const MAX_QUANTITY = 10_000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -55,7 +56,13 @@ function billLines(invoice: FullInvoice): BillLine[] {
   return [{ description: label, quantity: 1, unitPrice: invoice.amount, amount: invoice.amount }];
 }
 
-type ChargeInput = { kind: ChargeKind; description: string; quantity: number; unitPrice: number; labTestId: string | null; prescriptionId: string | null; admissionId: string | null; medicineId?: string | null };
+type ChargeInput = {
+  kind: ChargeKind; description: string; quantity: number; unitPrice: number;
+  labTestId: string | null; prescriptionId: string | null; admissionId: string | null; medicineId?: string | null;
+  imagingRequestId?: string | null; admissionNoteId?: string | null;
+};
+
+const idField = (value: unknown) => (typeof value === 'string' && value ? value : null);
 
 /** Reads one charge from a form. Throws with a message for the person typing it. */
 function parseCharge(body: any): ChargeInput {
@@ -73,6 +80,8 @@ function parseCharge(body: any): ChargeInput {
     prescriptionId: typeof body?.prescriptionId === 'string' && body.prescriptionId ? body.prescriptionId : null,
     admissionId: typeof body?.admissionId === 'string' && body.admissionId ? body.admissionId : null,
     medicineId: typeof body?.medicineId === 'string' && body.medicineId ? body.medicineId : null,
+    imagingRequestId: idField(body?.imagingRequestId),
+    admissionNoteId: idField(body?.admissionNoteId),
   };
 }
 
@@ -96,6 +105,16 @@ async function checkChargeLinks(charge: ChargeInput, patientId: string, clinicId
     const stay = await prisma.admission.findFirst({ where: { id: charge.admissionId, patientId }, select: { id: true } });
     if (!stay) return "That ward stay isn't this patient's";
   }
+  if (charge.imagingRequestId) {
+    if (charge.kind !== 'IMAGING') return 'An imaging examination is charged as imaging';
+    const exam = await prisma.imagingRequest.findFirst({ where: { id: charge.imagingRequestId, patientId, clinicId }, select: { id: true } });
+    if (!exam) return "That imaging request isn't this patient's";
+  }
+  if (charge.admissionNoteId) {
+    if (charge.kind !== 'PROCEDURE') return 'A procedure or operation is charged as a procedure';
+    const note = await prisma.admissionNote.findFirst({ where: { id: charge.admissionNoteId, kind: { in: ['PROCEDURE', 'OPERATION_NOTE'] }, admission: { patientId, clinicId } }, select: { id: true } });
+    if (!note) return "That procedure isn't this patient's";
+  }
   return null;
 }
 
@@ -109,6 +128,8 @@ const chargeData = (charge: ChargeInput, userId: string) => ({
   prescriptionId: charge.prescriptionId,
   admissionId: charge.admissionId,
   medicineId: charge.medicineId ?? null,
+  imagingRequestId: charge.imagingRequestId ?? null,
+  admissionNoteId: charge.admissionNoteId ?? null,
   addedByUserId: userId,
 });
 
@@ -126,25 +147,30 @@ async function loadInvoice(id: string) {
 
 /**
  * What could still go on this bill, so every stage of the patient's care is
- * charged for: the visit's lab tests and prescribed medicines, the patient's lab
- * tests ordered outside a visit in the last month, and the nights of any ward
- * stay in the last two months not yet charged - each with a suggested price:
- * the stock price for a medicine, and for anything else the price last charged
- * for it here.
+ * charged for: the consultation fee for the visit, the visit's lab tests,
+ * imaging and prescribed medicines, the patient's lab tests and imaging asked
+ * for outside a visit in the last month, procedures and operations done on the
+ * ward, and the nights of any ward stay in the last two months not yet charged.
+ * Each comes with a suggested price: the stock price for a medicine, otherwise
+ * the facility's price list, else the price last charged for it here.
  */
 async function chargeSuggestions(invoice: FullInvoice) {
   const DAY = 24 * 60 * 60 * 1000;
   const since = new Date(Date.now() - 30 * DAY);
-  const [labTests, prescriptions, stays] = await Promise.all([
+  const sinceStay = new Date(Date.now() - 60 * DAY);
+  const visitOrRecent = [
+    ...(invoice.consultationId ? [{ consultationId: invoice.consultationId }] : []),
+    { consultationId: null, createdAt: { gte: since } },
+  ];
+  const [labTests, imaging, prescriptions, stays, procedures, visit] = await Promise.all([
     prisma.labTest.findMany({
-      where: {
-        patientId: invoice.patientId, deletedAt: null, status: { not: 'CANCELLED' }, invoiceItem: null,
-        OR: [
-          ...(invoice.consultationId ? [{ consultationId: invoice.consultationId }] : []),
-          { consultationId: null, createdAt: { gte: since } },
-        ],
-      },
+      where: { patientId: invoice.patientId, deletedAt: null, status: { not: 'CANCELLED' }, invoiceItem: null, OR: visitOrRecent },
       select: { id: true, testName: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.imagingRequest.findMany({
+      where: { patientId: invoice.patientId, clinicId: invoice.clinicId, status: { not: 'CANCELLED' }, invoiceItem: null, OR: visitOrRecent },
+      select: { id: true, examination: true },
       orderBy: { createdAt: 'asc' },
     }),
     invoice.consultationId
@@ -155,11 +181,20 @@ async function chargeSuggestions(invoice: FullInvoice) {
         })
       : Promise.resolve([]),
     prisma.admission.findMany({
-      where: { patientId: invoice.patientId, clinicId: invoice.clinicId, OR: [{ status: 'ADMITTED' }, { dischargedAt: { gte: new Date(Date.now() - 60 * DAY) } }] },
+      where: { patientId: invoice.patientId, clinicId: invoice.clinicId, OR: [{ status: 'ADMITTED' }, { dischargedAt: { gte: sinceStay } }] },
       select: { id: true, admittedAt: true, dischargedAt: true, ward: { select: { name: true } }, invoiceItems: { select: { quantity: true } } },
       orderBy: { admittedAt: 'asc' },
     }),
+    prisma.admissionNote.findMany({
+      where: { kind: { in: ['PROCEDURE', 'OPERATION_NOTE'] }, invoiceItem: null, createdAt: { gte: sinceStay }, admission: { patientId: invoice.patientId, clinicId: invoice.clinicId } },
+      select: { id: true, kind: true, details: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    invoice.consultationId
+      ? prisma.consultation.findUnique({ where: { id: invoice.consultationId }, select: { appointment: { select: { department: { select: { name: true } } } } } })
+      : Promise.resolve(null),
   ]);
+
   // Nights in the ward so far (a stay that started today counts as one), less any already charged.
   const unbilledStays = stays
     .map((stay) => {
@@ -168,17 +203,41 @@ async function chargeSuggestions(invoice: FullInvoice) {
     })
     .filter((s) => s.nights > 0);
   const describeStay = (ward: string) => `${ward} - ward stay (per night)`;
-  const priced = [...labTests.map((t) => t.testName), ...unbilledStays.map((s) => describeStay(s.stay.ward.name))];
-  const lastPrices = priced.length
-    ? await prisma.invoiceItem.findMany({
-        where: { kind: { in: ['LAB', 'ADMISSION'] }, description: { in: priced, mode: 'insensitive' }, invoice: { clinicId: invoice.clinicId } },
-        orderBy: { createdAt: 'desc' },
-        select: { description: true, unitPrice: true },
-      })
-    : [];
-  const lastPrice = (name: string) => lastPrices.find((p) => p.description.toLowerCase() === name.toLowerCase())?.unitPrice ?? null;
+  const procedureName = (note: { kind: string; details: unknown }) => {
+    const details = (note.details ?? {}) as Record<string, unknown>;
+    const name = typeof details.operation === 'string' ? details.operation : typeof details.procedure === 'string' ? details.procedure : '';
+    return (name.trim() || (note.kind === 'OPERATION_NOTE' ? 'Operation' : 'Procedure')).slice(0, 120);
+  };
+
+  // The consultation fee, when the visit has none on the bill yet: the price
+  // list's consultation for the visit's unit if there is one, else its only or
+  // general consultation price.
+  const consultationPrices = await prisma.servicePrice.findMany({ where: { clinicId: invoice.clinicId, kind: 'CONSULTATION' }, orderBy: { name: 'asc' } });
+  const unit = visit?.appointment.department?.name?.toLowerCase();
+  // (A bill from before itemising is one consultation amount already.)
+  const consultationPrice = !invoice.consultationId || invoice.items.length === 0 || invoice.items.some((i) => i.kind === 'CONSULTATION')
+    ? undefined
+    : (unit ? consultationPrices.find((p) => p.name.toLowerCase().includes(unit)) : undefined)
+      ?? (consultationPrices.length === 1 ? consultationPrices[0] : consultationPrices.find((p) => /general|opd|consultation$/i.test(p.name)))
+      ?? null;
+
+  const wanted: Array<{ kind: ChargeKind; description: string }> = [
+    ...labTests.map((t) => ({ kind: 'LAB' as const, description: t.testName })),
+    ...imaging.map((r) => ({ kind: 'IMAGING' as const, description: r.examination })),
+    ...procedures.map((n) => ({ kind: 'PROCEDURE' as const, description: procedureName(n) })),
+    ...unbilledStays.map((s) => ({ kind: 'ADMISSION' as const, description: describeStay(s.stay.ward.name) })),
+    ...(consultationPrice === null ? [{ kind: 'CONSULTATION' as const, description: 'Consultation' }] : []),
+  ];
+  const priceOf = await priceLookup(invoice.clinicId, wanted);
+
   return [
-    ...labTests.map((t) => ({ kind: 'LAB' as const, description: t.testName, quantity: 1, unitPrice: lastPrice(t.testName), labTestId: t.id })),
+    ...(consultationPrice
+      ? [{ kind: 'CONSULTATION' as const, description: consultationPrice.name, quantity: 1, unitPrice: consultationPrice.price }]
+      : consultationPrice === null
+        ? [{ kind: 'CONSULTATION' as const, description: 'Consultation', quantity: 1, unitPrice: priceOf('CONSULTATION', 'Consultation') }]
+        : []),
+    ...labTests.map((t) => ({ kind: 'LAB' as const, description: t.testName, quantity: 1, unitPrice: priceOf('LAB', t.testName), labTestId: t.id })),
+    ...imaging.map((r) => ({ kind: 'IMAGING' as const, description: r.examination, quantity: 1, unitPrice: priceOf('IMAGING', r.examination), imagingRequestId: r.id })),
     ...prescriptions.map((rx) => ({
       kind: 'MEDICINE' as const,
       description: [rx.medication, rx.strength].filter(Boolean).join(' '),
@@ -186,11 +245,12 @@ async function chargeSuggestions(invoice: FullInvoice) {
       unitPrice: rx.medicine?.price ? Math.round(rx.medicine.price) : null,
       prescriptionId: rx.id,
     })),
+    ...procedures.map((n) => ({ kind: 'PROCEDURE' as const, description: procedureName(n), quantity: 1, unitPrice: priceOf('PROCEDURE', procedureName(n)), admissionNoteId: n.id })),
     ...unbilledStays.map(({ stay, nights }) => ({
       kind: 'ADMISSION' as const,
       description: describeStay(stay.ward.name),
       quantity: nights,
-      unitPrice: lastPrice(describeStay(stay.ward.name)),
+      unitPrice: priceOf('ADMISSION', describeStay(stay.ward.name)),
       admissionId: stay.id,
     })),
   ];

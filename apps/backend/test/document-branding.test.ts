@@ -215,6 +215,7 @@ describe('sample documents for checking', () => {
       'bulamu-sample-1-invoice-unpaid.pdf', 'bulamu-sample-2-invoice-paid-no-logo.pdf', 'bulamu-sample-3-prescription.pdf',
       'bulamu-sample-4-referral-letter.pdf', 'bulamu-sample-5-discharge-summary.pdf', 'bulamu-sample-6-subscription-receipt.pdf',
       'bulamu-sample-7-free-trial-receipt.pdf', 'bulamu-sample-8-patient-receipt.pdf', 'bulamu-sample-9-financial-report.pdf',
+      'bulamu-sample-10-lab-results.pdf',
     ]);
     for (const document of documents) {
       for (const page of pdfPages(document.content)) expect(page).toContain('SAMPLE - NOT A REAL');

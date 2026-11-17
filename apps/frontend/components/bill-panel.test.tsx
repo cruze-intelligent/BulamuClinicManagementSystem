@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BillPanel, type Bill } from './bill-panel';
 
+// The device's own stock copy lives in IndexedDB, which the test browser has none of.
+vi.mock('@/lib/local-first', async (original) => ({ ...(await original<typeof import('@/lib/local-first')>()), listLocalInventory: async () => [] }));
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -92,6 +95,38 @@ describe('a bill', () => {
     expect(screen.getByRole('link', { name: /WhatsApp/ }).getAttribute('href')).toMatch(/^https:\/\/wa\.me\/256772123456\?text=/);
     expect(screen.getByRole('button', { name: 'Print receipt' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Print receipt 000042' })).toBeTruthy();
+  });
+
+  it("prices a charge picked from the facility's price list, and suggests imaging and procedures with theirs", async () => {
+    localStorage.setItem('user', JSON.stringify({ clinicId: 'c1' }));
+    localStorage.setItem('priceList_c1', JSON.stringify([
+      { id: 'pl1', kind: 'IMAGING', name: 'Abdominal ultrasound', price: 30000 },
+      { id: 'pl2', kind: 'LAB', name: 'Malaria RDT', price: 5000 },
+    ]));
+    const fetchMock = server({
+      'GET /invoices/detail/bill-1': () => ({
+        success: true, invoice: bill(),
+        suggestions: [
+          { kind: 'IMAGING', description: 'Pelvic ultrasound', quantity: 1, unitPrice: 25000, imagingRequestId: 'img-1' },
+          { kind: 'PROCEDURE', description: 'Wound dressing', quantity: 1, unitPrice: null, admissionNoteId: 'note-1' },
+        ],
+      }),
+      'POST /invoices/bill-1/items': () => ({ success: true, invoice: bill() }),
+    });
+    render(<BillPanel billId="bill-1" clinicName="Clinic" isAdmin={false} onClose={() => {}} onChanged={() => {}} />);
+    await screen.findByText('Artemether/Lumefantrine 20/120 mg');
+    expect(screen.getByText('· Imaging')).toBeTruthy();
+    expect((screen.getByLabelText('Price for Pelvic ultrasound') as HTMLInputElement).value).toBe('25000');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add a charge' }));
+    fireEvent.change(screen.getByLabelText('For'), { target: { value: 'IMAGING' } });
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'abdominal ultrasound' } });
+    expect((screen.getByLabelText('Price each (UGX)') as HTMLInputElement).value).toBe('30000');
+    fireEvent.submit(screen.getByLabelText('Description').closest('form')!);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith('/items') && init?.method === 'POST')).toBe(true));
+    const sent = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith('/items') && init?.method === 'POST')!;
+    expect(JSON.parse(String(sent[1]!.body))).toEqual({ kind: 'IMAGING', description: 'abdominal ultrasound', quantity: 1, unitPrice: 30000 });
+    localStorage.clear();
   });
 
   it('refuses an amount that is not whole shillings before sending anything', async () => {

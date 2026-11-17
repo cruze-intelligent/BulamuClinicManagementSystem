@@ -67,6 +67,7 @@ export const methodText = (method: string | null | undefined, provider?: string 
 export const CHARGE_KINDS = [
   { value: 'CONSULTATION', label: 'Consultation' },
   { value: 'LAB', label: 'Lab test' },
+  { value: 'IMAGING', label: 'Imaging' },
   { value: 'MEDICINE', label: 'Medicine' },
   { value: 'PROCEDURE', label: 'Procedure' },
   { value: 'ADMISSION', label: 'Admission / ward' },

@@ -4,8 +4,13 @@
 // with a brand people know in `aka` for searching). It is a convenience, not a
 // formulary: any medicine can still be typed in, and the facility's own stock
 // list is offered first.
+//
+// Every medicine on Uganda's national essential medicines list (EMHSLU 2023,
+// the list National Medical Stores supplies against) is folded in from
+// medicines-national.ts, so the whole national list can be prescribed by name.
 
 import type { RouteCode } from './prescription';
+import { NATIONAL_MEDICINES } from './medicines-national';
 
 /** A strength and form; `route` when it is given differently from the medicine's usual route (an injection of a tablet medicine). */
 export type CatalogVariant = { strength: string; form: string; route?: RouteCode };
@@ -16,11 +21,13 @@ export type CatalogMedicine = {
   aka?: string;
   route: RouteCode;
   variants: CatalogVariant[];
+  /** On Uganda's Essential Medicines and Health Supplies List (EMHSLU 2023). */
+  nationalList?: boolean;
 };
 
 const v = (strength: string, form: string, route?: RouteCode): CatalogVariant => (route ? { strength, form, route } : { strength, form });
 
-export const MEDICINES_CATALOG: CatalogMedicine[] = [
+const PRESCRIBING_LIST: CatalogMedicine[] = [
   // Antimalarials
   { name: 'Artemether/Lumefantrine', aka: 'coartem al act malaria', route: 'PO', variants: [v('20/120 mg', 'tablet'), v('20/120 mg dispersible', 'tablet')] },
   { name: 'Artesunate', aka: 'severe malaria', route: 'IV', variants: [v('60 mg', 'injection')] },
@@ -267,6 +274,37 @@ export const MEDICINES_CATALOG: CatalogMedicine[] = [
   { name: 'SK-Derm', aka: 'sk derm skderm', route: 'TOP', variants: [v('15 g', 'cream'), v('30 g', 'cream')] },
   { name: 'MCG', aka: 'mcg cream', route: 'TOP', variants: [v('15 g', 'cream')] },
 ];
+
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+const sameVariant = (a: CatalogVariant, b: CatalogVariant) =>
+  a.form === b.form && a.strength.replace(/\s+/g, '').toLowerCase() === b.strength.replace(/\s+/g, '').toLowerCase();
+
+/**
+ * The prescribing list with the national list folded in: a medicine on both is
+ * listed once, with the national list's other strengths and forms added (and
+ * its search words); a medicine only on the national list is added whole.
+ */
+export function withNationalList(list: CatalogMedicine[], national: CatalogMedicine[]): CatalogMedicine[] {
+  const merged = list.map((m) => ({ ...m, variants: [...m.variants] }));
+  for (const n of national) {
+    const existing = merged.find((m) => sameName(m.name, n.name));
+    if (!existing) {
+      merged.push({ ...n, variants: [...n.variants], nationalList: true });
+      continue;
+    }
+    existing.nationalList = true;
+    for (const variant of n.variants) {
+      if (existing.variants.some((x) => sameVariant(x, variant))) continue;
+      const route = variant.route ?? n.route;
+      existing.variants.push(route === existing.route ? v(variant.strength, variant.form) : v(variant.strength, variant.form, route));
+    }
+    const words = (n.aka ?? '').split(/\s+/).filter((w) => w && !(existing.aka ?? '').toLowerCase().split(/\s+/).includes(w.toLowerCase()));
+    if (words.length) existing.aka = [existing.aka, ...words].filter(Boolean).join(' ');
+  }
+  return merged;
+}
+
+export const MEDICINES_CATALOG: CatalogMedicine[] = withNationalList(PRESCRIBING_LIST, NATIONAL_MEDICINES);
 
 /** Medicines matching what has been typed - by name or brand - best matches first. */
 export function searchMedicinesCatalog(query: string, limit = 8): CatalogMedicine[] {

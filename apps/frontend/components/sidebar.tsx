@@ -12,6 +12,28 @@ import { roleLabel } from '@/lib/role-labels';
 import { useUnreadNotifications } from '@/lib/useUnreadNotifications';
 import { NAV_ITEMS } from '@/lib/nav-items';
 import { clearStaffSession } from '@/lib/staff-session';
+import { useFacilityLogo } from '@/lib/facility-logo';
+
+/** Who is signed in, and at which facility - with the facility's own logo when it has one. */
+function SignedInCard({ name, role, facility, logo }: { name: string; role: string; facility?: string; logo: string | null }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
+      {(facility || logo) && (
+        <div className="mb-2.5 flex items-center gap-2.5 border-b border-slate-200 pb-2.5 dark:border-slate-700">
+          {logo && (
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-white p-1 ring-1 ring-slate-200 dark:ring-slate-700">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={logo} alt="" className="max-h-full max-w-full object-contain" />
+            </span>
+          )}
+          {facility && <p className="min-w-0 text-xs font-semibold leading-snug text-slate-700 dark:text-slate-300">{facility}</p>}
+        </div>
+      )}
+      <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{name}</p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{role}</p>
+    </div>
+  );
+}
 
 const navItems = NAV_ITEMS;
 
@@ -75,6 +97,8 @@ export function Sidebar() {
   const { user, hasRole } = useAuth();
   const { collapsed, toggleCollapsed, mobileOpen, closeMobile } = useSidebar();
   const [mounted, setMounted] = useState(false);
+  const logo = useFacilityLogo(user?.role === 'SUPER_ADMIN' ? null : user?.clinicId);
+  const facility = (user as { clinic?: { name?: string } } | null)?.clinic?.name;
 
   useEffect(() => {
     setMounted(true);
@@ -116,9 +140,8 @@ export function Sidebar() {
             )}
           </Link>
           {!collapsed && (
-            <div className="mt-5 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
-              <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{user.name}</p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{roleLabel(user.role)}</p>
+            <div className="mt-5">
+              <SignedInCard name={user.name} role={roleLabel(user.role)} facility={facility} logo={logo} />
             </div>
           )}
         </div>
@@ -182,10 +205,7 @@ export function Sidebar() {
         </div>
 
         <div className="mt-5 px-4">
-          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
-            <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{user.name}</p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{roleLabel(user.role)}</p>
-          </div>
+          <SignedInCard name={user.name} role={roleLabel(user.role)} facility={facility} logo={logo} />
         </div>
 
         <NavLinks items={filteredNavItems} pathname={pathname} compact={false} onNavigate={closeMobile} badges={badges} />
