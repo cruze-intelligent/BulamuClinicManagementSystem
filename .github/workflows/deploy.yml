@@ -132,7 +132,7 @@ jobs:
           [ -z "$(allow https://evil.example)" ] || { echo "::error::The API accepts calls from other websites."; exit 1; }
           echo "Cross-site access: bulamu.site and www.bulamu.site allowed, other sites refused"
           # Edits and deletes too - without them every save of a change fails in the browser as "Failed to fetch".
-          methods=$(curl -s -o /dev/null -D - -X OPTIONS -H "Origin: https://bulamu.site" -H "Access-Control-Request-Method: PATCH" "$api/lab/check" | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-methods"{print $2}')
+          methods=$(curl -s -o /dev/null -D - -X OPTIONS -H "Origin: https://bulamu.site" -H "Access-Control-Request-Method: PATCH" "$api/lab/check" | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-methods"{print $2}' | tr -d ' ')
           for m in PATCH PUT DELETE; do
             case ",$methods," in *",$m,"*) ;; *) echo "::error::The site cannot send $m requests (allowed: $methods)."; exit 1;; esac
           done
