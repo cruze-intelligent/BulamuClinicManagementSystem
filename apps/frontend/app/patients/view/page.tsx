@@ -382,7 +382,12 @@ function PatientHistoryContent() {
         <Card className="p-6 mb-6">
           {/* One block, so the card's spacing between sections doesn't pull these lines apart. */}
           <div>
-            <h1 className="text-3xl font-bold mb-1">{patient.name}</h1>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <h1 className="text-3xl font-bold mb-1">{patient.name}</h1>
+              {canEditClinicalData && (
+                <Link href={`/summary?id=${patient.id}`}><Button size="sm" variant="outline">Clinical summary</Button></Link>
+              )}
+            </div>
             <p className="text-muted-foreground">
               {patientIdText(patient.patientNumber) && <span className="mr-3 font-mono font-medium text-slate-700 dark:text-slate-300">Patient ID {patientIdText(patient.patientNumber)}</span>}
               {patient.phone}

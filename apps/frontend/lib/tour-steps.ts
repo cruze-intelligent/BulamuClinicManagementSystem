@@ -1,4 +1,5 @@
 import {
+  FileText,
   ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FlaskConical,
   HelpCircle, History, Home, MapPinned, Moon, Package, Pill, Receipt, ShieldCheck, Stethoscope, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
@@ -108,6 +109,11 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       body: 'Set up your wards and the number of beds in each. Clinicians then admit patients, record observations and discharge them here.',
     },
     {
+      target: nav('/summary'), where: 'Menu', icon: FileText,
+      title: 'Clinical summary',
+      body: "A patient's visits - history, vital signs, examination, diagnosis, lab results and treatment - and their ward stays with procedures and operations, in one place. Print it to hand on.",
+    },
+    {
       target: nav('/referrals'), where: 'Menu', icon: ArrowRightLeft,
       title: 'Referrals',
       body: 'Patients referred to and from your facility, with the referral letter and the other facility\'s reply.',
@@ -174,6 +180,11 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       body: 'Admit patients to a ward bed, write ward-round notes, review the nurses\' observations, and discharge - home, or by referral with a discharge summary.',
     },
     {
+      target: nav('/summary'), where: 'Menu', icon: FileText,
+      title: 'Clinical summary',
+      body: "A patient's visits - history, vital signs, examination, diagnosis, lab results and treatment - and their ward stays with procedures and operations, in one place. Print it to hand on.",
+    },
+    {
       target: nav('/referrals'), where: 'Menu', icon: ArrowRightLeft,
       title: 'Referrals',
       body: 'Refer a patient out with a letter and clinical summary, or accept referrals sent to you. You hear back when the other facility accepts, declines or completes your referral.',
@@ -201,6 +212,11 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       target: nav('/wards'), where: 'Menu', icon: BedDouble,
       title: 'Wards',
       body: 'Every admitted patient by ward and bed. Record observations (temperature, pulse, BP, SpO2) and nursing notes, and move patients between wards. You are notified of each admission.',
+    },
+    {
+      target: nav('/summary'), where: 'Menu', icon: FileText,
+      title: 'Clinical summary',
+      body: "A patient's visits - history, vital signs, examination, diagnosis, lab results and treatment - and their ward stays with procedures and operations, in one place. Print it to hand on.",
     },
     {
       target: nav('/referrals'), where: 'Menu', icon: ArrowRightLeft,

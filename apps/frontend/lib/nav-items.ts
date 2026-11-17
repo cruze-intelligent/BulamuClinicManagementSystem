@@ -1,5 +1,5 @@
 import {
-  ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FlaskConical, HelpCircle,
+  ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FileText, FlaskConical, HelpCircle,
   History, Home, MapPinned, Package, Pill, Receipt, Stethoscope, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 
@@ -18,6 +18,7 @@ export const NAV_ITEMS: NavItem[] = [
   { name: 'Consultations', path: '/consultations', icon: Stethoscope, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST'] },
   { name: 'Lab Tests', path: '/lab', icon: FlaskConical, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECH'] },
   { name: 'Wards', path: '/wards', icon: BedDouble, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
+  { name: 'Clinical summary', path: '/summary', icon: FileText, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
   { name: 'Referrals', path: '/referrals', icon: ArrowRightLeft, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
   { name: 'Household Visit', path: '/chw-visit', icon: MapPinned, roles: ['NURSE', 'STAFF'] },
   { name: 'Inventory', path: '/inventory', icon: Package, roles: ['ADMIN', 'PHARMACIST'] },

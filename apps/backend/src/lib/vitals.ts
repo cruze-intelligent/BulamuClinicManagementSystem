@@ -35,3 +35,17 @@ export function normalizeVitals(raw: unknown): { ok: true; value: Vitals | null 
   }
   return { ok: true, value: Object.keys(vitals).length ? vitals : null };
 }
+
+/** "T 38.5°C · P 110 · RR 20 · BP 120/80 · SpO2 95% · Wt 62 kg" - as a chart writes them; null when none were taken. */
+export function vitalsLine(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const v = raw as Vitals;
+  const parts: string[] = [];
+  if (v.temperatureC !== undefined) parts.push(`T ${v.temperatureC}°C`);
+  if (v.pulse !== undefined) parts.push(`P ${v.pulse}`);
+  if (v.respiratoryRate !== undefined) parts.push(`RR ${v.respiratoryRate}`);
+  if (v.systolic !== undefined || v.diastolic !== undefined) parts.push(`BP ${v.systolic ?? '?'}/${v.diastolic ?? '?'}`);
+  if (v.spo2 !== undefined) parts.push(`SpO2 ${v.spo2}%`);
+  if (v.weightKg !== undefined) parts.push(`Wt ${v.weightKg} kg`);
+  return parts.length ? parts.join(' · ') : null;
+}
