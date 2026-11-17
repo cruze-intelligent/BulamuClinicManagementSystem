@@ -9,6 +9,7 @@ import { parseFee } from '../lib/invoices';
 import { documentProducer } from '../lib/document-signer';
 import { recordAudit } from '../lib/audit';
 import { sendRouteError } from '../lib/http-error';
+import { parseConsultationNotes } from '../lib/consultation-notes';
 
 const MAX_SYMPTOMS = 2000;
 const MAX_CLINICAL_NOTES = 4000;
@@ -32,6 +33,8 @@ export async function consultationRoutes(fastify: FastifyInstance) {
     const notesText = typeof clinicalNotes === 'string' ? clinicalNotes.trim() : '';
     if (notesText.length > MAX_CLINICAL_NOTES) return reply.status(400).send({ error: `Clinical notes are too long (${MAX_CLINICAL_NOTES} characters max)` });
 
+    const notes = parseConsultationNotes(request.body as Record<string, unknown>);
+    if ('error' in notes) return reply.status(400).send({ error: notes.error });
     const validDiagnoses = normalizeDiagnoses(diagnoses, diagnosis);
     if (!validDiagnoses.ok) return reply.status(400).send({ error: validDiagnoses.error });
     const validPrescriptions = normalizePrescriptions(prescriptions);
@@ -63,6 +66,9 @@ export async function consultationRoutes(fastify: FastifyInstance) {
           recordedByUserId: getAuthUser(request).userId,
           diagnosis: primaryDiagnosisText(validDiagnoses.value),
           symptoms: symptomsText,
+          history: notes.value.history ?? null,
+          examination: notes.value.examination ?? null,
+          vitals: notes.value.vitals ?? undefined,
           clinicalNotes: notesText || null,
           serviceTags: serviceTags || [],
           diagnoses: { create: validDiagnoses.value },
@@ -81,6 +87,9 @@ export async function consultationRoutes(fastify: FastifyInstance) {
           invoice: true
         }
       });
+
+      // Seen: the patient leaves the waiting queue.
+      await prisma.appointment.updateMany({ where: { id: appointmentId, status: 'SCHEDULED' }, data: { status: 'COMPLETED' } });
 
       const authUser = getAuthUser(request);
       await recordAudit({

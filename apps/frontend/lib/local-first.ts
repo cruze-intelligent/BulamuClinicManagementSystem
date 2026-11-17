@@ -41,6 +41,8 @@ export type LocalAppointment = {
   time: string;
   status: "SCHEDULED" | "COMPLETED" | "CANCELLED" | "NO_SHOW";
   notes?: string;
+  /** When the patient arrived and joined the waiting queue. */
+  checkedInAt?: string | null;
   patient?: { name: string; phone: string };
   doctor?: { name: string };
   createdAt: string;
@@ -84,6 +86,12 @@ export type LocalConsultation = {
   /** Every diagnosis, primary first. Absent on records made before structured diagnoses. */
   diagnoses?: LocalDiagnosis[];
   symptoms: string;
+  /** History of the presenting illness and relevant past, drug, family and social history. */
+  history?: string | null;
+  /** Examination findings. */
+  examination?: string | null;
+  /** Vital signs taken at the visit. */
+  vitals?: Record<string, number> | null;
   clinicalNotes?: string | null;
   serviceTags?: string[];
   prescriptions: LocalPrescription[];
@@ -523,6 +531,8 @@ export async function createAppointmentOffline(input: {
   notes?: string;
   patientName?: string;
   doctorName?: string;
+  /** A walk-in joins the waiting queue at once. */
+  checkedInAt?: string;
 }): Promise<LocalAppointment> {
   await assertCanSave();
   const now = new Date().toISOString();
@@ -535,6 +545,7 @@ export async function createAppointmentOffline(input: {
     time: input.time,
     status: "SCHEDULED",
     notes: input.notes,
+    checkedInAt: input.checkedInAt ?? null,
     patient: input.patientName ? { name: input.patientName, phone: "" } : undefined,
     doctor: input.doctorName ? { name: input.doctorName } : undefined,
     createdAt: now,
@@ -557,6 +568,7 @@ export async function createAppointmentOffline(input: {
       time: appointment.time,
       status: appointment.status,
       notes: appointment.notes,
+      checkedInAt: appointment.checkedInAt,
       createdAt: appointment.createdAt,
       updatedAt: appointment.updatedAt,
     },
@@ -573,6 +585,40 @@ export async function createAppointmentOffline(input: {
   }
 
   return appointment;
+}
+
+/**
+ * Records a change to an appointment made on this device - the patient
+ * arriving (checked in, joining the queue), or being seen - and sends it.
+ */
+export async function updateAppointmentOffline(
+  appointment: LocalAppointment,
+  change: Partial<Pick<LocalAppointment, "status" | "checkedInAt">>,
+): Promise<LocalAppointment> {
+  await assertCanSave();
+  const now = new Date().toISOString();
+  const updated: LocalAppointment = { ...appointment, ...change, updatedAt: now, syncStatus: "pending" };
+  const mutation: LocalMutation = {
+    id: createId(),
+    entity: "appointment",
+    action: "upsert",
+    recordId: updated.id,
+    clinicId: updated.clinicId,
+    payload: {
+      id: updated.id, patientId: updated.patientId, doctorId: updated.doctorId, clinicId: updated.clinicId,
+      date: updated.date, time: updated.time, status: updated.status, notes: updated.notes,
+      checkedInAt: updated.checkedInAt ?? null, createdAt: updated.createdAt, updatedAt: updated.updatedAt,
+    },
+    createdAt: now,
+    attempts: 0,
+  };
+  await putRecord(APPOINTMENT_STORE, updated);
+  await putRecord(MUTATION_STORE, mutation);
+  emitLocalChange();
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    flushSyncQueue().catch(console.error);
+  }
+  return updated;
 }
 
 /* ================= CONSULTATIONS ================= */
@@ -601,6 +647,9 @@ export async function createConsultationOffline(input: {
   /** Structured diagnoses, primary first. */
   diagnoses: LocalDiagnosis[];
   symptoms: string;
+  history?: string;
+  examination?: string;
+  vitals?: Record<string, number> | null;
   clinicalNotes?: string;
   serviceTags?: string[];
   prescriptions: LocalPrescription[];
@@ -618,6 +667,9 @@ export async function createConsultationOffline(input: {
     diagnosis: primary?.description ?? "",
     diagnoses: input.diagnoses,
     symptoms: input.symptoms,
+    history: input.history || null,
+    examination: input.examination || null,
+    vitals: input.vitals && Object.keys(input.vitals).length ? input.vitals : null,
     clinicalNotes: input.clinicalNotes || null,
     serviceTags: input.serviceTags,
     prescriptions: input.prescriptions,
@@ -640,6 +692,9 @@ export async function createConsultationOffline(input: {
       diagnosis: consultation.diagnosis,
       diagnoses: consultation.diagnoses,
       symptoms: consultation.symptoms,
+      history: consultation.history,
+      examination: consultation.examination,
+      vitals: consultation.vitals,
       clinicalNotes: consultation.clinicalNotes,
       serviceTags: consultation.serviceTags || [],
       prescriptions: consultation.prescriptions,
@@ -653,6 +708,9 @@ export async function createConsultationOffline(input: {
 
   await putRecord(CONSULTATION_STORE, consultation);
   await putRecord(MUTATION_STORE, mutation);
+  // Seen: the patient leaves the waiting queue on this device too (the server does the same).
+  const seen = await getRecord<LocalAppointment>(APPOINTMENT_STORE, consultation.appointmentId).catch(() => undefined);
+  if (seen && seen.status === "SCHEDULED") await putRecord(APPOINTMENT_STORE, { ...seen, status: "COMPLETED" as const });
   emitLocalChange();
 
   if (typeof navigator !== "undefined" && navigator.onLine) {

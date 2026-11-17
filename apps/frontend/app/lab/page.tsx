@@ -66,6 +66,8 @@ export default function LabTestsPage() {
   // (releasing to the patient): clinicians and the administrator.
   const canEnter = hasRole('LAB_TECH', 'NURSE', 'DOCTOR', 'ADMIN');
   const canVerify = hasRole('DOCTOR', 'ADMIN');
+  // Tests are requested by clinicians - usually during the consultation; the lab works the list.
+  const canOrder = hasRole('NURSE', 'DOCTOR', 'ADMIN');
 
   const loadData = async () => {
     const clinicId = getCurrentClinicId();
@@ -133,10 +135,10 @@ export default function LabTestsPage() {
           <div>
             <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Lab tests</h1>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Order a test, record its result, and a clinician verifies it before the patient is told.
+              The lab's worklist: tests requested during consultations arrive here. Record each result; a clinician verifies it before the patient is told.
             </p>
           </div>
-          <Button onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : '+ Order lab test'}</Button>
+          {canOrder && <Button variant="outline" onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : '+ Request a test outside a visit'}</Button>}
         </div>
 
         {notice && (

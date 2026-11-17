@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
+import { WaitingRoom } from '@/components/waiting-room';
 import {
   listLocalAppointments,
   cacheAppointments,
   getCurrentClinicId,
   getCurrentUser,
   subscribeToLocalChanges,
+  updateAppointmentOffline,
   LocalAppointment,
 } from '@/lib/local-first';
 
@@ -133,9 +135,9 @@ export default function AppointmentsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen p-4 sm:p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
           <div>
             <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Appointments</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Today's patients and upcoming bookings</p>
@@ -144,6 +146,9 @@ export default function AppointmentsPage() {
             <Button>+ Book Appointment</Button>
           </Link>
         </div>
+
+        {/* Reception checks patients in here as they arrive, and adds walk-ins. */}
+        <WaitingRoom />
 
         {requests.length > 0 && (
           <Card className="p-4 mb-6 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
@@ -213,6 +218,14 @@ export default function AppointmentsPage() {
                     {apt.notes && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{apt.notes}</p>}
                   </div>
                   <div className="flex items-center gap-2">
+                    {apt.status === 'SCHEDULED' && !apt.checkedInAt && new Date(apt.date).toDateString() === new Date().toDateString() && (
+                      <Button size="sm" variant="outline" onClick={() => updateAppointmentOffline(apt, { checkedInAt: new Date().toISOString() }).catch((e) => alert(e.message))}>
+                        Check in
+                      </Button>
+                    )}
+                    {apt.status === 'SCHEDULED' && apt.checkedInAt && (
+                      <span className="text-xs text-emerald-700 dark:text-emerald-400">Arrived {new Date(apt.checkedInAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })} - in the waiting room</span>
+                    )}
                     {apt.status === 'SCHEDULED' && (
                       <Link href={`/consultations/record?appointmentId=${apt.id}&patientId=${apt.patientId}`}>
                         <Button size="sm">Record Consultation</Button>

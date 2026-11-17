@@ -2,11 +2,15 @@ import { AlertTriangle, CheckCircle2, Clock, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { diagnosesOf, type DiagnosisView } from '@/lib/diagnosis';
 import { formatPrescription, type PrescriptionView } from '@/lib/prescription';
+import { abnormalVitals, vitalsText } from '@/lib/wards';
 
 export type ConsultationLike = {
   diagnosis?: string;
   diagnoses?: DiagnosisView[];
   symptoms?: string;
+  history?: string | null;
+  examination?: string | null;
+  vitals?: Record<string, number> | null;
   clinicalNotes?: string | null;
   prescriptions?: Array<PrescriptionView & { id?: string }>;
 };
@@ -73,6 +77,28 @@ export function ConsultationDetails({
         <div>
           <p className={SECTION}>Presenting complaints</p>
           <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200">{consultation.symptoms}</p>
+        </div>
+      )}
+
+      {showNotes && consultation.history && (
+        <div>
+          <p className={SECTION}>History</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200">{consultation.history}</p>
+        </div>
+      )}
+
+      {consultation.vitals && Object.keys(consultation.vitals).length > 0 && (
+        <div>
+          <p className={SECTION}>Vital signs</p>
+          <p className="mt-1 text-sm font-medium text-slate-800 dark:text-slate-200">{vitalsText(consultation.vitals)}</p>
+          {abnormalVitals(consultation.vitals).length > 0 && <p className="text-xs font-semibold text-rose-700 dark:text-rose-400">{abnormalVitals(consultation.vitals).join(' · ')}</p>}
+        </div>
+      )}
+
+      {showNotes && consultation.examination && (
+        <div>
+          <p className={SECTION}>Examination</p>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-200">{consultation.examination}</p>
         </div>
       )}
 

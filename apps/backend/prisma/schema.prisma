@@ -622,6 +622,9 @@ model Appointment {
   time        String
   status      AppointmentStatus @default(SCHEDULED)
   notes       String?
+  // When the patient arrived and joined the waiting queue (checked in at
+  // reception, or a walk-in). Clinicians see patients in this order.
+  checkedInAt DateTime?
   consultation Consultation?
   appointmentRequest AppointmentRequest?
   deletedAt   DateTime?
@@ -629,6 +632,7 @@ model Appointment {
   updatedAt   DateTime @updatedAt
 
   @@index([clinicId, date])
+  @@index([clinicId, checkedInAt])
   @@index([patientId])
   @@index([doctorId])
 }
@@ -648,6 +652,12 @@ model Consultation {
   patient       Patient  @relation(fields: [patientId], references: [id])
   diagnosis     String
   symptoms      String
+  // History of the presenting illness and relevant past, drug, family and
+  // social history; examination findings; and the vital signs taken at the visit
+  // ({ temperatureC, pulse, respiratoryRate, systolic, diastolic, spo2, weightKg }).
+  history       String?
+  examination   String?
+  vitals        Json?
   // Assessment, plan and advice given - the clinician's free-text narrative
   // beyond the structured diagnoses and prescriptions.
   clinicalNotes String?

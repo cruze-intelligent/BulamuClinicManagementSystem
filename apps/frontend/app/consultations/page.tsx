@@ -10,6 +10,7 @@ import {
   LocalConsultation,
 } from '@/lib/local-first';
 import { ConsultationDetails } from '@/components/consultation-details';
+import { WaitingRoom } from '@/components/waiting-room';
 import { openDocumentPreview } from '@/lib/document-preview';
 
 export default function ConsultationsPage() {
@@ -44,18 +45,21 @@ export default function ConsultationsPage() {
   }, []);
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen p-4 sm:p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Consultation History</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Visits recorded at your facility</p>
+            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Consultations</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">The waiting room, and the visits recorded at your facility</p>
           </div>
           <Link href="/consultations/record">
             <Button>+ Record visit</Button>
           </Link>
         </div>
 
+        <WaitingRoom />
+
+        <h2 className="mb-3 text-lg font-semibold text-slate-800 dark:text-slate-200">Visits recorded</h2>
         {loading ? (
           <p className="text-slate-500 dark:text-slate-400">Loading consultations...</p>
         ) : consultations.length === 0 ? (

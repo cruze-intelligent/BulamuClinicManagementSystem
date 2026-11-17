@@ -11,6 +11,7 @@ import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, primary
 import { consultationChildren, linkStockItems } from '../lib/consultation-records';
 import { parseFee } from '../lib/invoices';
 import { sendRouteError } from '../lib/http-error';
+import { parseConsultationNotes } from '../lib/consultation-notes';
 
 export async function syncRoutes(fastify: FastifyInstance) {
   // Push queued offline mutations to backend (Last-Write-Wins by timestamp,
@@ -152,6 +153,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 time: payload.time,
                 status: payload.status || 'SCHEDULED',
                 notes: payload.notes || null,
+                ...(payload.checkedInAt !== undefined ? { checkedInAt: payload.checkedInAt ? new Date(payload.checkedInAt) : null } : {}),
                 updatedAt: incomingUpdatedAt,
               },
               create: {
@@ -163,6 +165,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 time: payload.time,
                 status: payload.status || 'SCHEDULED',
                 notes: payload.notes || null,
+                checkedInAt: payload.checkedInAt ? new Date(payload.checkedInAt) : null,
                 createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
                 updatedAt: incomingUpdatedAt,
               },
@@ -233,6 +236,13 @@ export async function syncRoutes(fastify: FastifyInstance) {
             const diagnoses = validDiagnoses.value;
             const diagnosisText = primaryDiagnosisText(diagnoses);
             const clinicalNotes = typeof payload.clinicalNotes === 'string' ? payload.clinicalNotes.trim().slice(0, 4000) || null : undefined;
+            const visitNotes = parseConsultationNotes(payload);
+            if ('error' in visitNotes) {
+              fastify.log.warn(`Rejected consultation mutation ${mutationId}: ${visitNotes.error}`);
+              continue;
+            }
+            const { vitals: visitVitals, ...visitText } = visitNotes.value;
+            const vitalsData = visitVitals === undefined ? {} : { vitals: visitVitals ?? Prisma.DbNull };
 
             // An older client re-sending a record it only knows as a string must
             // not flatten diagnoses a newer client already coded: leave them
@@ -249,6 +259,8 @@ export async function syncRoutes(fastify: FastifyInstance) {
                   diagnosis: keepDiagnoses ? existing!.diagnosis : diagnosisText,
                   symptoms: payload.symptoms,
                   ...(clinicalNotes !== undefined ? { clinicalNotes } : {}),
+                  ...visitText,
+                  ...vitalsData,
                   serviceTags: payload.serviceTags || [],
                   updatedAt: incomingUpdatedAt,
                 },
@@ -260,11 +272,15 @@ export async function syncRoutes(fastify: FastifyInstance) {
                   diagnosis: diagnosisText,
                   symptoms: payload.symptoms,
                   clinicalNotes: clinicalNotes ?? null,
+                  ...visitText,
+                  ...vitalsData,
                   serviceTags: payload.serviceTags || [],
                   createdAt: payload.createdAt ? new Date(payload.createdAt) : new Date(),
                   updatedAt: incomingUpdatedAt,
                 },
               });
+              // Seen: the patient leaves the waiting queue.
+              await tx.appointment.updateMany({ where: { id: saved.appointmentId, status: 'SCHEDULED' }, data: { status: 'COMPLETED' } });
               if (!keepDiagnoses) {
                 await tx.diagnosis.deleteMany({ where: { consultationId: saved.id } });
                 await tx.diagnosis.createMany({ data: diagnoses.map((d) => ({ ...d, consultationId: saved.id })) });
