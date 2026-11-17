@@ -1036,13 +1036,14 @@ export type ClinicalSummaryPdfInput = SampleOption & {
     patient: { name: string; patientId: string | null; sexAge: string | null; phone: string; allergies: string };
     visits: Array<{
       date: Date; clinician: string | null; complaints: string; history: string | null; vitals: string | null; examination: string | null;
-      diagnoses: string[]; labs: Array<{ name: string; status: string; result: string | null }>; treatment: string[]; plan: string | null;
+      diagnoses: string[]; labs: Array<{ name: string; status: string; result: string | null }>; imaging?: string[]; treatment: string[]; plan: string | null;
     }>;
     stays: Array<{
       ward: string; admittedAt: Date; dischargedAt: Date | null; reason: string; dischargeDiagnosis: string | null; dischargeSummary: string | null;
       procedures: Array<{ date: Date; title: string; lines: Array<[string, string]> }>;
     }>;
     otherLabs: Array<{ name: string; status: string; result: string | null; at: Date }>;
+    otherImaging?: Array<{ at: Date; line: string; findings: string | null }>;
   };
 };
 
@@ -1055,6 +1056,7 @@ export type ClinicalSummaryPdfInput = SampleOption & {
 export async function generateClinicalSummaryPdf(input: ClinicalSummaryPdfInput): Promise<Buffer> {
   const { doc, done } = newDocument();
   const { patient, visits, stays, otherLabs } = input.summary;
+  const otherImaging = input.summary.otherImaging ?? [];
   drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
 
   doc.moveDown(1.5);
@@ -1093,7 +1095,7 @@ export async function generateClinicalSummaryPdf(input: ClinicalSummaryPdfInput)
   };
   const list = (label: string, items: string[]) => field(label, items.length ? items.map((i, n) => (items.length > 1 ? `${n + 1}. ${i}` : i)).join('\n') : null);
 
-  if (!visits.length && !stays.length && !otherLabs.length) {
+  if (!visits.length && !stays.length && !otherLabs.length && !otherImaging.length) {
     doc.moveDown(1);
     doc.font('Helvetica').fontSize(10).fillColor(MUTED).text('Nothing has been recorded for this patient at this facility yet.', 50);
   }
@@ -1106,6 +1108,7 @@ export async function generateClinicalSummaryPdf(input: ClinicalSummaryPdfInput)
     field('Examination', visit.examination);
     list('Diagnosis', visit.diagnoses);
     list('Lab tests', visit.labs.map((l) => `${l.name}: ${l.result ?? l.status}${l.result && l.status !== 'Verified' ? ` (${l.status.toLowerCase()})` : ''}`));
+    list('Imaging', visit.imaging ?? []);
     list('Treatment', visit.treatment);
     field('Assessment and plan', visit.plan);
   }
@@ -1123,6 +1126,11 @@ export async function generateClinicalSummaryPdf(input: ClinicalSummaryPdfInput)
   if (otherLabs.length) {
     heading('Other lab tests');
     for (const l of otherLabs) field(documentDate(l.at), `${l.name}: ${l.result ?? l.status}${l.result && l.status !== 'Verified' ? ` (${l.status.toLowerCase()})` : ''}`);
+  }
+
+  if (otherImaging.length) {
+    heading('Other imaging');
+    for (const r of otherImaging) field(documentDate(r.at), [r.line, r.findings].filter(Boolean).join('\n'));
   }
 
   await finishDocument(doc, input);

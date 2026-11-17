@@ -79,6 +79,20 @@ export const NOTIFICATION_RULES: Record<NotificationType, NotificationRule> = {
     description: 'When the result of a lab test you ordered has been recorded.',
   },
 
+  // --- Imaging ----------------------------------------------------------------
+  IMAGING_REQUESTED: {
+    audience: 'STAFF', roles: ['RADIOGRAPHER'], emailRoles: [],
+    emailSubject: 'New imaging request',
+    label: 'Imaging requested',
+    description: 'When a clinician requests an X-ray, scan or other imaging. In-app only.',
+  },
+  IMAGING_REPORTED: {
+    audience: 'STAFF', roles: ['DOCTOR', 'NURSE', 'ADMIN'], emailRoles: ['DOCTOR'], personal: true,
+    emailSubject: 'An imaging report you requested is ready',
+    label: 'Reports of imaging I requested',
+    description: 'When the report of an X-ray, scan or other imaging you requested has been written.',
+  },
+
   // --- Appointments -----------------------------------------------------------
   APPOINTMENT_REQUESTED: {
     audience: 'STAFF', roles: ['STAFF', 'NURSE', 'ADMIN'], emailRoles: ['STAFF', 'ADMIN'],
@@ -654,4 +668,39 @@ export function sanitizeOptOuts(
   if (!Array.isArray(requested)) return [];
   const allowed = new Set(describePreferences(audience, []).filter((p) => p.emailAvailable).map((p) => p.type));
   return [...new Set(requested)].filter((type): type is NotificationType => allowed.has(type as NotificationType));
+}
+
+/** A new imaging request reaches the radiographers and sonographers. */
+export async function notifyImagingRequested(
+  input: { clinicId: string; patientName: string; examination: string; urgent: boolean; requestedByUserId: string },
+  log?: Logger
+): Promise<void> {
+  await notifyStaff({
+    type: 'IMAGING_REQUESTED',
+    clinicId: input.clinicId,
+    title: `${input.urgent ? 'Urgent imaging' : 'Imaging'} requested: ${input.examination}`,
+    body: `${input.examination} was requested for ${input.patientName}${input.urgent ? ' - urgent' : ''}.`,
+    link: '/imaging',
+    emailSummary: 'A new imaging request is waiting on the Imaging page.',
+    excludeUserId: input.requestedByUserId,
+    log,
+  });
+}
+
+/** The requester hears that the report is written. */
+export async function notifyImagingReported(
+  input: { clinicId: string; patientName: string; examination: string; requestedByUserId: string | null; reportedByUserId: string },
+  log?: Logger
+): Promise<void> {
+  if (!input.requestedByUserId || input.requestedByUserId === input.reportedByUserId) return;
+  await notifyStaff({
+    type: 'IMAGING_REPORTED',
+    clinicId: input.clinicId,
+    title: `Imaging report ready: ${input.examination}`,
+    body: `The ${input.examination} report for ${input.patientName} is ready on the Imaging page and in the patient's clinical summary.`,
+    link: '/imaging?status=REPORTED',
+    emailSummary: 'The report of imaging you requested has been written. Sign in to Bulamu to read it.',
+    userIds: [input.requestedByUserId],
+    log,
+  });
 }

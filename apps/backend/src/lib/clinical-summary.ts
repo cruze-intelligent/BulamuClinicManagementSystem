@@ -3,6 +3,7 @@ import { formatPrescriptionLine } from './clinical';
 import { allergyText, patientIdText, sexAgeText } from './patient-text';
 import { structuredNoteLines, structuredNoteTitle } from './procedure-notes';
 import { vitalsLine } from './vitals';
+import { imagingLine } from './imaging';
 
 // One patient's record at this facility, the way a clinician reviews it:
 // each visit with its complaints, history, vital signs, examination,
@@ -32,7 +33,7 @@ export async function buildClinicalSummary(patientId: string, clinicId: string) 
   });
   if (!patient) return null;
 
-  const [consultations, admissions, otherLabs] = await Promise.all([
+  const [consultations, admissions, otherLabs, otherImaging] = await Promise.all([
     prisma.consultation.findMany({
       where: { patientId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -40,6 +41,7 @@ export async function buildClinicalSummary(patientId: string, clinicId: string) 
         diagnoses: { orderBy: [{ type: 'asc' }, { createdAt: 'asc' }] },
         prescriptions: { orderBy: { createdAt: 'asc' } },
         labTests: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } },
+        imagingRequests: { orderBy: { createdAt: 'asc' } },
         recordedBy: { select: { name: true } },
         appointment: { select: { doctor: { select: { name: true } } } },
       },
@@ -53,6 +55,7 @@ export async function buildClinicalSummary(patientId: string, clinicId: string) 
       },
     }),
     prisma.labTest.findMany({ where: { patientId, consultationId: null, deletedAt: null }, orderBy: { createdAt: 'desc' } }),
+    prisma.imagingRequest.findMany({ where: { patientId, clinicId, consultationId: null }, orderBy: { createdAt: 'desc' } }),
   ]);
 
   return {
@@ -73,6 +76,7 @@ export async function buildClinicalSummary(patientId: string, clinicId: string) 
       examination: c.examination,
       diagnoses: c.diagnoses.map((d) => `${d.description}${d.icd10Code ? ` (${d.icd10Code})` : ''}${d.certainty === 'PROVISIONAL' ? ' - suspected' : ''}${d.type === 'PRIMARY' ? '' : ' - secondary'}`),
       labs: c.labTests.map(labView),
+      imaging: c.imagingRequests.map(imagingLine),
       treatment: c.prescriptions.map((rx) => {
         const line = formatPrescriptionLine(rx);
         return [line.order, line.instructions].filter(Boolean).join(' - ');
@@ -90,5 +94,6 @@ export async function buildClinicalSummary(patientId: string, clinicId: string) 
       procedures: a.notes.map((n) => ({ date: n.createdAt, title: structuredNoteTitle(n.kind, n.details), lines: structuredNoteLines(n.kind, n.details) })),
     })),
     otherLabs: otherLabs.map(labView),
+    otherImaging: otherImaging.map((r) => ({ at: r.reportedAt ?? r.createdAt, line: imagingLine(r), findings: r.status === 'REPORTED' ? r.findings : null })),
   };
 }

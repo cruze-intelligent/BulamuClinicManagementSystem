@@ -161,6 +161,7 @@ model Clinic {
   expenses          Expense[]
   detailChanges     FacilityDetailChange[]
   departments       Department[]
+  imagingRequests   ImagingRequest[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -366,6 +367,7 @@ model Patient {
   appointments Appointment[]
   consultations Consultation[]
   labTests LabTest[]
+  imagingRequests ImagingRequest[]
   reproductiveHealthRecords ReproductiveHealthRecord[]
   referrals    Referral[]
   documents    Document[]
@@ -456,11 +458,66 @@ model Department {
   isActive     Boolean       @default(true)
   appointments Appointment[]
   wards        Ward[]
+  imagingRequests ImagingRequest[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   @@unique([clinicId, name])
   @@unique([clinicId, code])
+}
+
+// A request for imaging - an X-ray, ultrasound scan, CT scan... - made at a
+// visit or from the Imaging page. It goes to the facility's imaging unit
+// (Radiology, or Ultrasound for scans) where it waits on the worklist until
+// the radiographer or sonographer reports it; the requester is then told.
+model ImagingRequest {
+  id                String          @id @default(uuid())
+  clinicId          String
+  clinic            Clinic          @relation(fields: [clinicId], references: [id])
+  patientId         String
+  patient           Patient         @relation(fields: [patientId], references: [id])
+  consultationId    String?
+  consultation      Consultation?   @relation(fields: [consultationId], references: [id])
+  // The imaging unit it was sent to, when the facility has one.
+  departmentId      String?
+  department        Department?     @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  modality          ImagingModality
+  // The examination asked for, in the requester's words: "Abdominal ultrasound", "Chest X-ray PA".
+  examination       String
+  // Why: the clinical information and the question to answer.
+  clinicalInfo      String?
+  urgent            Boolean         @default(false)
+  status            ImagingStatus   @default(REQUESTED)
+  requestedBy       String
+  requestedByUserId String?
+  findings          String?
+  impression        String?
+  reportedBy        String?
+  reportedByUserId  String?
+  reportedAt        DateTime?
+  cancelReason      String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([clinicId, status])
+  @@index([patientId])
+  @@index([consultationId])
+}
+
+enum ImagingModality {
+  XRAY
+  ULTRASOUND
+  CT
+  MRI
+  MAMMOGRAPHY
+  FLUOROSCOPY
+  OTHER
+}
+
+enum ImagingStatus {
+  REQUESTED
+  REPORTED
+  CANCELLED
 }
 
 model Ward {
@@ -637,6 +694,8 @@ enum Role {
   STAFF
   // Runs the laboratory: receives orders and enters results.
   LAB_TECH
+  // Radiographer or sonographer: receives imaging requests and writes the reports.
+  RADIOGRAPHER
 }
 
 model Appointment {
@@ -653,6 +712,8 @@ model Appointment {
   // When the patient arrived and joined the waiting queue (checked in at
   // reception, or a walk-in). Clinicians see patients in this order.
   checkedInAt DateTime?
+  // Stepped out of the queue for a while (keeping their place by arrival time); empty when there.
+  awayAt      DateTime?
   // The unit the visit is in - its own queue. Empty: the facility works as one.
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
@@ -701,6 +762,7 @@ model Consultation {
   prescriptions Prescription[]
   invoice       Invoice?
   labTests LabTest[]
+  imagingRequests ImagingRequest[]
   deletedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -1361,6 +1423,8 @@ enum NotificationType {
   DISCHARGE_SUMMARY_READY
   HISTORY_SHARING_APPROVED
   HISTORY_ACCESS_REQUESTED
+  IMAGING_REQUESTED
+  IMAGING_REPORTED
 }
 
 // An in-app notification for exactly one recipient: either a staff user or a

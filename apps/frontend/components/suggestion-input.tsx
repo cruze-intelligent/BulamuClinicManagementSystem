@@ -79,7 +79,7 @@ export function SuggestionInput({
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-30 mt-1 max-h-64 w-full min-w-[22rem] max-w-[32rem] overflow-y-auto rounded-md border border-slate-200 bg-white py-1 text-sm shadow-lg dark:border-slate-700 dark:bg-slate-900"
+          className="absolute z-30 mt-1 max-h-64 w-full sm:min-w-[22rem] max-w-[32rem] overflow-y-auto rounded-md border border-slate-200 bg-white py-1 text-sm shadow-lg dark:border-slate-700 dark:bg-slate-900"
         >
           {suggestions.map((s, i) => (
             <li

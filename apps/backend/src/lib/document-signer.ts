@@ -9,6 +9,7 @@ const ROLE_TITLES: Record<string, string> = {
   PHARMACIST: 'Pharmacist',
   STAFF: 'Front Desk',
   LAB_TECH: 'Laboratory Technician',
+  RADIOGRAPHER: 'Radiographer / Sonographer',
   SUPER_ADMIN: 'Bulamu platform administrator',
 };
 

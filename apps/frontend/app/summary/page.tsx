@@ -19,13 +19,14 @@ type Summary = {
   patient: { name: string; patientId: string | null; sexAge: string | null; phone: string; allergies: string };
   visits: Array<{
     id: string; date: string; clinician: string | null; complaints: string; history: string | null; vitals: string | null; examination: string | null;
-    diagnoses: string[]; labs: Lab[]; treatment: string[]; plan: string | null;
+    diagnoses: string[]; labs: Lab[]; imaging?: string[]; treatment: string[]; plan: string | null;
   }>;
   stays: Array<{
     id: string; ward: string; admittedAt: string; dischargedAt: string | null; reason: string; dischargeDiagnosis: string | null; dischargeSummary: string | null;
     procedures: Array<{ date: string; title: string; lines: Array<[string, string]> }>;
   }>;
   otherLabs: Lab[];
+  otherImaging?: Array<{ at: string; line: string; findings: string | null }>;
 };
 
 const LABEL = 'text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400';
@@ -137,6 +138,7 @@ function ClinicalSummaryPage() {
                   {v.examination && <Field label="Examination">{v.examination}</Field>}
                   {v.diagnoses.length > 0 && <Field label="Diagnosis">{v.diagnoses.join('\n')}</Field>}
                   {v.labs.length > 0 && <Field label="Lab tests">{v.labs.map(labText).join('\n')}</Field>}
+                  {(v.imaging ?? []).length > 0 && <Field label="Imaging">{v.imaging!.join('\n')}</Field>}
                   {v.treatment.length > 0 && <Field label="Treatment">{v.treatment.map((t, i) => `${i + 1}. ${t}`).join('\n')}</Field>}
                   {v.plan && <Field label="Assessment and plan">{v.plan}</Field>}
                 </dl>
@@ -161,6 +163,15 @@ function ClinicalSummaryPage() {
                 </dl>
               </Card>
             ))}
+
+            {(summary.otherImaging ?? []).length > 0 && (
+              <Card className="p-5">
+                <h2 className="mb-3 font-semibold text-slate-900 dark:text-slate-100">Other imaging</h2>
+                <dl className="space-y-2.5">
+                  {summary.otherImaging!.map((r, i) => <Field key={i} label={shortDate(r.at)}>{[r.line, r.findings].filter(Boolean).join('\n')}</Field>)}
+                </dl>
+              </Card>
+            )}
 
             {summary.otherLabs.length > 0 && (
               <Card className="p-5">

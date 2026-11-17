@@ -45,6 +45,8 @@ export type LocalAppointment = {
   notes?: string;
   /** When the patient arrived and joined the waiting queue. */
   checkedInAt?: string | null;
+  /** Stepped out of the queue for a while; they keep their place by arrival time. */
+  awayAt?: string | null;
   /** The unit (department) the visit is in - its own queue. Empty: the facility works as one. */
   departmentId?: string | null;
   patient?: { name: string; phone: string };
@@ -164,7 +166,7 @@ export type LocalReproductiveHealthRecord = {
 
 export type LocalMutation = {
   id: string;
-  entity: "patient" | "patientAllergies" | "appointment" | "consultation" | "labTest" | "inventory" | "reproductiveHealth";
+  entity: "patient" | "patientAllergies" | "appointment" | "consultation" | "labTest" | "imagingRequest" | "inventory" | "reproductiveHealth";
   action: "upsert" | "delete";
   recordId: string;
   clinicId: string;
@@ -605,7 +607,7 @@ export async function createAppointmentOffline(input: {
  */
 export async function updateAppointmentOffline(
   appointment: LocalAppointment,
-  change: Partial<Pick<LocalAppointment, "status" | "checkedInAt" | "departmentId" | "date" | "time">>,
+  change: Partial<Pick<LocalAppointment, "status" | "checkedInAt" | "awayAt" | "departmentId" | "date" | "time">>,
 ): Promise<LocalAppointment> {
   await assertCanSave();
   const now = serverNowIso();
@@ -619,7 +621,7 @@ export async function updateAppointmentOffline(
     payload: {
       id: updated.id, patientId: updated.patientId, doctorId: updated.doctorId, clinicId: updated.clinicId,
       date: updated.date, time: updated.time, status: updated.status, notes: updated.notes,
-      checkedInAt: updated.checkedInAt ?? null, departmentId: updated.departmentId ?? null,
+      checkedInAt: updated.checkedInAt ?? null, awayAt: updated.awayAt ?? null, departmentId: updated.departmentId ?? null,
       createdAt: updated.createdAt, updatedAt: updated.updatedAt,
     },
     createdAt: now,
@@ -807,6 +809,43 @@ export async function createLabTestOffline(input: {
   }
 
   return labTest;
+}
+
+/**
+ * Imaging requested at a visit (an X-ray, a scan...): sent with the visit, from
+ * this device even offline. It is kept on the server only - the Imaging page and
+ * the clinical summary show it once it has arrived.
+ */
+export async function createImagingRequestOffline(input: {
+  patientId: string;
+  clinicId: string;
+  consultationId?: string;
+  modality: string;
+  examination: string;
+  clinicalInfo?: string;
+  urgent?: boolean;
+}): Promise<void> {
+  await assertCanSave();
+  const now = serverNowIso();
+  const id = createId();
+  const mutation: LocalMutation = {
+    id: createId(),
+    entity: "imagingRequest",
+    action: "upsert",
+    recordId: id,
+    clinicId: input.clinicId,
+    payload: {
+      id, patientId: input.patientId, consultationId: input.consultationId ?? null, modality: input.modality,
+      examination: input.examination, clinicalInfo: input.clinicalInfo ?? "", urgent: !!input.urgent, createdAt: now, updatedAt: now,
+    },
+    createdAt: now,
+    attempts: 0,
+  };
+  await putRecord(MUTATION_STORE, mutation);
+  emitLocalChange();
+  if (typeof navigator !== "undefined" && navigator.onLine) {
+    flushSyncQueue().catch(console.error);
+  }
 }
 
 /* ================= INVENTORY / MEDICINES ================= */

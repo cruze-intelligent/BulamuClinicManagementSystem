@@ -23,6 +23,7 @@ const ROLE_OPTIONS = [
   { value: 'PHARMACIST', label: 'Pharmacist', hint: 'Dispensing and medicine stock.' },
   { value: 'STAFF', label: 'Front Desk', hint: 'Registers patients, books appointments, welcomes referred patients. No clinical records.' },
   { value: 'LAB_TECH', label: 'Lab Technician', hint: 'Receives lab orders and records results; a clinician verifies them before the patient is told.' },
+  { value: 'RADIOGRAPHER', label: 'Radiographer / Sonographer', hint: 'Receives X-ray, ultrasound and other imaging requests and writes the reports; the requester is told.' },
   { value: 'ADMIN', label: 'Administrator', hint: 'Everything, plus staff, billing and reports. Give this to as few people as possible.' },
 ];
 
@@ -33,6 +34,7 @@ const ROLE_BADGE: Record<string, string> = {
   PHARMACIST: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
   STAFF: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
   LAB_TECH: 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300',
+  RADIOGRAPHER: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300',
 };
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]!.toUpperCase()).join('');

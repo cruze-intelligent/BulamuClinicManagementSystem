@@ -1,7 +1,7 @@
 import {
   FileText,
   ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FlaskConical,
-  HelpCircle, History, Home, MapPinned, Moon, Package, Pill, Receipt, ShieldCheck, Stethoscope, Users, Wallet, type LucideIcon,
+  HelpCircle, History, Home, MapPinned, Moon, Package, Pill, Receipt, ScanLine, ShieldCheck, Stethoscope, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /**
@@ -266,6 +266,21 @@ export const TOUR_STEPS: Record<string, TourStep[]> = {
       target: nav('/patients'), where: 'Menu', icon: Users,
       title: 'Patients',
       body: 'Look a patient up to check you have the right person and sample before recording a result.',
+    },
+    ...closing,
+  ],
+  RADIOGRAPHER: [
+    welcome('As the radiographer or sonographer you receive imaging requests and write the reports.'),
+    {
+      target: nav('/imaging'), where: 'Menu', icon: ScanLine,
+      title: 'Imaging',
+      body: 'X-ray, ultrasound and other imaging requested at a visit or here arrives on this list, urgent ones first, and you are notified of each. Write the findings and the impression - the clinician who asked is told the report is ready.',
+      tips: ['Read the clinical information first: it says what question the examination should answer.', 'A report can be corrected later; every change is recorded.'],
+    },
+    {
+      target: nav('/patients'), where: 'Menu', icon: Users,
+      title: 'Patients',
+      body: 'Look a patient up to check you have the right person before you examine them.',
     },
     ...closing,
   ],

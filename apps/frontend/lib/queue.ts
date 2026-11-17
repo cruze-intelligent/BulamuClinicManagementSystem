@@ -10,6 +10,8 @@ export type QueueAppointment = {
   status: string;
   date: string;
   checkedInAt?: string | null;
+  /** Stepped out for a while: off the queue, keeping their place by arrival time. */
+  awayAt?: string | null;
   patient?: { name: string; phone?: string } | null;
   doctor?: { name: string } | null;
   doctorId?: string;
@@ -18,11 +20,21 @@ export type QueueAppointment = {
 // "Today" is the Kampala day, whatever time zone the device is set to.
 const sameDay = (a: Date, b: Date) => kampalaDay(a) === kampalaDay(b);
 
-/** Today's arrivals still waiting, in the order they arrived. */
-export function waitingQueue<T extends QueueAppointment>(appointments: T[], now: Date = serverNow()): T[] {
+/** Today's arrivals not yet seen, in the order they arrived - those here and those stepped out. */
+function arrivedToday<T extends QueueAppointment>(appointments: T[], now: Date): T[] {
   return appointments
     .filter((a) => a.status === 'SCHEDULED' && a.checkedInAt && sameDay(new Date(a.checkedInAt), now))
     .sort((a, b) => new Date(a.checkedInAt!).getTime() - new Date(b.checkedInAt!).getTime());
+}
+
+/** Today's arrivals still waiting, in the order they arrived. */
+export function waitingQueue<T extends QueueAppointment>(appointments: T[], now: Date = serverNow()): T[] {
+  return arrivedToday(appointments, now).filter((a) => !a.awayAt);
+}
+
+/** Those who stepped out for a while: back in their place, by arrival time, when they return. */
+export function steppedOut<T extends QueueAppointment>(appointments: T[], now: Date = serverNow()): T[] {
+  return arrivedToday(appointments, now).filter((a) => !!a.awayAt);
 }
 
 /** Today's appointments that are booked but have not arrived yet - reception checks them in. */

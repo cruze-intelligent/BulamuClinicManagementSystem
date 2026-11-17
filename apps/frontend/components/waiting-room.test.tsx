@@ -116,3 +116,40 @@ describe('the waiting room of a facility with units', () => {
     expect(local.createAppointmentOffline.mock.calls[0][0]).toMatchObject({ patientId: 'p4', departmentId: 'd-opd', checkedInAt: expect.any(String) });
   });
 });
+
+describe('leaving the waiting queue', () => {
+  it('lets a patient step out and come back to their place, or be removed with their booking kept', async () => {
+    local.patients = [
+      { id: 'p1', name: 'Achieng Mary', phone: '0700 1', patientNumber: 1, clinicId: 'c1' },
+      { id: 'p2', name: 'Okot John', phone: '0700 2', patientNumber: 2, clinicId: 'c1' },
+    ];
+    local.appointments = [
+      { id: 'a1', patientId: 'p1', status: 'SCHEDULED', date: today, time: '09:00', checkedInAt: minutesAgo(40) },
+      { id: 'a2', patientId: 'p2', status: 'SCHEDULED', date: today, time: '09:10', checkedInAt: minutesAgo(30), awayAt: minutesAgo(5) },
+    ];
+    render(<WaitingRoom />);
+
+    // Away: not called, listed apart, and not offered again as a walk-in.
+    expect(await screen.findByText('Waiting room (1)')).toBeTruthy();
+    const away = screen.getByTestId('stepped-out');
+    expect(within(away).getByText('Okot John')).toBeTruthy();
+    const options = Array.from((screen.getByLabelText('Add a walk-in to the queue') as HTMLSelectElement).options).map((o) => o.textContent);
+    expect(options.some((o) => o?.startsWith('Okot John'))).toBe(false);
+
+    fireEvent.click(within(away).getByRole('button', { name: 'Okot John is back' }));
+    await waitFor(() => expect(local.updateAppointmentOffline).toHaveBeenCalled());
+    expect(local.updateAppointmentOffline.mock.calls[0]).toEqual([expect.objectContaining({ id: 'a2' }), { awayAt: null }]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Achieng Mary stepped out' }));
+    await waitFor(() => expect(local.updateAppointmentOffline).toHaveBeenCalledTimes(2));
+    expect(local.updateAppointmentOffline.mock.calls[1]).toEqual([expect.objectContaining({ id: 'a1' }), { awayAt: expect.any(String) }]);
+
+    // Removing asks first, and keeps the booking open.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Achieng Mary from the queue' }));
+    const confirm = screen.getByRole('alertdialog', { name: 'Remove Achieng Mary from the queue' });
+    expect(within(confirm).getByText(/booking stays open/)).toBeTruthy();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(local.updateAppointmentOffline).toHaveBeenCalledTimes(3));
+    expect(local.updateAppointmentOffline.mock.calls[2]).toEqual([expect.objectContaining({ id: 'a1' }), { checkedInAt: null, awayAt: null }]);
+  });
+});

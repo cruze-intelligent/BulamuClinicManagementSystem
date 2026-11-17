@@ -30,6 +30,8 @@ export const STANDARD_UNITS: ReadonlyArray<{ code: string; name: string }> = [
   { code: 'NCD', name: 'Diabetes & Hypertension (NCD)' },
   { code: 'NUTRITION', name: 'Nutrition' },
   { code: 'PHYSIOTHERAPY', name: 'Physiotherapy' },
+  { code: 'RADIOLOGY', name: 'Radiology (X-ray & CT)' },
+  { code: 'ULTRASOUND', name: 'Ultrasound (Scan)' },
 ];
 
 export const MAX_UNIT_NAME = 60;

@@ -6,13 +6,14 @@ import { recordConflictIfStale } from '../lib/conflict';
 import { recordAudit } from '../lib/audit';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
 import { STOCK_ROLES, createStockItem, discontinueStockItem, parseCount, parseExpiry, parseItemDetails } from '../lib/stock';
-import { notifyDoctorOfAppointment, notifyIfLowStock, notifyLabOrdered, notifyNewPrescription } from '../lib/notifications';
+import { notifyDoctorOfAppointment, notifyIfLowStock, notifyImagingRequested, notifyLabOrdered, notifyNewPrescription } from '../lib/notifications';
 import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
 import { consultationChildren, linkStockItems } from '../lib/consultation-records';
 import { parseFee } from '../lib/invoices';
 import { sendRouteError } from '../lib/http-error';
 import { parseConsultationNotes } from '../lib/consultation-notes';
 import { sortDepartments } from '../lib/departments';
+import { imagingUnitFor, parseImagingRequest, REQUEST_ROLES } from '../lib/imaging';
 
 /**
  * A time a device recorded (when a record was made, when a patient arrived).
@@ -173,6 +174,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 notes: payload.notes || null,
                 ...(payload.checkedInAt !== undefined ? { checkedInAt: payload.checkedInAt ? deviceTime(payload.checkedInAt) : null } : {}),
                 ...(payload.departmentId !== undefined ? { departmentId } : {}),
+                ...(payload.awayAt !== undefined ? { awayAt: payload.awayAt ? deviceTime(payload.awayAt) : null } : {}),
                 updatedAt: incomingUpdatedAt,
               },
               create: {
@@ -186,6 +188,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 notes: payload.notes || null,
                 checkedInAt: payload.checkedInAt ? deviceTime(payload.checkedInAt) : null,
                 departmentId,
+                awayAt: payload.awayAt ? deviceTime(payload.awayAt) : null,
                 createdAt: deviceTime(payload.createdAt),
                 updatedAt: incomingUpdatedAt,
               },
@@ -414,6 +417,39 @@ export async function syncRoutes(fastify: FastifyInstance) {
             if (!existing) {
               await notifyLabOrdered({ clinicId: patient.clinicId, patientName: patient.name, testName: record.testName, orderedByUserId: authUser.userId }, (message) => fastify.log.warn(message));
             }
+          }
+        } else if (entity === 'imagingRequest') {
+          // Requests only, once each: reports are written on the Imaging page.
+          if (!(REQUEST_ROLES as readonly string[]).includes(authUser.role)) {
+            fastify.log.warn(`Rejected imagingRequest mutation ${mutationId}: role may not request imaging`);
+            continue;
+          }
+          const patient = await prisma.patient.findUnique({ where: { id: payload.patientId } });
+          if (!patient || (!isSuperAdmin && patient.clinicId !== authUser.clinicId)) {
+            fastify.log.warn(`Rejected imagingRequest mutation ${mutationId}: patient out of scope`);
+            continue;
+          }
+          const parsed = parseImagingRequest(payload);
+          if ('error' in parsed) {
+            fastify.log.warn(`Rejected imagingRequest mutation ${mutationId}: ${parsed.error}`);
+            continue;
+          }
+          const existing = await prisma.imagingRequest.findUnique({ where: { id: payload.id } });
+          if (existing) {
+            if (existing.patientId !== patient.id) continue;
+            record = existing;
+          } else {
+            const visit = payload.consultationId ? await prisma.consultation.findFirst({ where: { id: payload.consultationId, patientId: patient.id }, select: { id: true } }) : null;
+            const requester = await prisma.user.findUnique({ where: { id: authUser.userId }, select: { name: true } });
+            record = await prisma.imagingRequest.create({
+              data: {
+                id: payload.id, ...parsed, clinicId: patient.clinicId, patientId: patient.id, consultationId: visit?.id ?? null,
+                departmentId: await imagingUnitFor(patient.clinicId, parsed.modality),
+                requestedBy: requester?.name ?? 'A clinician', requestedByUserId: authUser.userId,
+                createdAt: deviceTime(payload.createdAt),
+              },
+            });
+            await notifyImagingRequested({ clinicId: patient.clinicId, patientName: patient.name, examination: record.examination, urgent: record.urgent, requestedByUserId: authUser.userId }, (message) => fastify.log.warn(message));
           }
         } else if (entity === 'reproductiveHealth') {
           const patient = await prisma.patient.findUnique({ where: { id: payload.patientId } });

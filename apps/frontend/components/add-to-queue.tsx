@@ -9,7 +9,7 @@ import { Select } from '@/components/ui/select';
 import {
   createAppointmentOffline, getCurrentUser, listLocalAppointments, subscribeToLocalChanges, updateAppointmentOffline, type LocalAppointment,
 } from '@/lib/local-first';
-import { waitingQueue } from '@/lib/queue';
+import { steppedOut, waitingQueue } from '@/lib/queue';
 import { formatDate, formatTime, kampalaDay, serverNow, serverNowIso } from '@/lib/time';
 import { activeDepartments, defaultDepartmentId, departmentName, knownDepartments, type Department } from '@/lib/departments';
 import { useAuth } from '@/lib/useAuth';
@@ -39,6 +39,7 @@ export function AddToQueue({ patient }: { patient: { id: string; name: string; c
 
   const now = serverNow();
   const waiting = waitingQueue(appointments, now)[0];
+  const away = steppedOut(appointments, now)[0];
   // The appointment they are most likely here for: today's, else the nearest one still open.
   const open = appointments
     .filter((a) => a.status === 'SCHEDULED' && !a.checkedInAt)
@@ -82,6 +83,16 @@ export function AddToQueue({ patient }: { patient: { id: string; name: string; c
       notes: 'Walk-in', patientName: patient.name, doctorName: user.name, checkedInAt: now.toISOString(), departmentId: hasUnits ? unit : null,
     });
   });
+
+  if (away) {
+    return (
+      <p className="flex flex-wrap items-center gap-2 text-sm text-amber-800 dark:text-amber-300" data-testid="add-to-queue">
+        <Clock className="size-4" aria-hidden="true" />
+        Stepped out of the waiting room at {formatTime(away.awayAt!)} - they keep their place for when they return.
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => void updateAppointmentOffline(away, { awayAt: null }).catch((e) => setProblem(e.message))}>Back in the queue</Button>
+      </p>
+    );
+  }
 
   if (waiting) {
     return (

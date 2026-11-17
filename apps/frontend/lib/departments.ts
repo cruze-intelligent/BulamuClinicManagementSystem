@@ -33,6 +33,8 @@ export const STANDARD_UNITS: ReadonlyArray<{ code: string; name: string; hint: s
   { code: 'NCD', name: 'Diabetes & Hypertension (NCD)', hint: 'Long-term conditions' },
   { code: 'NUTRITION', name: 'Nutrition', hint: 'Malnutrition and feeding' },
   { code: 'PHYSIOTHERAPY', name: 'Physiotherapy', hint: 'Rehabilitation' },
+  { code: 'RADIOLOGY', name: 'Radiology (X-ray & CT)', hint: 'X-ray, CT and other imaging requests go here' },
+  { code: 'ULTRASOUND', name: 'Ultrasound (Scan)', hint: 'Ultrasound scan requests go here' },
 ];
 
 const cacheKey = (clinicId: string) => `departments_${clinicId}`;

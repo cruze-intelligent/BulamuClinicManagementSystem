@@ -395,7 +395,7 @@ describe('notifications', () => {
 
       const nurse = await app.inject({ method: 'GET', url: '/notifications/preferences', headers: authHeader(users.NURSE.token) });
       expect(nurse.json().preferences.map((p: any) => p.type).sort()).toEqual([
-        'APPOINTMENT_REQUESTED', 'HISTORY_ACCESS_APPROVED', 'LAB_RESULT_AVAILABLE', 'LAB_TEST_ORDERED', 'NEW_NOTE',
+        'APPOINTMENT_REQUESTED', 'HISTORY_ACCESS_APPROVED', 'IMAGING_REPORTED', 'LAB_RESULT_AVAILABLE', 'LAB_TEST_ORDERED', 'NEW_NOTE',
         'PATIENT_ADMITTED', 'PATIENT_DISCHARGED', 'REFERRAL_RECEIVED', 'REFERRAL_UPDATED',
       ]);
     });

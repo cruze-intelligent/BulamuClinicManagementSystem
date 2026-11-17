@@ -8,7 +8,7 @@ import { isValidEmail } from '../lib/portal-invite';
 import { sendRouteError } from '../lib/http-error';
 
 // ADMIN accounts may never mint a SUPER_ADMIN - only SUPER_ADMIN can (and doesn't use this route today).
-const ADMIN_ASSIGNABLE_ROLES = ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH'];
+const ADMIN_ASSIGNABLE_ROLES = ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'];
 
 export async function userRoutes(fastify: FastifyInstance) {
 
@@ -268,7 +268,7 @@ export async function userRoutes(fastify: FastifyInstance) {
   });
 }
 
-type AssignableRole = 'ADMIN' | 'DOCTOR' | 'PHARMACIST' | 'NURSE' | 'STAFF' | 'LAB_TECH';
+type AssignableRole = 'ADMIN' | 'DOCTOR' | 'PHARMACIST' | 'NURSE' | 'STAFF' | 'LAB_TECH' | 'RADIOGRAPHER';
 
 const LAST_ADMIN = "This is the facility's only active administrator. Make someone else an administrator first.";
 

@@ -1,6 +1,6 @@
 import {
   ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FileText, FlaskConical, HelpCircle,
-  History, Home, MapPinned, Package, Pill, Receipt, Stethoscope, Users, Wallet, type LucideIcon,
+  History, Home, MapPinned, Package, Pill, Receipt, ScanLine, Stethoscope, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 // The sidebar menu: what each role sees. The guided walkthrough points at these
@@ -12,11 +12,12 @@ export const NAV_ITEMS: NavItem[] = [
   { name: 'Analytics', path: '/super-admin/analytics', icon: BarChart3, roles: ['SUPER_ADMIN'] },
   { name: 'Finances', path: '/super-admin/finances', icon: Wallet, roles: ['SUPER_ADMIN'] },
   { name: 'Demos', path: '/super-admin/demos', icon: FlaskConical, roles: ['SUPER_ADMIN'] },
-  { name: 'Dashboard', path: '/dashboard', icon: Home, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH'] },
-  { name: 'Patients', path: '/patients', icon: Users, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH'] },
+  { name: 'Dashboard', path: '/dashboard', icon: Home, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
+  { name: 'Patients', path: '/patients', icon: Users, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
   { name: 'Appointments', path: '/appointments', icon: CalendarDays, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
   { name: 'Consultations', path: '/consultations', icon: Stethoscope, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST'] },
   { name: 'Lab Tests', path: '/lab', icon: FlaskConical, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECH'] },
+  { name: 'Imaging', path: '/imaging', icon: ScanLine, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'RADIOGRAPHER'] },
   { name: 'Wards', path: '/wards', icon: BedDouble, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
   { name: 'Clinical summary', path: '/summary', icon: FileText, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
   { name: 'Referrals', path: '/referrals', icon: ArrowRightLeft, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
@@ -26,10 +27,10 @@ export const NAV_ITEMS: NavItem[] = [
   { name: 'Bills & Payments', path: '/invoices', icon: Receipt, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF', 'PHARMACIST'] },
   { name: 'Finances', path: '/finances', icon: Wallet, roles: ['ADMIN'] },
   { name: 'Reports', path: '/reports', icon: BarChart3, roles: ['ADMIN', 'SUPER_ADMIN'] },
-  { name: 'Notifications', path: '/notifications', icon: Bell, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH'] },
-  { name: 'Activity', path: '/sync-activity', icon: History, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH'] },
+  { name: 'Notifications', path: '/notifications', icon: Bell, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
+  { name: 'Activity', path: '/sync-activity', icon: History, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
   { name: 'Staff', path: '/users', icon: ClipboardList, roles: ['ADMIN'] },
   { name: 'Facility', path: '/facility', icon: Building2, roles: ['ADMIN'] },
   { name: 'Billing', path: '/billing', icon: CreditCard, roles: ['ADMIN'] },
-  { name: 'Help & FAQ', path: '/help', icon: HelpCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH'] },
+  { name: 'Help & FAQ', path: '/help', icon: HelpCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
 ];

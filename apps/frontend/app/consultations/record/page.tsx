@@ -16,6 +16,7 @@ import {
   createAppointmentOffline,
   createConsultationOffline,
   createLabTestOffline,
+  createImagingRequestOffline,
   getLocalAppointment,
   listLocalPatients,
   listLocalInventory,
@@ -34,6 +35,7 @@ import { draftProblems, draftToPayload, emptyDraft, isBlankDraft, type Prescript
 import { ageText } from '@/lib/age';
 import { formatTime, serverNow } from '@/lib/time';
 import { patientIdText } from '@/lib/patient-id';
+import { MODALITIES, emptyImagingDraft, imagingDraftProblem, modalityLabel, type ImagingDraft, type Modality } from '@/lib/imaging';
 import { activeDepartments, defaultDepartmentId, departmentName, knownDepartments, type Department } from '@/lib/departments';
 
 function StepHeading({ n, title, hint }: { n: number; title: string; hint?: string }) {
@@ -76,6 +78,11 @@ function RecordConsultationForm() {
   const [units, setUnits] = useState<Department[]>([]);
   const [visitUnit, setVisitUnit] = useState('');
   const [sendTo, setSendTo] = useState('');
+  const [sendReason, setSendReason] = useState('');
+  // Imaging requested at this visit (X-ray, scans...), and the one being written.
+  const [imaging, setImaging] = useState<ImagingDraft[]>([]);
+  const [imagingDraft, setImagingDraft] = useState<ImagingDraft>(emptyImagingDraft);
+  const [imagingProblem, setImagingProblem] = useState('');
 
   useEffect(() => {
     const clinicId = getCurrentClinicId();
@@ -110,6 +117,15 @@ function RecordConsultationForm() {
     return v === undefined || (Number.isFinite(v) && v >= f.min && v <= f.max) ? null : `${f.label} must be between ${f.min} and ${f.max}`;
   }).find(Boolean) ?? '';
   const vitalFlags = abnormalVitals(vitalReadings);
+  const addImaging = () => {
+    const problem = imagingDraftProblem(imagingDraft);
+    if (problem) return setImagingProblem(problem);
+    setImaging((list) => [...list, { ...imagingDraft, examination: imagingDraft.examination.trim(), clinicalInfo: imagingDraft.clinicalInfo.trim() }]);
+    setImagingDraft((d) => ({ ...emptyImagingDraft(), modality: d.modality }));
+    setImagingProblem('');
+  };
+  const imagingExamples = MODALITIES.find((m) => m.value === imagingDraft.modality)?.examples ?? [];
+
   const addLabRequest = (name: string) => {
     const test = findLabTest(name)?.name ?? name.trim();
     if (test && !labRequests.some((t) => t.toLowerCase() === test.toLowerCase())) setLabRequests((list) => [...list, test]);
@@ -162,13 +178,18 @@ function RecordConsultationForm() {
         await createLabTestOffline({ patientId: patient.id, clinicId, testName, results: '', orderedBy: user.name || 'Clinician', patientName: patient.name, consultationId: consultation.id });
       }
 
+      // Imaging goes to the imaging unit's worklist, linked to this visit.
+      for (const r of imaging) {
+        await createImagingRequestOffline({ patientId: patient.id, clinicId, consultationId: consultation.id, modality: r.modality, examination: r.examination, clinicalInfo: r.clinicalInfo, urgent: r.urgent });
+      }
+
       // Sent on to another unit (OPD to Dentistry, say): they join its queue now.
       if (sendTo) {
         const now = serverNow();
         const from = departmentName(knownDepartments(clinicId), visitUnit);
         await createAppointmentOffline({
           patientId: patient.id, doctorId: user.id || '', clinicId, date: now.toISOString(), time: formatTime(now),
-          notes: `Sent from ${from ?? 'another unit'} by ${user.name || 'a clinician'}`,
+          notes: `Referred from ${from ?? 'another unit'} by ${user.name || 'a clinician'}${sendReason.trim() ? `: ${sendReason.trim()}` : ''}`,
           patientName: patient.name, doctorName: user.name, checkedInAt: now.toISOString(), departmentId: sendTo,
         });
       }
@@ -318,8 +339,58 @@ function RecordConsultationForm() {
             </section>
 
             <section>
+              <StepHeading n={6} title="Imaging" hint="Optional. X-ray, ultrasound, CT and other scans - choose the kind, then write the examination. Requests go to the imaging unit's worklist, linked to this visit." />
+              <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
+                <div>
+                  <Label htmlFor="imaging-modality">Kind of imaging</Label>
+                  <Select id="imaging-modality" className="mt-1" value={imagingDraft.modality} onChange={(e) => setImagingDraft((d) => ({ ...d, modality: e.target.value as Modality }))}>
+                    {MODALITIES.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="imaging-examination">Examination</Label>
+                  <SuggestionInput
+                    id="imaging-examination"
+                    value={imagingDraft.examination}
+                    placeholder={imagingExamples.length ? `e.g. ${imagingExamples.slice(0, 2).join(', ')}` : 'Write the examination'}
+                    onChange={(value) => setImagingDraft((d) => ({ ...d, examination: value }))}
+                    suggestions={imagingExamples
+                      .filter((x) => !imagingDraft.examination.trim() || x.toLowerCase().includes(imagingDraft.examination.trim().toLowerCase()))
+                      .slice(0, 8)
+                      .map((x) => ({ key: x, label: x }))}
+                    onPick={(key) => setImagingDraft((d) => ({ ...d, examination: key }))}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="imaging-info">Clinical information <span className="font-normal text-slate-500">(optional)</span></Label>
+                  <Input id="imaging-info" className="mt-1" maxLength={500} value={imagingDraft.clinicalInfo} placeholder="Why, and the question to answer - e.g. RUQ pain, ?gallstones" onChange={(e) => setImagingDraft((d) => ({ ...d, clinicalInfo: e.target.value }))} />
+                </div>
+                <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={imagingDraft.urgent} onChange={(e) => setImagingDraft((d) => ({ ...d, urgent: e.target.checked }))} /> Urgent
+                  </label>
+                  <Button type="button" size="sm" variant="outline" onClick={addImaging}>Add imaging request</Button>
+                </div>
+              </div>
+              {imagingProblem && <p role="alert" className="mt-1 text-sm text-rose-700 dark:text-rose-300">{imagingProblem}</p>}
+              {imaging.length > 0 && (
+                <ul className="mt-3 space-y-1.5" aria-label="Imaging requested">
+                  {imaging.map((r, i) => (
+                    <li key={`${r.examination}-${i}`} className="flex items-start justify-between gap-2 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-950 dark:bg-sky-950/40 dark:text-sky-100">
+                      <span>
+                        <span className="font-medium">{r.examination}</span> <span className="text-xs">({modalityLabel(r.modality)}){r.urgent ? ' - urgent' : ''}</span>
+                        {r.clinicalInfo && <span className="block text-xs opacity-80">{r.clinicalInfo}</span>}
+                      </span>
+                      <button type="button" className="text-sky-700 hover:text-rose-700" aria-label={`Remove ${r.examination}`} onClick={() => setImaging((list) => list.filter((_, j) => j !== i))}>×</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section>
               <StepHeading
-                n={6}
+                n={7}
                 title="Diagnosis"
                 hint="The first is the primary diagnosis. Search by name or ICD-10 code, and mark it Suspected if it is still a working diagnosis."
               />
@@ -327,7 +398,7 @@ function RecordConsultationForm() {
             </section>
 
             <section>
-              <StepHeading n={7} title="Assessment and plan" hint="Optional: findings, reasoning, advice given and follow-up. Staff only - not shown to the patient." />
+              <StepHeading n={8} title="Assessment and plan" hint="Optional: findings, reasoning, advice given and follow-up. Staff only - not shown to the patient." />
               <Label htmlFor="clinicalNotes" className="sr-only">Assessment and plan</Label>
               <Textarea
                 id="clinicalNotes"
@@ -339,12 +410,12 @@ function RecordConsultationForm() {
             </section>
 
             <section>
-              <StepHeading n={8} title="Prescription" hint="Leave empty if nothing is prescribed. The pharmacist is told when a prescription is waiting." />
+              <StepHeading n={9} title="Prescription" hint="Leave empty if nothing is prescribed. The pharmacist is told when a prescription is waiting." />
               <PrescriptionBuilder value={prescriptions} onChange={setPrescriptions} stock={stock} showProblems={attempted} allergies={patient} />
             </section>
 
             <section>
-              <StepHeading n={9} title="Consultation fee" hint="Optional. Opens the patient's bill under Bills & Payments, where lab tests, medicines and payments are added. Leave empty if there is no charge." />
+              <StepHeading n={10} title="Consultation fee" hint="Optional. Opens the patient's bill under Bills & Payments, where lab tests, medicines and payments are added. Leave empty if there is no charge." />
               <Label htmlFor="fee" className="sr-only">Consultation fee in UGX</Label>
               <div className="flex max-w-xs items-center gap-2">
                 <span className="text-sm text-slate-500 dark:text-slate-400">UGX</span>
@@ -362,12 +433,18 @@ function RecordConsultationForm() {
 
             {units.length > 1 && (
               <section>
-                <StepHeading n={10} title="Send to another unit" hint="Optional. After this visit the patient joins that unit's waiting queue - from OPD to Dentistry, say." />
+                <StepHeading n={11} title="Refer to another unit" hint="Optional. After this visit the patient joins that unit's waiting queue - from OPD to Dentistry, say - with your reason." />
                 <Label htmlFor="send-to" className="sr-only">Send the patient to another unit</Label>
                 <Select id="send-to" className="max-w-xs" value={sendTo} onChange={(e) => setSendTo(e.target.value)}>
                   <option value="">Not sent on - the visit ends here</option>
                   {units.filter((u) => u.id !== visitUnit).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </Select>
+                {sendTo && (
+                  <div className="mt-2 max-w-xl">
+                    <Label htmlFor="send-reason">Reason for referral</Label>
+                    <Input id="send-reason" className="mt-1" maxLength={200} value={sendReason} placeholder="e.g. Dental caries - for extraction" onChange={(e) => setSendReason(e.target.value)} />
+                  </div>
+                )}
               </section>
             )}
 
