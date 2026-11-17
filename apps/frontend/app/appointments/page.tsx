@@ -201,7 +201,7 @@ export default function AppointmentsPage() {
           <div className="space-y-3">
             {appointments.map((apt) => (
               <Card key={apt.id} className="p-4">
-                <div className="flex justify-between items-start">
+                <div className="flex flex-wrap justify-between items-start gap-3">
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-slate-800 dark:text-slate-200">{apt.patient?.name || 'Patient'}</h3>
@@ -217,7 +217,7 @@ export default function AppointmentsPage() {
                     <p className="text-sm text-slate-600 dark:text-slate-400">Dr. {apt.doctor?.name || 'Assigned Clinician'}</p>
                     {apt.notes && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{apt.notes}</p>}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {apt.status === 'SCHEDULED' && !apt.checkedInAt && new Date(apt.date).toDateString() === new Date().toDateString() && (
                       <Button size="sm" variant="outline" onClick={() => updateAppointmentOffline(apt, { checkedInAt: new Date().toISOString() }).catch((e) => alert(e.message))}>
                         Check in

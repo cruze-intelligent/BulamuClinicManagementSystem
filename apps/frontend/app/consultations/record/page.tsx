@@ -20,6 +20,7 @@ import {
   listLocalInventory,
   getCurrentClinicId,
   getCurrentUser,
+  subscribeToLocalChanges,
   type LocalMedicine,
   type LocalPatient,
 } from '@/lib/local-first';
@@ -72,12 +73,16 @@ function RecordConsultationForm() {
   useEffect(() => {
     const clinicId = getCurrentClinicId();
     if (!clinicId) return;
-    listLocalPatients(clinicId).then((list) => {
+    const loadPatients = () => listLocalPatients(clinicId).then((list) => {
       setPatients(list);
       const found = queryPatientId ? list.find((p) => p.id === queryPatientId) : undefined;
-      if (found) setPatient(found);
+      // Keep allergies just recorded on this page; take the patient from the device otherwise.
+      if (found) setPatient((current) => (current?.id === found.id ? current : found));
     });
+    void loadPatients();
     listLocalInventory(clinicId).then(setStock).catch(() => setStock([]));
+    // A patient who reaches this device after the page opened (a first sync) still appears.
+    return subscribeToLocalChanges(() => { void loadPatients(); });
   }, [queryPatientId]);
 
   const diagnosisIssues = attempted ? diagnosisProblems(diagnoses) : [];
