@@ -115,6 +115,8 @@ export async function buildApp(): Promise<FastifyInstance> {
     // Named in full: left out, the browser is told only GET, HEAD and POST, so
     // every edit (PATCH, PUT) and delete from the site fails as "Failed to fetch".
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    // So a page can say where the emailed copy of a report went, and name a download.
+    exposedHeaders: ['X-Report-Emailed-To', 'Content-Disposition'],
   });
 
   await server.register(jwt, {

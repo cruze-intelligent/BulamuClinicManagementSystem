@@ -34,7 +34,13 @@ export async function openPdfWithAuth(url: string, token: string | null, filenam
   }
 }
 
-export async function downloadWithAuth(url: string, token: string | null, filename: string) {
+/**
+ * Downloads an authenticated file. Reports are also emailed by the server to
+ * whoever generated them: the address comes back, so the page can say so.
+ * The file is released only after a minute - an installed app window can
+ * otherwise cancel the download before it starts.
+ */
+export async function downloadWithAuth(url: string, token: string | null, filename: string): Promise<{ emailedTo: string | null }> {
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -48,5 +54,10 @@ export async function downloadWithAuth(url: string, token: string | null, filena
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(objectUrl);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  return { emailedTo: res.headers.get('X-Report-Emailed-To') };
 }
+
+/** What to tell someone once a report is ready. */
+export const reportReadyMessage = (what: string, emailedTo: string | null) =>
+  emailedTo ? `${what} downloaded - a copy has also been emailed to ${emailedTo}.` : `${what} downloaded.`;

@@ -14,6 +14,7 @@ import { buildFinanceReport, financeReportCsv, parseReportRequest, reportFileNam
 import { generateFinanceReportPdf } from '../lib/pdf';
 import { facilityLogo } from '../lib/facility-logo';
 import { sendRouteError } from '../lib/http-error';
+import { emailReportCopy } from '../lib/report-delivery';
 
 /** Payments with no method recorded (taken before methods were kept) are grouped under this key. */
 const NOT_RECORDED = 'NOT_RECORDED';
@@ -195,6 +196,9 @@ export async function financeRoutes(fastify: FastifyInstance) {
         ['Type', (r) => r.type], ['Date', (r) => r.date], ['Receipt / reference', (r) => r.ref], ['Received from / paid to', (r) => r.who],
         ['Details', (r) => r.detail], ['Method', (r) => r.method], ['Amount (UGX)', (r) => r.amount], ['Recorded by', (r) => r.by], ['Status', (r) => r.status],
       ], rows);
+      if ((request.query as any).email !== '0') {
+        await emailReportCopy(reply, getAuthUser(request).userId, { title: `Money in and out - ${month}`, filename: `finances-${month}.csv`, content: csv, contentType: 'text/csv', facts: [['Month', month]] }, (m) => request.log.warn(m));
+      }
       return sendCsv(reply, `finances-${month}.csv`, csv);
     } catch (error: any) {
       return sendRouteError(reply, error);
@@ -218,7 +222,15 @@ export async function financeRoutes(fastify: FastifyInstance) {
         entity: 'FinanceReport', recordId: clinicId, clinicId, action: 'VIEW', actorUserId: authUser.userId, actorRole: authUser.role,
         metadata: { format, from: report.from, to: report.to, section: report.section, ...(report.category ? { category: report.category } : {}) },
       });
-      if (format === 'csv') return sendCsv(reply, reportFileName(report, 'csv'), financeReportCsv(report));
+      const copy = (content: Buffer | string, contentType: string) => query.email === '0' ? Promise.resolve(null) : emailReportCopy(reply, authUser.userId, {
+        title: `Financial report - ${report.facility.name}`, filename: reportFileName(report, format), content, contentType,
+        facts: [['Facility', report.facility.name], ['Period', `${report.from} to ${report.to}`], ['Includes', report.sectionLabel + (report.categoryLabel ? ` (${report.categoryLabel})` : '')]],
+      }, (m) => request.log.warn(m));
+      if (format === 'csv') {
+        const csv = financeReportCsv(report);
+        await copy(csv, 'text/csv');
+        return sendCsv(reply, reportFileName(report, 'csv'), csv);
+      }
 
       const pdf = await generateFinanceReportPdf({
         facilityName: report.facility.name,
@@ -235,6 +247,7 @@ export async function financeRoutes(fastify: FastifyInstance) {
         net: report.net,
         producedBy: await documentProducer(authUser.userId),
       });
+      await copy(pdf, 'application/pdf');
       reply.header('Content-Type', 'application/pdf');
       reply.header('Content-Disposition', `attachment; filename="${reportFileName(report, 'pdf')}"`);
       return reply.send(pdf);

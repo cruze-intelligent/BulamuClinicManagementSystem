@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { downloadWithAuth } from '@/lib/download';
+import { downloadWithAuth, reportReadyMessage } from '@/lib/download';
 import { kampalaToday } from '@/lib/finance';
 import {
   REPORT_PERIODS, REPORT_SECTIONS, categoriesFor, categoryHeading, periodDates, periodProblem, reportFileName, reportQuery,
@@ -27,6 +27,7 @@ export function FinanceReportExport({ clinicId }: { clinicId: string }) {
   const [category, setCategory] = useState('');
   const [busy, setBusy] = useState<'pdf' | 'csv' | null>(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const { from, to } = period === 'custom' ? custom : periodDates(period, today);
   const categories = categoriesFor(section);
@@ -37,8 +38,10 @@ export function FinanceReportExport({ clinicId }: { clinicId: string }) {
     const choice = { from, to, section, category, format };
     setBusy(format);
     setError('');
+    setNotice('');
     try {
-      await downloadWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/finances/${clinicId}/report?${reportQuery(choice)}`, localStorage.getItem('token'), reportFileName(choice));
+      const { emailedTo } = await downloadWithAuth(`${process.env.NEXT_PUBLIC_API_URL}/finances/${clinicId}/report?${reportQuery(choice)}`, localStorage.getItem('token'), reportFileName(choice));
+      setNotice(reportReadyMessage('Financial report', emailedTo));
     } catch (e: any) {
       setError(e.message || 'The report could not be downloaded - please try again.');
     } finally {
@@ -99,6 +102,7 @@ export function FinanceReportExport({ clinicId }: { clinicId: string }) {
           </p>
         )}
 
+        {notice && <p role="status" className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{notice}</p>}
         <div className="mt-5 flex flex-wrap gap-2">
           <Button onClick={() => download('pdf')} disabled={!!busy || !!problem}>
             {busy === 'pdf' ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <FileText className="size-4" aria-hidden="true" />}
@@ -116,3 +120,4 @@ export function FinanceReportExport({ clinicId }: { clinicId: string }) {
 
 const readable = (day: string) =>
   new Date(`${day}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+          

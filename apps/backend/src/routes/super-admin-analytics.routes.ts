@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireRole } from '../middleware/rbac.middleware';
 import { buildAnalytics, buildSystemReport, listStaff, parseDays } from '../lib/analytics';
 import { snapshotRuntimeMetrics } from '../lib/runtime-metrics';
@@ -15,6 +15,17 @@ import { closeExpiredDemos, createDemoFacility, demoUsage } from '../lib/demo-fa
 import { isValidEmail } from '../lib/portal-invite';
 import { recordAudit } from '../lib/audit';
 import { sendRouteError } from '../lib/http-error';
+import { documentProducer as documentProducerFor } from '../lib/document-signer';
+import { emailReportCopy } from '../lib/report-delivery';
+import { COMPANY_NAME, bulamuLetterhead, generateTableReportPdf } from '../lib/pdf';
+
+/** An operator export is also emailed to the operator who made it (?email=0 to skip). */
+function sendOperatorCsv(request: FastifyRequest, reply: FastifyReply, filename: string, csv: string, title: string) {
+  const copy = (request.query as { email?: string }).email === '0'
+    ? Promise.resolve(null)
+    : emailReportCopy(reply, getAuthUser(request).userId, { title, filename, content: csv, contentType: 'text/csv' }, (m) => request.log.warn(m));
+  return copy.then(() => sendCsv(reply, filename, csv));
+}
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -182,6 +193,75 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
   });
 
   // Download a dataset as CSV: the facilities table, the day-by-day series, or the staff directory.
+  // The platform report: how Bulamu is being used over the period, as a PDF
+  // under Bulamu's letterhead - downloaded, and a copy emailed to the operator.
+  // Counts only - never patient or clinical details.
+  fastify.get('/super-admin/analytics/report.pdf', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const days = parseDays((request.query as { days?: string }).days);
+    try {
+      await sweepLapsedSubscriptions();
+      const a = await buildAnalytics(days);
+      const h = a.headline;
+      const n = (value: number) => value.toLocaleString('en-US');
+      const pct = (value: number | null | undefined) => (value === null || value === undefined ? '-' : `${Math.round(value * 100)}%`);
+      const filename = `bulamu-platform-report-${days}d-${today()}.pdf`;
+      const pdf = await generateTableReportPdf({
+        letterhead: bulamuLetterhead(`Platform report - ${COMPANY_NAME}`),
+        title: 'PLATFORM REPORT',
+        subtitle: `${a.period.from} to ${a.period.to} - the last ${days} days, East Africa Time`,
+        facts: [
+          ['Facilities approved', `${n(h.facilities.approved)} (${n(h.facilities.active)} active, ${n(h.facilities.suspended)} suspended)`],
+          ['Waiting for approval', n(h.facilities.pending)],
+          ['New registrations in the period', n(h.facilities.new)],
+          ['Staff accounts', `${n(h.staff.total)} (${n(h.staff.activeThisMonth)} active in the last 30 days, ${n(h.staff.activeToday)} today)`],
+          ['Patients', `${n(h.patients.total)} (${n(h.patients.new)} new in the period)`],
+          ['Consultations in the period', n(h.consultations.count)],
+          ['Subscription revenue in the period', `UGX ${n(h.revenue.inPeriod)} from ${n(h.revenue.payments)} payments`],
+          ['Monthly recurring revenue', `UGX ${n(h.revenue.monthlyRecurring)}`],
+          ['Subscriptions', `${n(h.subscriptions.active)} active, ${n(h.subscriptions.trialing)} on trial, ${n(h.subscriptions.pastDue)} past due, ${n(h.subscriptions.cancelled)} cancelled`],
+          ['Facilities recording care', `${n(a.adoption.facilitiesRecording.count)} of ${n(a.adoption.facilitiesRecording.of)}`],
+          ['Prescriptions dispensed', `${pct(a.adoption.prescriptions.dispensedShare)} of ${n(a.adoption.prescriptions.written)} written`],
+        ],
+        tables: [
+          {
+            title: 'Facilities',
+            note: `Engagement and activity over the last ${days} days.`,
+            columns: [
+              { header: 'Facility', width: 150 }, { header: 'District', width: 75 }, { header: 'Engagement', width: 70 }, { header: 'Subscription', width: 70 },
+              { header: 'Staff', width: 40, align: 'right' }, { header: 'Patients', width: 50, align: 'right' }, { header: 'Visits', width: 40, align: 'right' },
+            ],
+            rows: a.facilities.map((f) => [
+              `${f.name}${f.facilityCode ? ` (${f.facilityCode})` : ''}`, f.district ?? '-', String(f.engagement ?? '-'), f.subscription?.status ?? '-',
+              n(f.staffAccounts), n(f.patients), n(f.consultationsInPeriod),
+            ]),
+          },
+          {
+            title: 'Staff by role',
+            columns: [{ header: 'Role', width: 245 }, { header: 'Accounts', width: 125, align: 'right' }, { header: 'Active in the period', width: 125, align: 'right' }],
+            rows: a.staffByRole.map((r) => [String(r.role), n(r.accounts), n(r.activeInPeriod)]),
+          },
+          {
+            title: 'Facilities by district',
+            columns: [{ header: 'District', width: 370 }, { header: 'Facilities', width: 125, align: 'right' }],
+            rows: [...a.distributions.districts.map((d) => [d.key, n(d.count)]), ...(a.distributions.districtsOther ? [['Other districts', n(a.distributions.districtsOther)]] : [])],
+          },
+        ],
+        producedBy: await documentProducerFor(getAuthUser(request).userId),
+      });
+      if ((request.query as { email?: string }).email !== '0') {
+        await emailReportCopy(reply, getAuthUser(request).userId, {
+          title: `Bulamu platform report - last ${days} days`, filename, content: pdf, contentType: 'application/pdf',
+          facts: [['Period', `${a.period.from} to ${a.period.to}`]],
+        }, (m) => request.log.warn(m));
+      }
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+      return reply.send(pdf);
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
   fastify.get('/super-admin/analytics/export', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
     const q = request.query as { dataset?: string; days?: string; search?: string; role?: string; clinicId?: string; status?: string };
     const days = parseDays(q.days);
@@ -202,7 +282,7 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
           ],
           all
         );
-        return sendCsv(reply, `bulamu-staff-usage-${today()}.csv`, csv);
+        return sendOperatorCsv(request, reply, `bulamu-staff-usage-${today()}.csv`, csv, 'Staff and usage export');
       }
 
       const analytics = await buildAnalytics(days);
@@ -221,7 +301,7 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
           ],
           rows
         );
-        return sendCsv(reply, `bulamu-daily-activity-${days}d-${today()}.csv`, csv);
+        return sendOperatorCsv(request, reply, `bulamu-daily-activity-${days}d-${today()}.csv`, csv, `Daily activity export - last ${days} days`);
       }
 
       // Default: the facilities table.
@@ -236,7 +316,7 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
         ],
         analytics.facilities
       );
-      return sendCsv(reply, `bulamu-facility-usage-${days}d-${today()}.csv`, csv);
+      return sendOperatorCsv(request, reply, `bulamu-facility-usage-${days}d-${today()}.csv`, csv, `Facility usage export - last ${days} days`);
     } catch (error: any) {
       return sendRouteError(reply, error);
     }

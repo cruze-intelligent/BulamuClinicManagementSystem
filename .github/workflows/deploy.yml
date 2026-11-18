@@ -38,8 +38,12 @@ jobs:
           ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
           tar -czf /tmp/site.tar.gz -C apps/frontend/out .
           scp -i ~/.ssh/hostinger_key -P "$PORT" -o StrictHostKeyChecking=accept-new /tmp/site.tar.gz "$SSH_USER@$HOST:~/site.tar.gz"
+          # Replace the site, but keep earlier builds' script files (named by
+          # their content, so they never clash) for 30 days: a page someone had
+          # open before this deploy still loads the pieces it asks for instead
+          # of breaking, and offers them a refresh to the new version.
           ssh -i ~/.ssh/hostinger_key -p "$PORT" -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST" \
-            "cd ${REMOTE_DIR:-public_html} && find . -mindepth 1 -delete && tar -xzf ~/site.tar.gz -C . && rm ~/site.tar.gz"
+            "cd ${REMOTE_DIR:-public_html} && find . -mindepth 1 -maxdepth 1 ! -name _next -exec rm -rf {} + && { if [ -d _next ]; then find _next -mindepth 1 -maxdepth 1 ! -name static -exec rm -rf {} + ; fi; if [ -d _next/static ]; then find _next/static -type f -mtime +30 -delete; fi; true; } && tar -xzf ~/site.tar.gz -C . && rm ~/site.tar.gz"
 
       # Render's free plan puts the API to sleep after 15 minutes without a
       # request, and the first request after that waits up to a minute while it

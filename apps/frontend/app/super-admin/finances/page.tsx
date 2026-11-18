@@ -5,7 +5,7 @@ import { AlertTriangle, CalendarClock, Download, Hourglass, Loader2, RefreshCw, 
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/useAuth';
-import { downloadWithAuth } from '@/lib/download';
+import { downloadWithAuth, reportReadyMessage } from '@/lib/download';
 import { BarList, StatTile, TimeSeriesChart } from '@/components/analytics-charts';
 import { compactNumber } from '@/lib/analytics-format';
 import { kampalaToday, shortDate } from '@/lib/finance';
@@ -60,6 +60,7 @@ export default function SuperAdminFinancesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,7 +84,8 @@ export default function SuperAdminFinancesPage() {
   const download = async (key: string, url: string, filename: string) => {
     setDownloading(key);
     try {
-      await downloadWithAuth(url, localStorage.getItem('token'), filename);
+      const { emailedTo } = await downloadWithAuth(url, localStorage.getItem('token'), filename);
+      if (emailedTo) setNotice(reportReadyMessage(key === 'csv' ? 'Payments export' : 'Receipt', emailedTo));
     } catch (e: any) {
       setError(e.message || 'The download failed - please try again.');
     } finally {
@@ -119,6 +121,7 @@ export default function SuperAdminFinancesPage() {
       </header>
 
       {error && <Card className="p-4 text-sm text-red-700 dark:text-red-400" role="alert">{error}</Card>}
+      {notice && <Card className="p-4 text-sm text-emerald-800 dark:text-emerald-300" role="status">{notice}</Card>}
       {!data && loading && <p className="text-sm text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" aria-hidden="true" />Loading...</p>}
 
       {data && (

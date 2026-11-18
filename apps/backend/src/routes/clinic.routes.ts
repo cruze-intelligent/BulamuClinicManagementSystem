@@ -5,7 +5,9 @@ import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/aut
 import { recordAudit } from '../lib/audit';
 import { sendMail, facilityApprovedEmail, facilityRejectedEmail, facilityStatusEmail, facilityRemovedEmail, formatEmailDate, MailResult } from '../lib/mailer';
 import { alertOperator, deliveryNote, frontendUrl } from '../lib/operator-alerts';
-import { generateReceiptPdf } from '../lib/pdf';
+import { COMPANY_NAME, bulamuLetterhead, documentDate, generateReceiptPdf, generateTableReportPdf } from '../lib/pdf';
+import { emailReportCopy } from '../lib/report-delivery';
+import { documentProducer } from '../lib/document-signer';
 import { generateFacilityCode, normalizePhoneKey, findDuplicateFacility, duplicateFacilityMessage, facilityTypeLabel, REAL_FACILITY, referralPeers } from '../lib/facility';
 import { buildCsv, sendCsv } from '../lib/csv';
 import bcrypt from 'bcrypt';
@@ -255,7 +257,8 @@ export async function clinicRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // The same facility record as a single-row CSV download.
+  // The same facility record as a report: a PDF (?format=pdf) or a single-row
+  // CSV - downloaded, and a copy emailed to whoever generated it (?email=0 to skip).
   fastify.get('/clinics/:id/export', { preHandler: [requireRole('ADMIN', 'SUPER_ADMIN')] }, async (request, reply) => {
     const { id } = request.params as any;
     const clinicId = resolveClinicScope(request, reply, id);
@@ -294,7 +297,46 @@ export async function clinicRoutes(fastify: FastifyInstance) {
         ],
         [facility]
       );
-      return sendCsv(reply, `bulamu-facility-${facility.facilityCode}.csv`, csv);
+      const query = request.query as { format?: string; email?: string };
+      const authUser = getAuthUser(request);
+      const title = `Facility report - ${facility.name}`;
+      const copy = (filename: string, content: Buffer | string, contentType: string) => query.email === '0'
+        ? Promise.resolve(null)
+        : emailReportCopy(reply, authUser.userId, { title, filename, content, contentType, facts: [['Facility', facility.name], ['Facility ID', facility.facilityCode]] }, (m) => request.log.warn(m));
+      if (query.format === 'pdf') {
+        const day = (d: Date | string | null | undefined) => (d ? documentDate(new Date(d)) : '-');
+        const sub = facility.subscription;
+        const filename = `bulamu-facility-${facility.facilityCode}.pdf`;
+        const pdf = await generateTableReportPdf({
+          letterhead: bulamuLetterhead(`Facility report - ${COMPANY_NAME}`),
+          title: 'FACILITY REPORT',
+          subtitle: `${facility.name} - Facility ID ${facility.facilityCode}`,
+          facts: [
+            ['Type', facility.facilityType ?? '-'],
+            ['Phone', facility.phone ?? '-'],
+            ['Location', [facility.parish, facility.subCounty, facility.district].filter(Boolean).join(', ') || facility.address || '-'],
+            ['Registration', `${facility.registrationStatus}${facility.rejectionReason ? ` - ${facility.rejectionReason}` : ''}`],
+            ['Status', facility.deletedAt ? `Removed on ${day(facility.deletedAt)}` : facility.isActive ? 'Active' : 'Suspended'],
+            ['Registered on', day(facility.createdAt)],
+            ['Approved on', day(facility.approvedAt)],
+            ['Administrator', facility.admin ? `${facility.admin.name} (${facility.admin.email})${facility.admin.isActive ? '' : ' - inactive'}` : '-'],
+            ['Subscription', sub ? `${sub.status}, ${sub.plan} plan${sub.amount ? ` - ${sub.currency ?? 'UGX'} ${Number(sub.amount).toLocaleString('en-US')} a month` : ''}` : '-'],
+            ['Trial ends', day(sub?.trialEndsAt)],
+            ['Current period ends', day(sub?.currentPeriodEnd)],
+            ['Staff accounts', String(facility.users ?? 0)],
+            ['Patients', String(facility.patients ?? 0)],
+          ],
+          tables: [],
+          producedBy: await documentProducer(authUser.userId),
+        });
+        await copy(filename, pdf, 'application/pdf');
+        reply.header('Content-Type', 'application/pdf');
+        reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+        return reply.send(pdf);
+      }
+      const filename = `bulamu-facility-${facility.facilityCode}.csv`;
+      await copy(filename, csv, 'text/csv');
+      return sendCsv(reply, filename, csv);
     } catch (error: any) {
       return sendRouteError(reply, error);
     }

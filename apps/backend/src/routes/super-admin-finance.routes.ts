@@ -4,6 +4,8 @@ import { allPayments, buildPlatformFinances } from '../lib/platform-finances';
 import { buildCsv, sendCsv } from '../lib/csv';
 import { eastAfricaDay } from '../lib/usage-tracking';
 import { sendRouteError } from '../lib/http-error';
+import { emailReportCopy } from '../lib/report-delivery';
+import { getAuthUser } from '../middleware/auth.middleware';
 
 /**
  * Bulamu's own finances - the subscriptions facilities pay - for the platform
@@ -18,7 +20,7 @@ export async function superAdminFinanceRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get('/super-admin/finances/payments.csv', { preHandler: [requireRole('SUPER_ADMIN')] }, async (_request, reply) => {
+  fastify.get('/super-admin/finances/payments.csv', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
     try {
       const rows = await allPayments();
       const day = (d: Date | null) => (d ? eastAfricaDay(d) : '');
@@ -40,7 +42,11 @@ export async function superAdminFinanceRoutes(fastify: FastifyInstance) {
         ],
         rows
       );
-      return sendCsv(reply, `bulamu-subscription-payments-${eastAfricaDay()}.csv`, csv);
+      const filename = `bulamu-subscription-payments-${eastAfricaDay()}.csv`;
+      if ((request.query as { email?: string }).email !== '0') {
+        await emailReportCopy(reply, getAuthUser(request).userId, { title: 'Subscription payments export', filename, content: csv, contentType: 'text/csv' }, (m) => request.log.warn(m));
+      }
+      return sendCsv(reply, filename, csv);
     } catch (error: any) {
       return sendRouteError(reply, error);
     }

@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Written by next.config.ts on each build: the release open pages compare themselves with.
+/public/version.json

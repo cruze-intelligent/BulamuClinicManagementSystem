@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { useAuth } from '@/lib/useAuth';
-import { downloadWithAuth } from '@/lib/download';
+import { downloadWithAuth, reportReadyMessage } from '@/lib/download';
 import { facilityTypeLabel } from '@/lib/facility-types';
 import { roleLabel } from '@/lib/role-labels';
 import { BarList, ShareRow, StatTile, TimeSeriesChart } from '@/components/analytics-charts';
@@ -195,8 +195,23 @@ export default function SuperAdminAnalyticsPage() {
         : engagementRank(a.engagement) - engagementRank(b.engagement) || a.name.localeCompare(b.name));
   }, [data, facilityFilter, facilitySearch, facilitySort]);
 
+  const [reportNotice, setReportNotice] = useState('');
+  const platformReport = useCallback(async () => {
+    setExporting('report');
+    setReportNotice('');
+    try {
+      const { emailedTo } = await downloadWithAuth(`${API}/super-admin/analytics/report.pdf?days=${days}`, localStorage.getItem('token'), `bulamu-platform-report-${days}d.pdf`);
+      setReportNotice(reportReadyMessage('Platform report', emailedTo));
+    } catch (e: any) {
+      setReportNotice(e.message || 'The report could not be prepared - please try again.');
+    } finally {
+      setExporting('');
+    }
+  }, [days]);
+
   const exportCsv = useCallback(async (dataset: 'facilities' | 'daily' | 'users') => {
     setExporting(dataset);
+    setReportNotice('');
     try {
       const qs = new URLSearchParams({ dataset, days: String(days) });
       if (dataset === 'users') {
@@ -204,9 +219,10 @@ export default function SuperAdminAnalyticsPage() {
         if (userRole) qs.set('role', userRole);
         if (userStatus) qs.set('status', userStatus);
       }
-      await downloadWithAuth(`${API}/super-admin/analytics/export?${qs}`, localStorage.getItem('token'), `bulamu-${dataset}-${days}d.csv`);
+      const { emailedTo } = await downloadWithAuth(`${API}/super-admin/analytics/export?${qs}`, localStorage.getItem('token'), `bulamu-${dataset}-${days}d.csv`);
+      setReportNotice(reportReadyMessage('Export', emailedTo));
     } catch (e: any) {
-      alert(e.message || 'Export failed');
+      setReportNotice(e.message || 'Export failed');
     } finally {
       setExporting('');
     }
@@ -277,7 +293,11 @@ export default function SuperAdminAnalyticsPage() {
                 <StatTile label="Trials ending soon" value={formatNumber(h.subscriptions.trialsEndingSoon)} hint={`${h.subscriptions.trialing} on trial, ${h.subscriptions.pastDue} past due`} goodWhenUp={false} />
               </div>
 
-              <div className="flex justify-end">
+              {reportNotice && <p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{reportNotice}</p>}
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button size="sm" onClick={platformReport} disabled={exporting === 'report'}>
+                  <Download className="h-4 w-4 mr-1" aria-hidden />{exporting === 'report' ? 'Preparing...' : 'Platform report (PDF)'}
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => exportCsv('daily')} disabled={exporting === 'daily'}>
                   <Download className="h-4 w-4 mr-1" aria-hidden />{exporting === 'daily' ? 'Preparing...' : 'Export daily activity (CSV)'}
                 </Button>

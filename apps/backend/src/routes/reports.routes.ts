@@ -10,6 +10,10 @@ import { rankDiagnoses, formatPrescriptionLine } from '../lib/clinical';
 import { sendRouteError } from '../lib/http-error';
 import { eatDateKey, eatMonthRange } from '../lib/invoices';
 import { sortDepartments } from '../lib/departments';
+import { facilityLetterhead, generateTableReportPdf } from '../lib/pdf';
+import { facilityLogo } from '../lib/facility-logo';
+import { documentProducer } from '../lib/document-signer';
+import { emailReportCopy } from '../lib/report-delivery';
 
 /** This month in Kampala, for a report asked for without one. */
 const thisMonth = () => { const day = eatDateKey(new Date()); return { month: Number(day.slice(5, 7)), year: Number(day.slice(0, 4)) }; };
@@ -34,6 +38,73 @@ function visitsPerUnit(
   return none.appointments || none.visits ? [...rows, none] : rows;
 }
 
+/** The month's figures for a facility: patients, appointments, visits, money received, top diagnoses and visits per unit. */
+export async function buildMonthlyReport(clinicId: string, month: number, year: number) {
+  const range = eatMonthRange(`${year}-${String(month).padStart(2, '0')}`);
+  const startDate = range.start;
+  const endDate = new Date(range.end.getTime() - 1);
+
+  const [totalPatients, totalAppointments, totalConsultations, revenue, primaryDiagnoses, units, appointmentsByUnit, visitsByUnit] = await Promise.all([
+    prisma.patient.count({
+      where: {
+        clinicId,
+        createdAt: { gte: startDate, lte: endDate }
+      }
+    }),
+    prisma.appointment.count({
+      where: {
+        clinicId,
+        date: { gte: startDate, lte: endDate }
+      }
+    }),
+    prisma.consultation.count({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+        appointment: { clinicId }
+      }
+    }),
+    // Money received in the month (payments that stand), whenever it was billed.
+    prisma.patientPayment.aggregate({
+      where: {
+        clinicId,
+        voidedAt: null,
+        receivedAt: { gte: startDate, lte: endDate }
+      },
+      _sum: { amount: true }
+    }),
+    // Primary diagnoses of the month's visits; ranked below by ICD-10 code
+    // so "Malaria" and "malaria (RDT+)" count as one condition.
+    prisma.diagnosis.findMany({
+      where: {
+        type: 'PRIMARY',
+        consultation: { createdAt: { gte: startDate, lte: endDate }, deletedAt: null, appointment: { clinicId } }
+      },
+      select: { icd10Code: true, description: true }
+    }),
+    prisma.department.findMany({ where: { clinicId }, select: { id: true, code: true, name: true, isActive: true } }),
+    prisma.appointment.groupBy({
+      by: ['departmentId'],
+      where: { clinicId, deletedAt: null, date: { gte: startDate, lte: endDate } },
+      _count: true,
+    }),
+    prisma.appointment.groupBy({
+      by: ['departmentId'],
+      where: { clinicId, deletedAt: null, consultation: { createdAt: { gte: startDate, lte: endDate }, deletedAt: null } },
+      _count: true,
+    }),
+  ]);
+
+  return {
+    period: `${month}/${year}`,
+    totalPatients,
+    totalAppointments,
+    totalConsultations,
+    revenue: revenue._sum.amount || 0,
+    topDiagnoses: rankDiagnoses(primaryDiagnoses),
+    byUnit: visitsPerUnit(units, appointmentsByUnit, visitsByUnit),
+  };
+}
+
 export async function reportsRoutes(fastify: FastifyInstance) {
 
   // Standard Monthly report
@@ -44,72 +115,64 @@ export async function reportsRoutes(fastify: FastifyInstance) {
     const { month = thisMonth().month, year = thisMonth().year } = request.query as any;
 
     try {
-      const range = eatMonthRange(`${Number(year)}-${String(Number(month)).padStart(2, '0')}`);
-      const startDate = range.start;
-      const endDate = new Date(range.end.getTime() - 1);
+      return { success: true, report: await buildMonthlyReport(clinicId, Number(month), Number(year)) };
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
 
-      const [totalPatients, totalAppointments, totalConsultations, revenue, primaryDiagnoses, units, appointmentsByUnit, visitsByUnit] = await Promise.all([
-        prisma.patient.count({
-          where: {
-            clinicId,
-            createdAt: { gte: startDate, lte: endDate }
-          }
-        }),
-        prisma.appointment.count({
-          where: {
-            clinicId,
-            date: { gte: startDate, lte: endDate }
-          }
-        }),
-        prisma.consultation.count({
-          where: {
-            createdAt: { gte: startDate, lte: endDate },
-            appointment: { clinicId }
-          }
-        }),
-        // Money received in the month (payments that stand), whenever it was billed.
-        prisma.patientPayment.aggregate({
-          where: {
-            clinicId,
-            voidedAt: null,
-            receivedAt: { gte: startDate, lte: endDate }
-          },
-          _sum: { amount: true }
-        }),
-        // Primary diagnoses of the month's visits; ranked below by ICD-10 code
-        // so "Malaria" and "malaria (RDT+)" count as one condition.
-        prisma.diagnosis.findMany({
-          where: {
-            type: 'PRIMARY',
-            consultation: { createdAt: { gte: startDate, lte: endDate }, deletedAt: null, appointment: { clinicId } }
-          },
-          select: { icd10Code: true, description: true }
-        }),
-        prisma.department.findMany({ where: { clinicId }, select: { id: true, code: true, name: true, isActive: true } }),
-        prisma.appointment.groupBy({
-          by: ['departmentId'],
-          where: { clinicId, deletedAt: null, date: { gte: startDate, lte: endDate } },
-          _count: true,
-        }),
-        prisma.appointment.groupBy({
-          by: ['departmentId'],
-          where: { clinicId, deletedAt: null, consultation: { createdAt: { gte: startDate, lte: endDate }, deletedAt: null } },
-          _count: true,
-        }),
+  // The monthly report as a PDF under the facility's letterhead - downloaded,
+  // and a copy emailed to whoever generated it (?email=0 to skip the email).
+  fastify.get('/reports/monthly/:clinicId/pdf', { preHandler: [requireRole('ADMIN', 'DOCTOR')] }, async (request, reply) => {
+    const clinicId = resolveClinicScope(request, reply, (request.params as { clinicId: string }).clinicId);
+    if (!clinicId) return;
+    const query = request.query as { month?: string; year?: string; email?: string };
+    const month = Number(query.month ?? thisMonth().month);
+    const year = Number(query.year ?? thisMonth().year);
+    if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year) || year < 2000 || year > 2100) {
+      return reply.status(400).send({ error: 'Choose a month and year' });
+    }
+    try {
+      const authUser = getAuthUser(request);
+      const [report, clinic] = await Promise.all([
+        buildMonthlyReport(clinicId, month, year),
+        prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true, facilityCode: true, phone: true, motto: true } }),
       ]);
-
-      return {
-        success: true,
-        report: {
-          period: `${month}/${year}`,
-          totalPatients,
-          totalAppointments,
-          totalConsultations,
-          revenue: revenue._sum.amount || 0,
-          topDiagnoses: rankDiagnoses(primaryDiagnoses),
-          byUnit: visitsPerUnit(units, appointmentsByUnit, visitsByUnit),
-        }
-      };
+      const monthName = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      const filename = `monthly-report-${year}-${String(month).padStart(2, '0')}.pdf`;
+      const ugx = (n: number) => `UGX ${Math.round(n).toLocaleString('en-US')}`;
+      const pdf = await generateTableReportPdf({
+        letterhead: facilityLetterhead({ name: clinic.name, facilityCode: clinic.facilityCode, phone: clinic.phone, motto: clinic.motto, logo: await facilityLogo(clinicId) }),
+        title: 'MONTHLY REPORT',
+        subtitle: monthName,
+        facts: [
+          ['New patients registered', String(report.totalPatients)],
+          ['Appointments booked', String(report.totalAppointments)],
+          ['Consultations (patients seen)', String(report.totalConsultations)],
+          ['Money received', ugx(report.revenue)],
+        ],
+        tables: [
+          {
+            title: 'Most common diagnoses',
+            note: 'Primary diagnoses of the month\'s visits, counted by ICD-10 code.',
+            columns: [{ header: 'Diagnosis', width: 330 }, { header: 'ICD-10', width: 80 }, { header: 'Visits', width: 85, align: 'right' }],
+            rows: report.topDiagnoses.map((d) => [d.diagnosis, d.icd10Code ?? '-', String(d._count.diagnosis)]),
+          },
+          ...(report.byUnit.length ? [{
+            title: 'Visits by unit',
+            columns: [{ header: 'Unit', width: 295 }, { header: 'Booked', width: 100, align: 'right' as const }, { header: 'Seen', width: 100, align: 'right' as const }],
+            rows: report.byUnit.map((u) => [u.name, String(u.appointments), String(u.visits)]),
+          }] : []),
+        ],
+        producedBy: await documentProducer(authUser.userId),
+      });
+      await recordAudit({ entity: 'MonthlyReport', recordId: clinicId, clinicId, action: 'VIEW', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { month, year, format: 'pdf' } });
+      if (query.email !== '0') {
+        await emailReportCopy(reply, authUser.userId, { title: `Monthly report - ${clinic.name}, ${monthName}`, filename, content: pdf, contentType: 'application/pdf', facts: [['Facility', clinic.name], ['Month', monthName]] }, (m) => request.log.warn(m));
+      }
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+      return reply.send(pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);
     }

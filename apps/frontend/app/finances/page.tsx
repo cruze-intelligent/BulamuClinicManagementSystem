@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { useAuth } from '@/lib/useAuth';
-import { downloadWithAuth } from '@/lib/download';
+import { downloadWithAuth, reportReadyMessage } from '@/lib/download';
 import { FinanceReportExport } from '@/components/finance-report-export';
 import { EXPENSE_CATEGORIES, PAYMENT_METHODS, categoryLabel, kampalaToday, methodLabel, parseShillings, shortDate, shortTime, ugx } from '@/lib/finance';
 
@@ -192,6 +192,7 @@ function MonthSummary() {
   const [month, setMonth] = useState(kampalaToday().slice(0, 7));
   const [summary, setSummary] = useState<Summary | null>(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     setSummary(null);
@@ -208,11 +209,12 @@ function MonthSummary() {
           <Label htmlFor="summary-month" className="text-xs">Month</Label>
           <Input id="summary-month" type="month" value={month} max={kampalaToday().slice(0, 7)} onChange={(e) => e.target.value && setMonth(e.target.value)} className="w-44" />
         </div>
-        <Button variant="outline" size="sm" onClick={() => downloadWithAuth(`${API}/finances/${clinicId()}/export?month=${month}`, localStorage.getItem('token'), `finances-${month}.csv`).catch((e) => setError(e.message))}>
+        <Button variant="outline" size="sm" onClick={() => downloadWithAuth(`${API}/finances/${clinicId()}/export?month=${month}`, localStorage.getItem('token'), `finances-${month}.csv`).then(({ emailedTo }) => setNotice(reportReadyMessage('Spreadsheet', emailedTo))).catch((e) => setError(e.message))}>
           <Download className="size-4" aria-hidden="true" />Spreadsheet for your books
         </Button>
       </div>
       {error && <Problem text={error} />}
+      {notice && <p role="status" className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{notice}</p>}
       {!summary ? (
         !error && <p className="text-sm text-slate-500"><Loader2 className="mr-2 inline size-4 animate-spin" aria-hidden="true" />Loading...</p>
       ) : (

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Download, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { facilityTypeLabel } from '@/lib/facility-types';
-import { downloadWithAuth } from '@/lib/download';
+import { downloadWithAuth, reportReadyMessage } from '@/lib/download';
 import { formatDateTime } from '@/lib/time';
 
 type FacilityDetail = {
@@ -49,7 +49,8 @@ export function FacilityDetailsModal({ clinicId, onClose }: { clinicId: string; 
   const [facility, setFacility] = useState<FacilityDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<'pdf' | 'csv' | null>(null);
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -72,18 +73,21 @@ export function FacilityDetailsModal({ clinicId, onClose }: { clinicId: string; 
     return () => { cancelled = true; };
   }, [clinicId]);
 
-  const handleExport = async () => {
-    setExporting(true);
+  const handleExport = async (format: 'pdf' | 'csv') => {
+    setExporting(format);
+    setNotice('');
+    setError('');
     try {
-      await downloadWithAuth(
-        `${process.env.NEXT_PUBLIC_API_URL}/clinics/${clinicId}/export`,
+      const { emailedTo } = await downloadWithAuth(
+        `${process.env.NEXT_PUBLIC_API_URL}/clinics/${clinicId}/export?format=${format}`,
         localStorage.getItem('token'),
-        `facility-${facility?.facilityCode || clinicId}.csv`
+        `facility-${facility?.facilityCode || clinicId}.${format}`
       );
+      setNotice(reportReadyMessage(format === 'pdf' ? 'Facility report' : 'Facility details', emailedTo));
     } catch (err: any) {
-      alert(err.message || 'Error exporting facility details');
+      setError(err.message || 'The report could not be prepared - please try again.');
     } finally {
-      setExporting(false);
+      setExporting(null);
     }
   };
 
@@ -189,11 +193,16 @@ export function FacilityDetailsModal({ clinicId, onClose }: { clinicId: string; 
           ) : null}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 p-6 dark:border-slate-800">
+        {notice && <p role="status" className="mx-6 mb-0 mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{notice}</p>}
+        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 p-6 dark:border-slate-800">
           <Button variant="outline" onClick={onClose}>Close</Button>
-          <Button onClick={handleExport} disabled={!facility || exporting}>
+          <Button variant="outline" onClick={() => handleExport('csv')} disabled={!facility || !!exporting}>
             <Download className="size-4" aria-hidden="true" />
-            {exporting ? 'Preparing...' : 'Export details (CSV)'}
+            {exporting === 'csv' ? 'Preparing...' : 'Details (CSV)'}
+          </Button>
+          <Button onClick={() => handleExport('pdf')} disabled={!facility || !!exporting}>
+            <Download className="size-4" aria-hidden="true" />
+            {exporting === 'pdf' ? 'Preparing...' : 'Facility report (PDF)'}
           </Button>
         </div>
       </section>

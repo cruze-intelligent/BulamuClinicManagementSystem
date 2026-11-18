@@ -1235,3 +1235,48 @@ export async function generateClinicalSummaryPdf(input: ClinicalSummaryPdfInput)
   await finishDocument(doc, input);
   return done;
 }
+
+export type TableReportPdfInput = SampleOption & {
+  /** The facility's letterhead for its own reports; Bulamu's for the platform's. */
+  letterhead: Letterhead;
+  title: string;
+  subtitle?: string;
+  facts: Array<[string, string]>;
+  tables: Array<{ title: string; note?: string; columns: Array<{ header: string; width: number; align?: 'left' | 'right' }>; rows: string[][] }>;
+};
+
+/**
+ * A report made of headline figures and tables - a facility's monthly report,
+ * the platform's usage report. Tables run over pages with their headers repeated.
+ */
+export async function generateTableReportPdf(input: TableReportPdfInput): Promise<Buffer> {
+  const { doc, done } = newDocument();
+  drawLetterhead(doc, input.letterhead);
+  doc.moveDown(1.2);
+  doc.font('Helvetica-Bold').fontSize(17).fillColor(INK).text(input.title, 50);
+  if (input.subtitle) doc.font('Helvetica').fontSize(10).fillColor(MUTED).text(input.subtitle, 50);
+  doc.moveDown(0.8);
+  drawRows(doc, input.facts, 250, 0.45);
+
+  for (const table of input.tables) {
+    doc.moveDown(1);
+    if (doc.y > doc.page.maxY() - 150) {
+      doc.addPage();
+      doc.y = 60;
+    }
+    doc.font('Helvetica-Bold').fontSize(11.5).fillColor(BRAND_TEAL_DARK).text(table.title, 50, doc.y);
+    if (table.note) doc.font('Helvetica').fontSize(8.5).fillColor(MUTED).text(table.note, 50, doc.y, { width: 495 });
+    doc.moveDown(0.4);
+    if (table.rows.length === 0) {
+      doc.font('Helvetica').fontSize(9).fillColor(MUTED).text('Nothing in this period.', 50, doc.y);
+      continue;
+    }
+    drawTable(doc, table.columns, table.rows.map((cells) => ({ cells })), `${input.title} - ${table.title} (continued)`);
+  }
+
+  await finishDocument(doc, input);
+  return done;
+}
+
+/** Bulamu's own letterhead, for the platform's reports. */
+export const bulamuLetterhead = (line: string): Letterhead => ({ name: 'Bulamu', motto: 'Transforming patient care.', lines: [line, 'bulamu.site'] });

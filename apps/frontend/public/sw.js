@@ -4,7 +4,11 @@
 // The site is a static export with trailing slashes: /dashboard redirects to
 // /dashboard/. Browsers refuse a cached *redirect* when opening a page, so the
 // shell lists the real (slashed) addresses and nothing redirected is stored.
-const CACHE_NAME = "bulamu-shell-v4";
+// One cache per release (the page registers /sw.js?v=<build id>): a new
+// release starts a fresh cache and the old one is removed when it takes over,
+// so pages and the files they load always come from the same build.
+const RELEASE = new URL(self.location.href).searchParams.get("v") || "dev";
+const CACHE_NAME = `bulamu-shell-${RELEASE}`;
 const APP_SHELL = [
   "/",
   "/auth/login/",
@@ -171,7 +175,26 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Everything else (icons, page data): from the cache at once, refreshed in the background.
+  // Which release is live - always asked of the site itself.
+  if (url.pathname === "/version.json") return;
+
+  // Page data fetched when moving between pages: it names the build files that
+  // page needs, so it must come from the live release - from the network, with
+  // the saved copy only when offline.
+  if (url.searchParams.has("_rsc") || url.pathname.endsWith(".txt") || request.headers.get("RSC")) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => put(cache, request, copy)).catch(() => {});
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || Response.error()))
+    );
+    return;
+  }
+
+  // Everything else (icons, images): from the cache at once, refreshed in the background.
   event.respondWith(
     caches.match(request).then((cached) => {
       const network = fetch(request)

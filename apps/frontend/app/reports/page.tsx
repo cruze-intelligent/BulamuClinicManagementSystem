@@ -7,6 +7,7 @@ import { getCurrentClinicId } from '@/lib/local-first';
 import { useAuth } from '@/lib/useAuth';
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
 import { Select } from '@/components/ui/select';
+import { downloadWithAuth, reportReadyMessage } from '@/lib/download';
 
 export default function ReportsPage() {
   const { hasRole } = useAuth();
@@ -17,6 +18,26 @@ export default function ReportsPage() {
   const [year, setYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(false);
   const [pushingDhis2, setPushingDhis2] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfNotice, setPdfNotice] = useState('');
+
+  // The month's report as a PDF under the facility's letterhead; the server also emails a copy to whoever made it.
+  const downloadMonthlyPdf = async () => {
+    setPdfBusy(true);
+    setPdfNotice('');
+    try {
+      const { emailedTo } = await downloadWithAuth(
+        `${process.env.NEXT_PUBLIC_API_URL}/reports/monthly/${getCurrentClinicId()}/pdf?month=${month}&year=${year}`,
+        localStorage.getItem('token'),
+        `monthly-report-${year}-${String(month).padStart(2, '0')}.pdf`,
+      );
+      setPdfNotice(reportReadyMessage('Monthly report', emailedTo));
+    } catch (error: any) {
+      setPdfNotice(error.message || 'The report could not be prepared - please try again.');
+    } finally {
+      setPdfBusy(false);
+    }
+  };
 
   const pushToDhis2 = async () => {
     setPushingDhis2(true);
@@ -167,7 +188,13 @@ export default function ReportsPage() {
             >
               {loading ? 'Generating...' : 'Generate Report'}
             </Button>
+            {activeTab === 'overview' && hasRole('ADMIN', 'DOCTOR') && (
+              <Button variant="outline" onClick={downloadMonthlyPdf} disabled={pdfBusy}>
+                <Download className="size-4" aria-hidden="true" />{pdfBusy ? 'Preparing...' : 'Download PDF (and email me a copy)'}
+              </Button>
+            )}
           </div>
+          {pdfNotice && <p role="status" className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{pdfNotice}</p>}
         </Card>
 
         {/* Overview Tab Content */}

@@ -742,3 +742,13 @@ export function demoFacilityEmail(input: {
     footnote: 'You received this because the Bulamu team sent you a demo. Your email address is not kept on file.',
   });
 }
+
+/** A copy of a report someone generated in Bulamu, sent to their own inbox with the file attached. */
+export function reportCopyEmail(input: { title: string; filename: string; facts: Array<[string, string]> }): string {
+  const rows = input.facts.filter(([, value]) => value).map(([label, value]): [string, string] => [escapeHtml(label), escapeHtml(value)]);
+  return emailShell(`
+    ${heading(escapeHtml(input.title))}
+    ${para(`The report you generated in Bulamu is attached as <strong>${escapeHtml(input.filename)}</strong>, so you have a copy to keep, print or forward.`)}
+    ${rows.length ? factsTable(rows) : ''}
+  `, { eyebrow: 'Your report', footnote: 'Sent because you generated this report while signed in to Bulamu. It may contain your facility\'s confidential information - forward it with care.' });
+}

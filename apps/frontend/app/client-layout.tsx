@@ -7,6 +7,7 @@ import { Menu } from 'lucide-react';
 import { BrandMark } from '@/components/brand';
 import { Sidebar } from '@/components/sidebar';
 import { PwaRuntime } from '@/components/pwa-runtime';
+import { UpdateNotice } from '@/components/update-notice';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { TrialBanner } from '@/components/trial-banner';
 import { useSidebar } from '@/lib/sidebar-provider';
@@ -81,6 +82,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
   return (
     <>
       <PwaRuntime showWidget={showSidebar} />
+      <UpdateNotice />
       {showSidebar && <OnboardingTour />}
       {showSidebar && <Sidebar />}
       {showSidebar && (
