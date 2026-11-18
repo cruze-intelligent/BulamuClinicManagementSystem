@@ -95,7 +95,15 @@ export async function buildSampleDocuments(now: Date = new Date()): Promise<Samp
           verifiedBy: { name: 'Dr Sample Clinician', role: 'Doctor / Clinical Officer' }, verifiedAt: now,
         },
         {
-          id: 'sample-lab-2', testName: 'Complete blood count (CBC)', results: 'WBC 6.8 x10^9/L\nHb 10.9 g/dL\nPlatelets 142 x10^9/L', orderedBy: 'Dr Sample Clinician', requestedAt: now,
+          id: 'sample-lab-2', testName: 'Complete blood count (CBC)', results: 'WBC 6.8; Hb 10.9 (Low); Platelets 142 (Low)', orderedBy: 'Dr Sample Clinician', requestedAt: now,
+          values: [
+            { name: 'WBC', value: '6.8', unit: 'x10^9/L', low: 4, high: 10, normal: null, flag: null },
+            { name: 'Neutrophils %', value: '58', unit: '%', low: 40, high: 75, normal: null, flag: null },
+            { name: 'Haemoglobin (HGB)', value: '10.9', unit: 'g/dL', low: 12, high: 15.5, normal: null, flag: 'L' },
+            { name: 'MCV', value: '76', unit: 'fL', low: 80, high: 100, normal: null, flag: 'L' },
+            { name: 'Platelets (PLT)', value: '142', unit: 'x10^9/L', low: 150, high: 400, normal: null, flag: 'L' },
+          ],
+          comment: 'Microcytic picture - suggest iron studies.',
           resultedBy: { name: 'Sample Lab Technician', role: 'Laboratory Technician' }, resultedAt: now,
         },
       ],

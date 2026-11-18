@@ -35,6 +35,12 @@ export const LAB_TESTS_CATALOG: LabTestEntry[] = [
   { name: 'Renal function tests (urea, creatinine, electrolytes)', group: 'Blood', sample: 'Blood (serum)', resultHint: 'Each value with its unit', aka: 'rft kidney u&e' },
   { name: 'Liver function tests (LFTs)', group: 'Blood', sample: 'Blood (serum)', resultHint: 'ALT, AST, ALP, bilirubin, albumin with units', aka: 'lft' },
   { name: 'Lipid profile', group: 'Blood', sample: 'Blood (serum)', resultHint: 'Cholesterol, HDL, LDL, triglycerides with units', aka: 'cholesterol' },
+  { name: 'Thyroid function tests (TFTs)', group: 'Blood', sample: 'Blood (serum)', resultHint: 'TSH, free T4, free T3 with units', aka: 'tft tsh thyroid t4 t3' },
+  { name: 'Coagulation profile (PT/INR, APTT)', group: 'Blood', sample: 'Blood (citrate)', resultHint: 'PT (s), INR, APTT (s)', aka: 'clotting pt inr aptt warfarin' },
+  { name: 'Serum uric acid', group: 'Blood', sample: 'Blood (serum)', resultHint: 'mmol/L', aka: 'urate gout' },
+  { name: 'C-reactive protein (CRP)', group: 'Blood', sample: 'Blood (serum)', resultHint: 'mg/L', aka: 'crp inflammation' },
+  { name: 'Prostate specific antigen (PSA)', group: 'Blood', sample: 'Blood (serum)', resultHint: 'ng/mL', aka: 'psa prostate' },
+  { name: 'Serum calcium', group: 'Blood', sample: 'Blood (serum)', resultHint: 'mmol/L', aka: 'calcium ca' },
 
   // HIV, TB and other infections
   { name: 'HIV rapid test', group: 'HIV, TB and infections', sample: 'Blood', resultHint: 'Reactive / Non-reactive (per national algorithm)', aka: 'hct determine statpak' },

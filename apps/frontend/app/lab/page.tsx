@@ -24,6 +24,8 @@ import { roleLabel } from '@/lib/role-labels';
 import { LAB_TESTS_CATALOG, LAB_TEST_GROUPS, findLabTest } from '@/lib/lab-tests-catalog';
 import { formatDayTime } from '@/lib/time';
 import { openPdfWithAuth } from '@/lib/download';
+import { blankValues, labPanelFor, type LabValue } from '@/lib/lab-panels';
+import { LabValuesForm, LabValuesTable } from '@/components/lab-values';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -55,7 +57,7 @@ async function call(path: string, method: string, body?: unknown) {
 }
 
 export default function LabTestsPage() {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
   const [tests, setTests] = useState<LocalLabTest[]>([]);
   const [patients, setPatients] = useState<LocalPatient[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -67,9 +69,11 @@ export default function LabTestsPage() {
   // Entering results: the lab technician, nurses and clinicians. Verifying
   // (releasing to the patient): clinicians and the administrator.
   const canEnter = hasRole('LAB_TECH', 'NURSE', 'DOCTOR', 'ADMIN');
-  const canVerify = hasRole('DOCTOR', 'ADMIN');
-  // Tests are requested by clinicians - usually during the consultation; the lab works the list.
-  const canOrder = hasRole('NURSE', 'DOCTOR', 'ADMIN');
+  // ...and a lab supervisor the administrator has given the right.
+  const canVerify = hasRole('DOCTOR', 'ADMIN') || !!user?.canVerifyLab;
+  // Tests are requested by clinicians - usually during the consultation - and by the lab itself for
+  // people who come for tests alone; the lab works the list.
+  const canOrder = hasRole('NURSE', 'DOCTOR', 'ADMIN', 'LAB_TECH');
 
   const loadData = async () => {
     const clinicId = getCurrentClinicId();
@@ -212,6 +216,15 @@ function LabTestCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const hint = findLabTest(test.testName)?.resultHint;
+  // A test with a result template (a blood count, kidney tests...) is entered value by value.
+  const panel = labPanelFor(test.testName);
+  const startValues = (): LabValue[] => (test.values?.length && panel
+    ? blankValues(panel, test.patient?.sex).map((row) => ({ ...row, ...(test.values!.find((v) => v.name === row.name) ?? {}) }))
+    : panel ? blankValues(panel, test.patient?.sex) : []);
+  const [values, setValues] = useState<LabValue[]>(startValues);
+  const [comment, setComment] = useState(test.comment ?? '');
+  const byValue = !!panel;
+  const filled = values.filter((v) => v.value.trim());
   const verified = !!test.verifiedAt;
   const status = test.status === 'CANCELLED' ? 'Cancelled' : test.status === 'PENDING' ? 'Waiting for result' : verified ? 'Verified' : 'Awaiting verification';
   const statusStyle =
@@ -249,46 +262,6 @@ function LabTestCard({
           </div>
           <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-sky-800 dark:text-sky-300"><FlaskConical className="size-4" aria-hidden="true" />{test.testName}</p>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Ordered by {test.orderedBy} · {when(test.createdAt)}</p>
-
-          {test.results && mode === 'view' && (
-            <div className="mt-2 rounded-md bg-slate-100 p-2.5 text-sm text-slate-800 dark:bg-slate-800 dark:text-slate-200">
-              <p className="whitespace-pre-wrap"><strong className="font-medium">Result:</strong> {test.results}</p>
-              {test.resultedBy && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Entered by {test.resultedBy.name} ({roleLabel(test.resultedBy.role)}) · {when(test.resultedAt)}</p>}
-              {test.verifiedBy && (
-                <p className="mt-0.5 flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
-                  <ShieldCheck className="size-3.5" aria-hidden="true" />Verified by {test.verifiedBy.name} ({roleLabel(test.verifiedBy.role)}) · {when(test.verifiedAt)}
-                </p>
-              )}
-            </div>
-          )}
-
-          {(mode === 'enter' || mode === 'amend') && (
-            <form
-              className="mt-3 space-y-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (mode === 'enter') {
-                  run(() => call(`/lab/${test.id}`, 'PATCH', { results, status: 'COMPLETED' }), `${test.testName} result recorded for ${test.patient?.name ?? 'the patient'}. A clinician will verify it.`);
-                } else {
-                  run(() => call(`/lab/${test.id}/amend`, 'POST', { results, reason }), `${test.testName} result amended. It needs verifying again before the patient sees the change.`);
-                }
-              }}
-            >
-              <Label htmlFor={`result-${test.id}`}>{mode === 'amend' ? 'Corrected result' : 'Result'}</Label>
-              <Textarea id={`result-${test.id}`} value={results} onChange={(e) => setResults(e.target.value)} placeholder={hint ?? 'Write the result as your lab reports it, with units'} maxLength={2000} required autoFocus />
-              {mode === 'amend' && (
-                <>
-                  <Label htmlFor={`reason-${test.id}`}>Why is it being amended?</Label>
-                  <Input id={`reason-${test.id}`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Transcription error - wrong sample read" required maxLength={300} />
-                </>
-              )}
-              <div className="flex gap-2">
-                <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving...' : mode === 'amend' ? 'Save amendment' : 'Save result'}</Button>
-                <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { setMode('view'); setResults(test.results || ''); setError(''); }}>Cancel</Button>
-              </div>
-            </form>
-          )}
-          {error && <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">{error}</p>}
         </div>
 
         <div className="flex flex-col items-end gap-2">
@@ -323,6 +296,62 @@ function LabTestCard({
           )}
         </div>
       </div>
+
+      {test.results && mode === 'view' && (
+        <div className="mt-2 rounded-md bg-slate-100 p-2.5 text-sm text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+          {test.values?.length ? <LabValuesTable values={test.values} comment={test.comment} /> : <p className="whitespace-pre-wrap"><strong className="font-medium">Result:</strong> {test.results}</p>}
+          {test.resultedBy && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Entered by {test.resultedBy.name} ({roleLabel(test.resultedBy.role)}) · {when(test.resultedAt)}</p>}
+          {test.verifiedBy && (
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+              <ShieldCheck className="size-3.5" aria-hidden="true" />Verified by {test.verifiedBy.name} ({roleLabel(test.verifiedBy.role)}) · {when(test.verifiedAt)}
+            </p>
+          )}
+        </div>
+      )}
+
+      {(mode === 'enter' || mode === 'amend') && (
+        <form
+          className="mt-3 space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (byValue && filled.length === 0) {
+              setError('Enter at least one value');
+              return;
+            }
+            const result = byValue ? { values: filled, comment } : { results };
+            if (mode === 'enter') {
+              run(() => call(`/lab/${test.id}`, 'PATCH', { ...result, status: 'COMPLETED' }), `${test.testName} result recorded for ${test.patient?.name ?? 'the patient'}. A clinician will verify it.`);
+            } else {
+              run(() => call(`/lab/${test.id}/amend`, 'POST', { ...result, reason }), `${test.testName} result amended. It needs verifying again before the patient sees the change.`);
+            }
+          }}
+        >
+          {byValue ? (
+            <>
+              <p className="text-sm font-medium">{mode === 'amend' ? 'Corrected values' : 'Values'}</p>
+              <LabValuesForm idPrefix={`value-${test.id}`} values={values} onChange={setValues} />
+              <Label htmlFor={`comment-${test.id}`}>Comment <span className="font-normal text-slate-500">(optional)</span></Label>
+              <Textarea id={`comment-${test.id}`} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="e.g. Microcytic picture - suggest iron studies" maxLength={1000} />
+            </>
+          ) : (
+            <>
+              <Label htmlFor={`result-${test.id}`}>{mode === 'amend' ? 'Corrected result' : 'Result'}</Label>
+              <Textarea id={`result-${test.id}`} value={results} onChange={(e) => setResults(e.target.value)} placeholder={hint ?? 'Write the result as your lab reports it, with units'} maxLength={2000} required autoFocus />
+            </>
+          )}
+          {mode === 'amend' && (
+            <>
+              <Label htmlFor={`reason-${test.id}`}>Why is it being amended?</Label>
+              <Input id={`reason-${test.id}`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Transcription error - wrong sample read" required maxLength={300} />
+            </>
+          )}
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving...' : mode === 'amend' ? 'Save amendment' : 'Save result'}</Button>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { setMode('view'); setResults(test.results || ''); setValues(startValues()); setComment(test.comment ?? ''); setError(''); }}>Cancel</Button>
+          </div>
+        </form>
+      )}
+      {error && <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">{error}</p>}
     </Card>
   );
 }

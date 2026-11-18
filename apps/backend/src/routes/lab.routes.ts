@@ -1,12 +1,14 @@
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
-import { authenticate, assertClinicMatch, getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
+import { authenticate, assertClinicMatch, getAuthUser, resolveClinicScope, worksAs, type AuthUser } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { notifyLabOrdered, notifyLabResultReady, notifyLabResultToOrderer } from '../lib/notifications';
 import { sendRouteError } from '../lib/http-error';
 import { buildLabResultsPdf } from '../lib/consultation-records';
 import { documentProducer } from '../lib/document-signer';
+import { parseLabValues, summariseValues } from '../lib/lab-values';
+import { Prisma } from '@prisma/client';
 
 export async function labRoutes(fastify: FastifyInstance) {
 
@@ -102,7 +104,7 @@ export async function labRoutes(fastify: FastifyInstance) {
   // to review it. The patient is told only once a clinician has verified it.
   fastify.patch('/lab/:id', { preHandler: [requireRole(...RESULT_ROLES)] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const { results, status } = (request.body ?? {}) as { results?: unknown; status?: unknown };
+    const { results, status, values: rawValues, comment: rawComment } = (request.body ?? {}) as { results?: unknown; status?: unknown; values?: unknown; comment?: unknown };
 
     try {
       const existing = await prisma.labTest.findUnique({ where: { id }, include: { patient: true } });
@@ -120,7 +122,13 @@ export async function labRoutes(fastify: FastifyInstance) {
         return { success: true, test };
       }
 
-      const text = typeof results === 'string' ? results.trim() : '';
+      // Entered value by value (a blood count, kidney tests...) or as one text result.
+      const parsedValues = parseLabValues(rawValues);
+      if ('error' in parsedValues) return reply.status(400).send({ error: parsedValues.error });
+      const comment = typeof rawComment === 'string' ? rawComment.trim().slice(0, 1000) || null : null;
+      const values = parsedValues.values;
+      if (values && values.length === 0) return reply.status(400).send({ error: 'Enter at least one value' });
+      const text = values ? summariseValues(values, comment) : typeof results === 'string' ? results.trim() : '';
       if (!text) return reply.status(400).send({ error: 'Enter the result' });
       if (text.length > MAX_RESULT) return reply.status(400).send({ error: `The result is too long (${MAX_RESULT} characters max)` });
       if (existing.status === 'CANCELLED') return reply.status(409).send({ error: 'This test was cancelled.' });
@@ -128,7 +136,7 @@ export async function labRoutes(fastify: FastifyInstance) {
       const now = new Date();
       const test = await prisma.labTest.update({
         where: { id },
-        data: { results: text, status: 'COMPLETED', completedAt: existing.completedAt ?? now, resultedByUserId: authUser.userId, resultedAt: now },
+        data: { results: text, values: values ?? Prisma.DbNull, comment: values ? comment : null, status: 'COMPLETED', completedAt: existing.completedAt ?? now, resultedByUserId: authUser.userId, resultedAt: now },
         include: LAB_INCLUDE,
       });
       await recordAudit({
@@ -150,8 +158,9 @@ export async function labRoutes(fastify: FastifyInstance) {
 
   // A clinician checks the result and releases it: it is locked, and the
   // patient is told it is ready.
-  fastify.post('/lab/:id/verify', { preHandler: [requireRole(...VERIFY_ROLES)] }, async (request, reply) => {
+  fastify.post('/lab/:id/verify', { preHandler: [requireRole(...RESULT_ROLES)] }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    if (!mayVerify(getAuthUser(request))) return reply.status(403).send({ error: 'Only a clinician, the administrator or a lab supervisor given the right may verify results' });
     try {
       const existing = await prisma.labTest.findUnique({ where: { id }, include: { patient: true } });
       if (!existing || existing.deletedAt) return reply.status(404).send({ error: 'Lab test not found' });
@@ -171,10 +180,15 @@ export async function labRoutes(fastify: FastifyInstance) {
 
   // Correct a verified result. The reason is kept in the activity log, and the
   // corrected result has to be verified again.
-  fastify.post('/lab/:id/amend', { preHandler: [requireRole(...VERIFY_ROLES)] }, async (request, reply) => {
+  fastify.post('/lab/:id/amend', { preHandler: [requireRole(...RESULT_ROLES)] }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const { results, reason } = (request.body ?? {}) as { results?: unknown; reason?: unknown };
-    const text = typeof results === 'string' ? results.trim() : '';
+    if (!mayVerify(getAuthUser(request))) return reply.status(403).send({ error: 'Only a clinician, the administrator or a lab supervisor given the right may amend a verified result' });
+    const { results, reason, values: rawValues, comment: rawComment } = (request.body ?? {}) as { results?: unknown; reason?: unknown; values?: unknown; comment?: unknown };
+    const parsedValues = parseLabValues(rawValues);
+    if ('error' in parsedValues) return reply.status(400).send({ error: parsedValues.error });
+    const values = parsedValues.values;
+    const comment = typeof rawComment === 'string' ? rawComment.trim().slice(0, 1000) || null : null;
+    const text = values?.length ? summariseValues(values, comment) : typeof results === 'string' ? results.trim() : '';
     const why = typeof reason === 'string' ? reason.trim() : '';
     if (!text) return reply.status(400).send({ error: 'Enter the corrected result' });
     if (text.length > MAX_RESULT) return reply.status(400).send({ error: `The result is too long (${MAX_RESULT} characters max)` });
@@ -190,7 +204,7 @@ export async function labRoutes(fastify: FastifyInstance) {
       const now = new Date();
       const test = await prisma.labTest.update({
         where: { id },
-        data: { results: text, resultedByUserId: authUser.userId, resultedAt: now, verifiedByUserId: null, verifiedAt: null },
+        data: { results: text, values: values?.length ? values : Prisma.DbNull, comment: values?.length ? comment : null, resultedByUserId: authUser.userId, resultedAt: now, verifiedByUserId: null, verifiedAt: null },
         include: LAB_INCLUDE,
       });
       await recordAudit({
@@ -209,10 +223,13 @@ export async function labRoutes(fastify: FastifyInstance) {
 // (releasing a result to the patient): clinicians and the administrator.
 const RESULT_ROLES = ['LAB_TECH', 'NURSE', 'DOCTOR', 'ADMIN'] as const;
 const VERIFY_ROLES = ['DOCTOR', 'ADMIN'] as const;
+/** Clinicians and the administrator verify; so does anyone the administrator has given the right (a lab supervisor). */
+const mayVerify = (user: AuthUser) => worksAs(user, ...VERIFY_ROLES) || !!user.canVerifyLab;
 const MAX_RESULT = 2000;
 
 const LAB_INCLUDE = {
-  patient: { select: { id: true, name: true, phone: true } },
+  // Sex and birth date choose the reference ranges for a result entered value by value.
+  patient: { select: { id: true, name: true, phone: true, sex: true, dateOfBirth: true } },
   resultedBy: { select: { name: true, role: true } },
   verifiedBy: { select: { name: true, role: true } },
 } as const;

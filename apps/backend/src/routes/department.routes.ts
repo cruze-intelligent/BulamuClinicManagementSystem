@@ -1,3 +1,4 @@
+import type { Role } from '@prisma/client';
 import { FastifyInstance } from 'fastify';
 import { prisma, isUniqueConstraintError } from '../lib/prisma';
 import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
@@ -120,4 +121,35 @@ export async function departmentRoutes(fastify: FastifyInstance) {
       return sendRouteError(reply, error);
     }
   });
+
+  // A person's other duties: the roles they also work in (a nurse who also
+  // runs the lab) and whether they may verify lab results. Applies at once.
+  fastify.put('/users/:id/duties', { preHandler: [requireRole('ADMIN')] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const { id } = request.params as { id: string };
+    const body = (request.body ?? {}) as { extraRoles?: unknown; canVerifyLab?: unknown };
+    if (!Array.isArray(body.extraRoles) || body.extraRoles.some((r) => typeof r !== 'string' || !EXTRA_ROLES.includes(r as Role))) {
+      return reply.status(400).send({ error: 'Choose the other roles from the list' });
+    }
+    if (body.canVerifyLab !== undefined && typeof body.canVerifyLab !== 'boolean') return reply.status(400).send({ error: 'Say whether they may verify lab results' });
+
+    const user = await prisma.user.findUnique({ where: { id }, select: { clinicId: true, role: true } });
+    if (!user || user.clinicId !== authUser.clinicId) return reply.status(404).send({ error: 'Staff member not found' });
+    // Their own role needs no second mention.
+    const extraRoles = [...new Set(body.extraRoles as Role[])].filter((r) => r !== user.role);
+    try {
+      const updated = await prisma.user.update({
+        where: { id },
+        data: { extraRoles, ...(body.canVerifyLab === undefined ? {} : { canVerifyLab: body.canVerifyLab }) },
+        select: { id: true, extraRoles: true, canVerifyLab: true },
+      });
+      await recordAudit({ entity: 'User', recordId: id, clinicId: authUser.clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { extraRoles: updated.extraRoles, canVerifyLab: updated.canVerifyLab } });
+      return { success: true, user: updated };
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
 }
+
+/** The roles a person may also work in - every staff role except the administrator's and the platform's own. */
+const EXTRA_ROLES: Role[] = ['DOCTOR', 'NURSE', 'STAFF', 'PHARMACIST', 'LAB_TECH', 'RADIOGRAPHER'];

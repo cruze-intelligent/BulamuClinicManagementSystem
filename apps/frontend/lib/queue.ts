@@ -12,6 +12,8 @@ export type QueueAppointment = {
   checkedInAt?: string | null;
   /** Stepped out for a while: off the queue, keeping their place by arrival time. */
   awayAt?: string | null;
+  /** The unit whose queue it is in (empty: the facility works as one queue). */
+  departmentId?: string | null;
   patient?: { name: string; phone?: string } | null;
   doctor?: { name: string } | null;
   doctorId?: string;
@@ -20,11 +22,40 @@ export type QueueAppointment = {
 // "Today" is the Kampala day, whatever time zone the device is set to.
 const sameDay = (a: Date, b: Date) => kampalaDay(a) === kampalaDay(b);
 
+const sameUnit = (a: QueueAppointment, b: QueueAppointment) => !a.departmentId || !b.departmentId || a.departmentId === b.departmentId;
+const seenAt = (a: QueueAppointment) => new Date(a.checkedInAt ?? a.date).getTime();
+
+/**
+ * Already seen in this unit since arriving: a visit was recorded for the patient
+ * on another entry (a walk-in made by recording the visit outside the queue).
+ * Such an entry leaves the queue - a patient is never left waiting after being seen.
+ */
+export function seenSinceArriving<T extends QueueAppointment>(entry: T, appointments: T[]): boolean {
+  if (!entry.checkedInAt) return false;
+  const arrived = new Date(entry.checkedInAt).getTime();
+  return appointments.some((other) =>
+    other.id !== entry.id && other.patientId === entry.patientId && other.status === 'COMPLETED' && sameUnit(entry, other)
+    && seenAt(other) >= arrived && sameDay(new Date(seenAt(other)), new Date(arrived)));
+}
+
 /** Today's arrivals not yet seen, in the order they arrived - those here and those stepped out. */
 function arrivedToday<T extends QueueAppointment>(appointments: T[], now: Date): T[] {
   return appointments
-    .filter((a) => a.status === 'SCHEDULED' && a.checkedInAt && sameDay(new Date(a.checkedInAt), now))
+    .filter((a) => a.status === 'SCHEDULED' && a.checkedInAt && sameDay(new Date(a.checkedInAt), now) && !seenSinceArriving(a, appointments))
     .sort((a, b) => new Date(a.checkedInAt!).getTime() - new Date(b.checkedInAt!).getTime());
+}
+
+/**
+ * The patient's open visit today - the queue entry a visit recorded for them
+ * should complete, rather than making a second one: in the visit's unit if it
+ * has one, those who have arrived first, the earliest arrival first.
+ */
+export function openVisitToday<T extends QueueAppointment>(appointments: T[], patientId: string, departmentId?: string | null, now: Date = serverNow()): T | null {
+  const open = appointments
+    .filter((a) => a.patientId === patientId && a.status === 'SCHEDULED' && sameDay(new Date(a.checkedInAt ?? a.date), now) && !seenSinceArriving(a, appointments))
+    .filter((a) => !departmentId || !a.departmentId || a.departmentId === departmentId)
+    .sort((a, b) => Number(!a.checkedInAt) - Number(!b.checkedInAt) || seenAt(a) - seenAt(b));
+  return open[0] ?? null;
 }
 
 /** Today's arrivals still waiting, in the order they arrived. */

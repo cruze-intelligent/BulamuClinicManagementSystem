@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expectedToday, waitingQueue, waitingText } from './queue';
+import { expectedToday, openVisitToday, waitingQueue, waitingText } from './queue';
 
 // Kampala times, as the queue shows them whatever the device's time zone.
 const kampala = (h: number, m: number, day = 17) => new Date(`2026-11-${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00+03:00`);
@@ -25,5 +25,29 @@ describe('the waiting queue', () => {
     expect(waitingText(at(9, 35), now)).toBe('Arrived 09:35 - waiting 25 min');
     expect(waitingText(at(8, 20), now)).toBe('Arrived 08:20 - waiting 1 h 40 min');
     expect(waitingText(at(9, 0), now)).toBe('Arrived 09:00 - waiting 1 h');
+  });
+
+  it('lets a patient go once seen, even when the visit was recorded on another entry', () => {
+    const list = [
+      // Waiting in OPD since 08:30; the clinician recorded the visit outside the queue at 09:10 (a walk-in entry).
+      { ...appt('queued', { checkedInAt: at(8, 30), departmentId: 'opd' }), patientId: 'okello' },
+      { ...appt('walk-in', { checkedInAt: at(9, 10), status: 'COMPLETED', departmentId: 'opd' }), patientId: 'okello' },
+      // Seen in OPD, then sent on to Dentistry: still waiting there.
+      { ...appt('opd-visit', { checkedInAt: at(8, 0), status: 'COMPLETED', departmentId: 'opd' }), patientId: 'adong' },
+      { ...appt('dental', { checkedInAt: at(9, 20), departmentId: 'dental' }), patientId: 'adong' },
+    ];
+    expect(waitingQueue(list, now).map((a) => a.id)).toEqual(['dental']);
+  });
+
+  it("finds the patient's open visit today for a visit recorded outside the queue", () => {
+    const list = [
+      { ...appt('booked-later', { date: at(11, 0) }), patientId: 'p1' },
+      { ...appt('arrived', { checkedInAt: at(8, 45), departmentId: 'opd' }), patientId: 'p1' },
+      { ...appt('dental', { checkedInAt: at(8, 15), departmentId: 'dental' }), patientId: 'p1' },
+      { ...appt('yesterday', { checkedInAt: at(9, 0, 16) }), patientId: 'p2' },
+    ];
+    expect(openVisitToday(list, 'p1', 'opd', now)?.id).toBe('arrived');
+    expect(openVisitToday(list, 'p1', null, now)?.id).toBe('dental');
+    expect(openVisitToday(list, 'p2', null, now)).toBeNull();
   });
 });

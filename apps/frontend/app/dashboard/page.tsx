@@ -92,7 +92,7 @@ export default function Dashboard() {
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 gap-4 mb-8 sm:grid-cols-3">
-          {hasRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF') && (
+          {hasRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF', 'LAB_TECH') && (
             <Link href="/patients/register">
               <Button className="w-full">+ Register Patient</Button>
             </Link>
@@ -105,6 +105,11 @@ export default function Dashboard() {
           <Link href="/patients">
             <Button className="w-full" variant="outline">View Patients</Button>
           </Link>
+          {hasRole('ADMIN') && (
+            <Link href="/users" title="Give each person their role, the units they work in, and any other roles they also do">
+              <Button className="w-full" variant="outline">Staff roles, units and duties</Button>
+            </Link>
+          )}
         </div>
 
         {/* Today's Appointments */}

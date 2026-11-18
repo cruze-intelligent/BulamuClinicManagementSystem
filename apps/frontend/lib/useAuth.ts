@@ -37,7 +37,8 @@ export function useAuth(): Auth {
     const user = parse(raw);
     cached = {
       user,
-      hasRole: (...roles: string[]) => (user ? roles.includes(user.role) : false),
+      // Their own role, or another role the administrator says they also work in.
+      hasRole: (...roles: string[]) => (user ? roles.includes(user.role) || (Array.isArray(user.extraRoles) && user.extraRoles.some((r: string) => roles.includes(r))) : false),
     };
   }
   return cached;

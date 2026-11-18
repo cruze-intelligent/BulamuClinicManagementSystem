@@ -178,3 +178,39 @@ describe('the lab technician role', () => {
     expect(del.json().error).toMatch(/lab results/);
   });
 });
+
+describe('a result entered value by value', () => {
+  it('keeps each value with its reference range, flags it on the server, and prints it as a table', async () => {
+    const { users, patient } = await facility();
+    const test = await prisma.labTest.create({ data: { patientId: patient.id, testName: 'Liver function tests (LFTs)', results: '', orderedBy: 'Dr' } });
+    const res = await app.inject({
+      method: 'PATCH', url: `/lab/${test.id}`, headers: authHeader(users.LAB_TECH.token),
+      payload: {
+        status: 'COMPLETED', comment: 'Mildly raised direct bilirubin',
+        values: [
+          { name: 'AST', value: '22.3', unit: 'U/L', low: 8, high: 40 },
+          // The flag the device sends is ignored: the server works it out from the value and range.
+          { name: 'Direct bilirubin', value: '9.6', unit: 'umol/L', low: 0, high: 5, flag: null },
+          { name: 'GGT', value: '', unit: 'U/L', low: 10, high: 71 },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const saved = await prisma.labTest.findUniqueOrThrow({ where: { id: test.id } });
+    expect(saved.values).toEqual([
+      { name: 'AST', value: '22.3', unit: 'U/L', low: 8, high: 40, normal: null, flag: null },
+      { name: 'Direct bilirubin', value: '9.6', unit: 'umol/L', low: 0, high: 5, normal: null, flag: 'H' },
+    ]);
+    expect(saved.comment).toBe('Mildly raised direct bilirubin');
+    expect(saved.results).toBe('AST: 22.3 U/L\nDirect bilirubin: 9.6 umol/L (High)\nComment: Mildly raised direct bilirubin');
+
+    const bad = await app.inject({ method: 'PATCH', url: `/lab/${test.id}`, headers: authHeader(users.LAB_TECH.token), payload: { values: [{ name: 'AST', value: '20', low: 40, high: 8 }] } });
+    expect(bad.json().error).toMatch(/wrong way/);
+
+    const pdf = await app.inject({ method: 'GET', url: `/lab/${test.id}/results/pdf`, headers: authHeader(users.DOCTOR.token) });
+    expect(pdf.statusCode).toBe(200);
+    const { pdfText } = await import('./pdf-text');
+    const text = pdfText(pdf.rawPayload);
+    for (const words of ['Parameter', 'Reference', 'Direct bilirubin', 'High', '(0 - 5)', 'Comment: Mildly raised direct bilirubin']) expect(text).toContain(words);
+  });
+});

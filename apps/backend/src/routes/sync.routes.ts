@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { authenticate, getAuthUser, resolveClinicScope } from '../middleware/auth.middleware';
+import { authenticate, getAuthUser, resolveClinicScope, worksAs } from '../middleware/auth.middleware';
 import { recordConflictIfStale } from '../lib/conflict';
 import { recordAudit } from '../lib/audit';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
@@ -28,6 +28,17 @@ function deviceTime(value: unknown, now: Date = new Date()): Date {
   return time;
 }
 
+const DEPENDENCY_WAIT_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** What to tell staff about a change the server refused, from the logged reason. */
+export function syncRejectionReason(logged: string): string {
+  const why = logged.replace(/^Rejected [^:]*: /, '');
+  if (/does not match caller|another clinic|out of scope|belongs to another/i.test(why)) return 'It belongs to another facility or record';
+  if (/patientId does not match|patient .*not found|unknown patient/i.test(why)) return 'The patient it was for could not be found';
+  if (/incomplete/i.test(why)) return 'It was incomplete';
+  return why.charAt(0).toUpperCase() + why.slice(1);
+}
+
 export async function syncRoutes(fastify: FastifyInstance) {
   // Push queued offline mutations to backend (Last-Write-Wins by timestamp,
   // with tombstone deletes and a conflict log when an older write arrives
@@ -42,15 +53,31 @@ export async function syncRoutes(fastify: FastifyInstance) {
     }
 
     const applied: Array<{ mutationId: string; entity: string; record: any }> = [];
+    // Every operation gets an answer, so nothing waits on a device forever:
+    // applied; done (nothing to do - already deleted, or a newer version is
+    // already here); or rejected, with the reason, so the device stops
+    // resending it and shows staff what was not saved. Only an unexpected error
+    // leaves an operation queued, to be tried again.
+    const done: string[] = [];
+    const rejected: Array<{ mutationId: string; entity: string; recordId: string | null; reason: string }> = [];
 
     for (const op of operations) {
+      let rejection: string | null = null;
+      const reject = (message: string) => {
+        rejection = message;
+        fastify.log.warn(message);
+      };
+      let threw = false;
       try {
         const { id: mutationId, entity, payload, clinicId: opClinicId, action = 'upsert' } = op;
-        if (!entity || !payload || !payload.id) continue;
+        if (!entity || !payload || !payload.id) {
+          reject(`Rejected mutation ${mutationId}: incomplete`);
+          continue;
+        }
 
         // A mutation claiming a different clinic than the caller's own is never trusted.
         if (!isSuperAdmin && opClinicId && opClinicId !== authUser.clinicId) {
-          fastify.log.warn(`Rejected mutation ${mutationId}: clinic ${opClinicId} does not match caller`);
+          reject(`Rejected mutation ${mutationId}: clinic ${opClinicId} does not match caller`);
           continue;
         }
 
@@ -62,7 +89,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
         if (entity === 'patient') {
           const existing = await prisma.patient.findUnique({ where: { id: payload.id } });
           if (existing && !isSuperAdmin && existing.clinicId !== authUser.clinicId) {
-            fastify.log.warn(`Rejected patient mutation ${mutationId}: record belongs to another clinic`);
+            reject(`Rejected patient mutation ${mutationId}: record belongs to another clinic`);
             continue;
           }
 
@@ -138,7 +165,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
         } else if (entity === 'appointment') {
           const existing = await prisma.appointment.findUnique({ where: { id: payload.id } });
           if (existing && !isSuperAdmin && existing.clinicId !== authUser.clinicId) {
-            fastify.log.warn(`Rejected appointment mutation ${mutationId}: record belongs to another clinic`);
+            reject(`Rejected appointment mutation ${mutationId}: record belongs to another clinic`);
             continue;
           }
 
@@ -149,7 +176,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
             if (!existing) {
               const patient = await prisma.patient.findUnique({ where: { id: payload.patientId } });
               if (!patient || (!isSuperAdmin && patient.clinicId !== authUser.clinicId)) {
-                fastify.log.warn(`Rejected appointment mutation ${mutationId}: patient out of scope`);
+                reject(`Rejected appointment mutation ${mutationId}: patient out of scope`);
                 continue;
               }
             } else {
@@ -208,17 +235,17 @@ export async function syncRoutes(fastify: FastifyInstance) {
         } else if (entity === 'consultation') {
           const appointment = await prisma.appointment.findUnique({ where: { id: payload.appointmentId } });
           if (!appointment || (!isSuperAdmin && appointment.clinicId !== authUser.clinicId)) {
-            fastify.log.warn(`Rejected consultation mutation ${mutationId}: appointment out of scope`);
+            reject(`Rejected consultation mutation ${mutationId}: appointment out of scope`);
             continue;
           }
           if (payload.patientId !== appointment.patientId) {
-            fastify.log.warn(`Rejected consultation mutation ${mutationId}: patientId does not match appointment`);
+            reject(`Rejected consultation mutation ${mutationId}: patientId does not match appointment`);
             continue;
           }
 
           const existing = await prisma.consultation.findUnique({ where: { id: payload.id } });
           if (existing && existing.patientId !== appointment.patientId) {
-            fastify.log.warn(`Rejected consultation mutation ${mutationId}: record belongs to another patient`);
+            reject(`Rejected consultation mutation ${mutationId}: record belongs to another patient`);
             continue;
           }
 
@@ -239,13 +266,13 @@ export async function syncRoutes(fastify: FastifyInstance) {
             // sends a `diagnosis` string is upgraded to one uncoded primary.
             const validDiagnoses = normalizeDiagnoses(payload.diagnoses, payload.diagnosis);
             if (!validDiagnoses.ok) {
-              fastify.log.warn(`Rejected consultation mutation ${mutationId}: ${validDiagnoses.error}`);
+              reject(`Rejected consultation mutation ${mutationId}: ${validDiagnoses.error}`);
               continue;
             }
             // `prescriptions` absent means "leave them as they are"; a list replaces them.
             const validPrescriptions = Array.isArray(payload.prescriptions) ? normalizePrescriptions(payload.prescriptions) : null;
             if (validPrescriptions && !validPrescriptions.ok) {
-              fastify.log.warn(`Rejected consultation mutation ${mutationId}: ${validPrescriptions.error}`);
+              reject(`Rejected consultation mutation ${mutationId}: ${validPrescriptions.error}`);
               continue;
             }
             const prescriptions = validPrescriptions?.ok ? await linkStockItems(appointment.clinicId, validPrescriptions.value) : null;
@@ -253,7 +280,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
             try {
               fee = parseFee(payload.fee);
             } catch (error: any) {
-              fastify.log.warn(`Rejected consultation mutation ${mutationId}: ${error.message}`);
+              reject(`Rejected consultation mutation ${mutationId}: ${error.message}`);
               continue;
             }
             const diagnoses = validDiagnoses.value;
@@ -261,7 +288,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
             const clinicalNotes = typeof payload.clinicalNotes === 'string' ? payload.clinicalNotes.trim().slice(0, 4000) || null : undefined;
             const visitNotes = parseConsultationNotes(payload);
             if ('error' in visitNotes) {
-              fastify.log.warn(`Rejected consultation mutation ${mutationId}: ${visitNotes.error}`);
+              reject(`Rejected consultation mutation ${mutationId}: ${visitNotes.error}`);
               continue;
             }
             const { vitals: visitVitals, ...visitText } = visitNotes.value;
@@ -366,13 +393,13 @@ export async function syncRoutes(fastify: FastifyInstance) {
         } else if (entity === 'labTest') {
           const patient = await prisma.patient.findUnique({ where: { id: payload.patientId } });
           if (!patient || (!isSuperAdmin && patient.clinicId !== authUser.clinicId)) {
-            fastify.log.warn(`Rejected labTest mutation ${mutationId}: patient out of scope`);
+            reject(`Rejected labTest mutation ${mutationId}: patient out of scope`);
             continue;
           }
 
           const existing = await prisma.labTest.findUnique({ where: { id: payload.id } });
           if (existing && existing.patientId !== payload.patientId) {
-            fastify.log.warn(`Rejected labTest mutation ${mutationId}: record belongs to another patient`);
+            reject(`Rejected labTest mutation ${mutationId}: record belongs to another patient`);
             continue;
           }
 
@@ -420,18 +447,18 @@ export async function syncRoutes(fastify: FastifyInstance) {
           }
         } else if (entity === 'imagingRequest') {
           // Requests only, once each: reports are written on the Imaging page.
-          if (!(REQUEST_ROLES as readonly string[]).includes(authUser.role)) {
-            fastify.log.warn(`Rejected imagingRequest mutation ${mutationId}: role may not request imaging`);
+          if (!worksAs(authUser, ...REQUEST_ROLES)) {
+            reject(`Rejected imagingRequest mutation ${mutationId}: role may not request imaging`);
             continue;
           }
           const patient = await prisma.patient.findUnique({ where: { id: payload.patientId } });
           if (!patient || (!isSuperAdmin && patient.clinicId !== authUser.clinicId)) {
-            fastify.log.warn(`Rejected imagingRequest mutation ${mutationId}: patient out of scope`);
+            reject(`Rejected imagingRequest mutation ${mutationId}: patient out of scope`);
             continue;
           }
           const parsed = parseImagingRequest(payload);
           if ('error' in parsed) {
-            fastify.log.warn(`Rejected imagingRequest mutation ${mutationId}: ${parsed.error}`);
+            reject(`Rejected imagingRequest mutation ${mutationId}: ${parsed.error}`);
             continue;
           }
           const existing = await prisma.imagingRequest.findUnique({ where: { id: payload.id } });
@@ -454,13 +481,13 @@ export async function syncRoutes(fastify: FastifyInstance) {
         } else if (entity === 'reproductiveHealth') {
           const patient = await prisma.patient.findUnique({ where: { id: payload.patientId } });
           if (!patient || (!isSuperAdmin && patient.clinicId !== authUser.clinicId)) {
-            fastify.log.warn(`Rejected reproductiveHealth mutation ${mutationId}: patient out of scope`);
+            reject(`Rejected reproductiveHealth mutation ${mutationId}: patient out of scope`);
             continue;
           }
 
           const existing = await prisma.reproductiveHealthRecord.findUnique({ where: { id: payload.id } });
           if (existing && existing.patientId !== payload.patientId) {
-            fastify.log.warn(`Rejected reproductiveHealth mutation ${mutationId}: record belongs to another patient`);
+            reject(`Rejected reproductiveHealth mutation ${mutationId}: record belongs to another patient`);
             continue;
           }
 
@@ -516,18 +543,18 @@ export async function syncRoutes(fastify: FastifyInstance) {
           // whole patient) so recording an allergy can never overwrite anything
           // else on the patient, and can be done by the clinicians who ask about
           // it. payload.id is the patient's id.
-          if (!['NURSE', 'DOCTOR', 'PHARMACIST', 'ADMIN', 'SUPER_ADMIN'].includes(authUser.role)) {
-            fastify.log.warn(`Rejected allergy mutation ${mutationId}: role ${authUser.role} may not record allergies`);
+          if (!worksAs(authUser, 'NURSE', 'DOCTOR', 'PHARMACIST', 'ADMIN', 'SUPER_ADMIN')) {
+            reject(`Rejected allergy mutation ${mutationId}: role ${authUser.role} may not record allergies`);
             continue;
           }
           const patient = await prisma.patient.findUnique({ where: { id: payload.id } });
           if (!patient || patient.deletedAt || (!isSuperAdmin && patient.clinicId !== authUser.clinicId)) {
-            fastify.log.warn(`Rejected allergy mutation ${mutationId}: patient out of scope`);
+            reject(`Rejected allergy mutation ${mutationId}: patient out of scope`);
             continue;
           }
           const valid = normalizeAllergies(payload.allergyStatus, payload.allergies);
           if (!valid.ok) {
-            fastify.log.warn(`Rejected allergy mutation ${mutationId}: ${valid.error}`);
+            reject(`Rejected allergy mutation ${mutationId}: ${valid.error}`);
             continue;
           }
           // Last write wins by the time the allergy was recorded, not by when the
@@ -557,13 +584,13 @@ export async function syncRoutes(fastify: FastifyInstance) {
           });
         } else if (entity === 'inventory') {
           // Stock is changed by pharmacists and administrators only - offline too.
-          if (!(STOCK_ROLES as readonly string[]).includes(authUser.role)) {
-            fastify.log.warn(`Rejected inventory mutation ${mutationId}: ${authUser.role} cannot change stock`);
+          if (!worksAs(authUser, ...STOCK_ROLES)) {
+            reject(`Rejected inventory mutation ${mutationId}: ${authUser.role} cannot change stock`);
             continue;
           }
           const existing = await prisma.medicine.findUnique({ where: { id: payload.id } });
           if (existing && !isSuperAdmin && existing.clinicId !== authUser.clinicId) {
-            fastify.log.warn(`Rejected inventory mutation ${mutationId}: record belongs to another clinic`);
+            reject(`Rejected inventory mutation ${mutationId}: record belongs to another clinic`);
             continue;
           }
 
@@ -583,7 +610,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
             try {
               details = parseItemDetails(payload, true);
             } catch {
-              fastify.log.warn(`Rejected inventory mutation ${mutationId}: invalid details`);
+              reject(`Rejected inventory mutation ${mutationId}: invalid details`);
               continue;
             }
             record = await prisma.medicine.update({ where: { id: existing.id }, data: { ...details, updatedAt: incomingUpdatedAt } });
@@ -597,7 +624,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
               quantity = parseCount(payload.quantity ?? 0, 'The quantity on the shelf');
               expiryDate = parseExpiry(payload.expiryDate);
             } catch {
-              fastify.log.warn(`Rejected inventory mutation ${mutationId}: invalid stock item`);
+              reject(`Rejected inventory mutation ${mutationId}: invalid stock item`);
               continue;
             }
             const created = await prisma.$transaction((tx) => createStockItem(tx, {
@@ -613,12 +640,23 @@ export async function syncRoutes(fastify: FastifyInstance) {
           applied.push({ mutationId, entity, record });
         }
       } catch (err: any) {
+        threw = true;
         fastify.log.error(`Failed to process mutation ${op.id}: ${err.message}`);
+      } finally {
+        const mutationId = typeof op?.id === 'string' ? op.id : null;
+        if (mutationId && !threw && !applied.some((a) => a.mutationId === mutationId)) {
+          // What it depends on (its patient, its appointment) may simply not have
+          // arrived yet - sent later from this device: it waits and is tried again,
+          // for up to a week, before it is reported as not saved.
+          const waiting = !!rejection && /out of scope/.test(rejection) && Date.now() - new Date(op.createdAt ?? 0).getTime() < DEPENDENCY_WAIT_MS;
+          if (rejection && !waiting) rejected.push({ mutationId, entity: String(op.entity ?? ''), recordId: op.payload?.id ?? null, reason: syncRejectionReason(rejection) });
+          else if (!rejection) done.push(mutationId);
+        }
       }
     }
 
     // The server's clock, so the device can correct its own (see the app's lib/time.ts).
-    return { success: true, applied, serverTime: new Date().toISOString() };
+    return { success: true, applied, done, rejected, serverTime: new Date().toISOString() };
   });
 
   // Pull delta updates modified since lastSyncedAt (tombstoned records are
@@ -657,7 +695,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
         }),
         // A short list, sent whole each time: the units, closed ones too (old visits name them).
         prisma.department.findMany({ where: { clinicId }, select: { id: true, code: true, name: true, isActive: true } }),
-        prisma.user.findUnique({ where: { id: getAuthUser(request).userId }, select: { departmentIds: true } }),
+        prisma.user.findUnique({ where: { id: getAuthUser(request).userId }, select: { departmentIds: true, extraRoles: true, canVerifyLab: true } }),
       ]);
 
       return {
@@ -671,6 +709,8 @@ export async function syncRoutes(fastify: FastifyInstance) {
         reproductiveHealth,
         departments: sortDepartments(departments),
         myDepartmentIds: me?.departmentIds ?? [],
+        // What else this person may do now, so their device shows it without signing in again.
+        me: { extraRoles: me?.extraRoles ?? [], canVerifyLab: me?.canVerifyLab ?? false },
       };
     } catch (error: any) {
       return sendRouteError(reply, error);

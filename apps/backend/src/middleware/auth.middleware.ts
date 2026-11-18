@@ -38,7 +38,7 @@ export async function verifyStaffSession(request: FastifyRequest, reply: Fastify
   const authUser = request.user as AuthUser;
   const user = await prisma.user.findUnique({
     where: { id: authUser.userId },
-    select: { isActive: true, password: true, role: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true, isDemo: true, demoExpiresAt: true } } },
+    select: { isActive: true, password: true, role: true, extraRoles: true, canVerifyLab: true, clinic: { select: { isActive: true, registrationStatus: true, deletedAt: true, isDemo: true, demoExpiresAt: true } } },
   });
   if (!user || !user.isActive || !user.clinic || user.clinic.deletedAt || demoHasEnded(user.clinic)) {
     reply.status(401).send({ error: 'Account no longer active', reason: 'SESSION_ENDED' });
@@ -57,6 +57,9 @@ export async function verifyStaffSession(request: FastifyRequest, reply: Fastify
     reply.status(401).send({ error: 'Your role was changed. Please sign in again.', reason: 'SESSION_ENDED' });
     return false;
   }
+  // Extra duties apply at once, without signing in again.
+  authUser.extraRoles = user.extraRoles;
+  authUser.canVerifyLab = user.canVerifyLab;
   if (authUser.role !== 'SUPER_ADMIN' && (!user.clinic.isActive || user.clinic.registrationStatus !== 'APPROVED')) {
     reply.status(401).send({ error: 'Facility account is not active', reason: 'SESSION_ENDED' });
     return false;
@@ -77,7 +80,14 @@ export type AuthUser = {
   userId: string;
   clinicId: string;
   role: string;
+  /** Read from the account on every request (see verifyStaffSession), so a change applies at once. */
+  extraRoles?: string[];
+  canVerifyLab?: boolean;
 };
+
+/** Whether this person works in any of these roles - their own, or one they also work in. */
+export const worksAs = (user: Pick<AuthUser, 'role' | 'extraRoles'>, ...roles: string[]) =>
+  roles.includes(user.role) || (user.extraRoles ?? []).some((r) => roles.includes(r));
 
 export function getAuthUser(request: FastifyRequest): AuthUser {
   return request.user as AuthUser;

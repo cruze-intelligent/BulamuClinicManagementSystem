@@ -578,6 +578,9 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
   return done;
 }
 
+const labReference = (v: { low: number | null; high: number | null; normal: string | null }) =>
+  v.low !== null && v.high !== null ? `(${v.low} - ${v.high})` : v.high !== null ? `(< ${v.high})` : v.low !== null ? `(> ${v.low})` : v.normal ?? '';
+
 export type LabResultsPdfInput = SampleOption & {
   clinicName: string;
   facilityCode: string;
@@ -591,6 +594,9 @@ export type LabResultsPdfInput = SampleOption & {
   patientAge?: string;
   tests: Array<{
     id: string; testName: string; results: string; orderedBy: string; requestedAt: Date;
+    /** Entered value by value: printed as a table with reference ranges and flags. */
+    values?: Array<{ name: string; value: string; unit: string | null; low: number | null; high: number | null; normal: string | null; flag: 'H' | 'L' | 'A' | null }> | null;
+    comment?: string | null;
     resultedBy?: Signer | null; resultedAt?: Date | null; verifiedBy?: Signer | null; verifiedAt?: Date | null;
   }>;
 };
@@ -638,7 +644,34 @@ export async function generateLabResultsPdf(input: LabResultsPdfInput): Promise<
     doc.font('Helvetica-Bold').fontSize(8).fillColor(test.verifiedAt ? BRAND_TEAL : '#b45309').text(status, 330, top + 2, { width: 215, align: 'right' });
     doc.y = Math.max(doc.y, top + 14);
     doc.moveDown(0.3);
-    doc.font('Helvetica').fontSize(10.5).fillColor(INK).text(test.results.trim(), 50, doc.y, { width: 495 });
+    if (test.values?.length) {
+      // As a laboratory report sets it out: parameter, result, flag, reference range, units.
+      const cols = [{ x: 50, w: 165, title: 'Parameter' }, { x: 215, w: 80, title: 'Result' }, { x: 295, w: 70, title: 'Flag' }, { x: 365, w: 110, title: 'Reference' }, { x: 475, w: 70, title: 'Units' }];
+      const header = () => {
+        const y = doc.y;
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(MUTED);
+        for (const c of cols) doc.text(c.title, c.x, y, { width: c.w - 6, lineBreak: false });
+        doc.y = y + 12;
+      };
+      header();
+      for (const v of test.values) {
+        if (doc.y > pageEnd()) {
+          continuePage();
+          header();
+        }
+        const y = doc.y;
+        const flagged = !!v.flag;
+        const cells = [v.name, v.value, v.flag ? ({ H: 'High', L: 'Low', A: 'Abnormal' } as const)[v.flag] : v.low !== null || v.high !== null || v.normal ? 'Normal' : '', labReference(v), v.unit ?? ''];
+        cells.forEach((cell, i) => {
+          const bold = flagged && (i === 1 || i === 2);
+          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9.5).fillColor(bold ? '#b91c1c' : INK).text(cell, cols[i].x, y, { width: cols[i].w - 6, lineBreak: false, ellipsis: true });
+        });
+        doc.y = y + 13;
+      }
+      if (test.comment) doc.font('Helvetica').fontSize(9.5).fillColor(INK).text(`Comment: ${test.comment}`, 50, doc.y + 2, { width: 495 });
+    } else {
+      doc.font('Helvetica').fontSize(10.5).fillColor(INK).text(test.results.trim(), 50, doc.y, { width: 495 });
+    }
     doc.moveDown(0.4);
     const who = [
       test.resultedBy ? `Result entered by ${test.resultedBy.name} (${test.resultedBy.role})${test.resultedAt ? `, ${documentDateTime(test.resultedAt)}` : ''}` : null,

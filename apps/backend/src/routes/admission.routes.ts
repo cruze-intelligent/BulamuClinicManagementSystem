@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { AdmissionNoteKind, DischargeOutcome, WardType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { getAuthUser } from '../middleware/auth.middleware';
+import { getAuthUser, worksAs } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { notifyPatient, notifyStaff } from '../lib/notifications';
@@ -250,7 +250,7 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     const kind: AdmissionNoteKind = NOTE_KINDS.includes(body.kind) ? body.kind : 'NURSING_NOTE';
     let details: StructuredNote | undefined;
     if (kind === 'PROCEDURE' || kind === 'OPERATION_NOTE') {
-      if (kind === 'OPERATION_NOTE' && !OPERATION_NOTE_ROLES.includes(authUser.role)) {
+      if (kind === 'OPERATION_NOTE' && !worksAs(authUser, ...OPERATION_NOTE_ROLES)) {
         return reply.status(403).send({ error: 'Operation notes are written by the operating clinician' });
       }
       const parsed = parseStructuredNote(kind, body.details);

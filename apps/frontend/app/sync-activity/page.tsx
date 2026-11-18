@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/select';
 import { useAuth } from '@/lib/useAuth';
 import { downloadWithAuth } from '@/lib/download';
 import { formatDateTime } from '@/lib/time';
+import { NotSavedChanges } from '@/components/not-saved-changes';
 
 type AuditEntry = {
   id: string;
@@ -69,8 +70,8 @@ export default function SyncActivityPage() {
     setLoading(true);
     Promise.all(requests)
       .then(([auditData, conflictData]) => {
-        if (auditData.success) setAuditEntries(auditData.entries);
-        if (conflictData?.success) setConflicts(conflictData.conflicts);
+        if (auditData.success) setAuditEntries(auditData.entries ?? []);
+        if (conflictData?.success) setConflicts(conflictData.conflicts ?? []);
         setLoadError('');
       })
       .catch(() => setLoadError(navigator.onLine
@@ -124,7 +125,7 @@ export default function SyncActivityPage() {
     : 'A record of the actions you have taken in Bulamu.';
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen p-4 sm:p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-4xl mx-auto">
         <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
           <h1 className="text-3xl font-bold">{title}</h1>
@@ -142,6 +143,7 @@ export default function SyncActivityPage() {
           </div>
         </div>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{description}</p>
+        <NotSavedChanges />
 
         {canFilterByActor && (
           <div className="mb-6 max-w-xs">

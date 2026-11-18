@@ -123,6 +123,7 @@ export async function buildLabResultsPdf(testId: string, options: { only?: boole
     patientAge: ageLabel(patient.dateOfBirth, test.createdAt, patient.dateOfBirthEstimated),
     tests: printable.map((t) => ({
       id: t.id, testName: t.testName, results: t.results, orderedBy: t.orderedBy, requestedAt: t.createdAt,
+      values: Array.isArray(t.values) ? (t.values as any) : null, comment: t.comment,
       resultedBy: staff(t.resultedBy), resultedAt: t.resultedAt, verifiedBy: staff(t.verifiedBy), verifiedAt: t.verifiedAt,
     })),
     producedBy: options.producedBy,

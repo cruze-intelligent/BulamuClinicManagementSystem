@@ -30,6 +30,13 @@ model User {
   // The units (departments) this person works in; their queue opens first for
   // them. Empty: they work across the facility.
   departmentIds String[] @default([])
+  // Other roles this person also works in (a nurse who also runs the lab):
+  // they may do what each of these roles may, as well as their own. Never
+  // ADMIN or SUPER_ADMIN - those are only ever a person's own role.
+  extraRoles    Role[]   @default([])
+  // May verify (release) lab results - given by the administrator to a lab
+  // technician who supervises, as clinicians and administrators already can.
+  canVerifyLab  Boolean  @default(false)
   // Platform usage, for the operator's analytics: when they last signed in and
   // when they were last seen using the app (updated at most every few minutes).
   lastLoginAt DateTime?
@@ -1108,7 +1115,13 @@ model LabTest {
   consultationId  String?
   consultation    Consultation? @relation(fields: [consultationId], references: [id])
   testName        String
+  // The result as text - for a test entered value by value, a summary of them.
   results         String
+  // A test entered value by value: [{ name, value, unit, low, high, normal, flag }]
+  // - each parameter with the reference range the lab used, flagged H/L/A.
+  values          Json?
+  // The lab's comment on a result entered value by value.
+  comment         String?
   status          LabStatus @default(PENDING)
   orderedBy       String
   // The account that placed the order (set by the server, never trusted from

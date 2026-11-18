@@ -121,7 +121,10 @@ export type LocalLabTest = {
   resultedAt?: string | null;
   verifiedBy?: { name: string; role: string } | null;
   verifiedAt?: string | null;
-  patient?: { name: string; phone: string };
+  /** A result entered value by value, with reference ranges and flags, and the lab's comment. */
+  values?: import("./lab-panels").LabValue[] | null;
+  comment?: string | null;
+  patient?: { name: string; phone: string; sex?: string | null; dateOfBirth?: string | null };
   createdAt: string;
   updatedAt: string;
   syncStatus: "pending" | "synced" | "failed";
@@ -1036,6 +1039,50 @@ export async function addReproductiveHealthRecordOffline(input: {
 
 /* ================= BACKGROUND SYNC & FLUSH ================= */
 
+/** A change saved on this device that the server refused - shown to staff so it can be entered again. */
+export type RejectedChange = { mutationId: string; entity: string; recordId: string | null; reason: string; what: string; savedAt: string | null; refusedAt: string };
+
+const REJECTED_KEY = "bulamu:sync-rejected";
+const ENTITY_WORDS: Record<string, string> = {
+  patient: "Patient details", appointment: "Appointment", consultation: "Visit record", labTest: "Lab test",
+  imagingRequest: "Imaging request", reproductiveHealth: "Reproductive health record", patientAllergies: "Allergies", inventory: "Stock item",
+};
+
+/** Changes the server refused, newest first. */
+export function listRejectedChanges(): RejectedChange[] {
+  try {
+    return JSON.parse(localStorage.getItem(REJECTED_KEY) || "[]") as RejectedChange[];
+  } catch {
+    return [];
+  }
+}
+
+export function dismissRejectedChange(mutationId: string) {
+  try {
+    localStorage.setItem(REJECTED_KEY, JSON.stringify(listRejectedChanges().filter((c) => c.mutationId !== mutationId)));
+  } catch {
+    // Storage blocked: nothing to forget.
+  }
+  emitLocalChange();
+}
+
+function rememberRejected(changes: RejectedChange[]) {
+  if (!changes.length) return;
+  try {
+    const kept = listRejectedChanges().filter((c) => !changes.some((n) => n.mutationId === c.mutationId));
+    localStorage.setItem(REJECTED_KEY, JSON.stringify([...changes, ...kept].slice(0, 100)));
+  } catch {
+    // Storage full or blocked: the server's log still has them.
+  }
+}
+
+/** "Visit record - Okello Isaac": what a refused change was, in words. */
+function describeChange(op: LocalMutation | undefined, entity: string): string {
+  const payload = (op?.payload ?? {}) as Record<string, unknown>;
+  const who = [payload.patientName, payload.name, payload.testName, payload.examination].find((v) => typeof v === "string" && v.trim()) as string | undefined;
+  return [ENTITY_WORDS[entity] ?? entity, who].filter(Boolean).join(" - ");
+}
+
 export async function flushSyncQueue() {
   const apiUrl = getApiUrl();
   if (!apiUrl || typeof navigator === "undefined" || !navigator.onLine) {
@@ -1090,8 +1137,37 @@ export async function flushSyncQueue() {
     );
   }
 
+  // Nothing to do on the server (already deleted, or a newer version is there): done here too.
+  if (Array.isArray(data.done)) {
+    await Promise.all(data.done.map((mutationId: string) => deleteRecord(MUTATION_STORE, mutationId)));
+  }
+  // Refused: it is no longer resent (so the device stops showing it as pending
+  // forever), and is listed for staff to see and enter again.
+  if (Array.isArray(data.rejected) && data.rejected.length) {
+    const refusedAt = new Date().toISOString();
+    rememberRejected(data.rejected.map((r: { mutationId: string; entity: string; recordId: string | null; reason: string }) => {
+      const op = operations.find((o) => o.id === r.mutationId);
+      return { mutationId: r.mutationId, entity: r.entity, recordId: r.recordId, reason: r.reason, what: describeChange(op, r.entity), savedAt: op?.createdAt ?? null, refusedAt };
+    }));
+    await Promise.all(data.rejected.map((r: { mutationId: string }) => deleteRecord(MUTATION_STORE, r.mutationId)));
+  }
+
   emitLocalChange();
   return { synced: data.applied ? data.applied.length : 0 };
+}
+
+function rememberMyDuties(me: { extraRoles?: string[]; canVerifyLab?: boolean }) {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || 'null');
+    if (!user) return;
+    const extraRoles = Array.isArray(me.extraRoles) ? me.extraRoles : [];
+    const canVerifyLab = !!me.canVerifyLab;
+    if (JSON.stringify(user.extraRoles ?? []) === JSON.stringify(extraRoles) && !!user.canVerifyLab === canVerifyLab) return;
+    localStorage.setItem('user', JSON.stringify({ ...user, extraRoles, canVerifyLab }));
+    emitLocalChange();
+  } catch {
+    // Storage blocked: the next sign-in carries them.
+  }
 }
 
 export async function pullSyncUpdates(clinicId: string) {
@@ -1114,6 +1190,8 @@ export async function pullSyncUpdates(clinicId: string) {
     if (response.ok && data.success) {
       // The facility's units, and the ones this person works in, for booking and the queue offline.
       if (Array.isArray(data.departments)) rememberDepartments(clinicId, data.departments, data.myDepartmentIds);
+      // Other roles and rights the administrator has given this person: shown at once, no new sign-in.
+      if (data.me) rememberMyDuties(data.me);
       if (data.patients?.length) await cachePatients(data.patients);
       if (data.appointments?.length) await cacheAppointments(data.appointments);
       if (data.consultations?.length) await cacheConsultations(data.consultations);

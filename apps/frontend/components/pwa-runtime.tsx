@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle2, CircleAlert, Download, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import Link from 'next/link';
+import { CheckCircle2, CircleAlert, Download, RefreshCw, TriangleAlert, Wifi, WifiOff } from 'lucide-react';
 import {
   countPendingMutations,
   flushSyncQueue,
   getCurrentClinicId,
+  listRejectedChanges,
   pullSyncUpdates,
   subscribeToLocalChanges,
 } from '@/lib/local-first';
@@ -26,6 +28,8 @@ function isPlatformAdmin() {
 export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
+  // Saved here but refused by the server - listed on Sync activity to enter again.
+  const [notSaved, setNotSaved] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [installPrompt, setInstallPromptState] = useState<BeforeInstallPromptEvent | null>(null);
   // The facility's subscription has ended: queued saves can't go up until it renews.
@@ -33,6 +37,7 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
 
   const refreshPending = useCallback(() => {
     countPendingMutations().then(setPending).catch(console.error);
+    setNotSaved(listRejectedChanges().length);
   }, []);
 
   const syncData = useCallback(async () => {
@@ -144,6 +149,16 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
           <Download className="size-4" aria-hidden="true" />
           Install app
         </button>
+      )}
+      {!hideSyncStatus && notSaved > 0 && (
+        <Link
+          href="/sync-activity"
+          title="Changes saved on this device that Bulamu could not accept - see which, and enter them again"
+          className="flex min-h-10 items-center gap-2 rounded-md border border-red-300 bg-red-50 px-3.5 py-2 text-sm font-medium text-red-900 shadow-md hover:bg-red-100"
+        >
+          <TriangleAlert className="size-4 text-red-600" aria-hidden="true" />
+          {notSaved} not saved
+        </Link>
       )}
       {!hideSyncStatus && (<button
         type="button"

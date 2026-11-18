@@ -18,6 +18,7 @@ import {
   createLabTestOffline,
   createImagingRequestOffline,
   getLocalAppointment,
+  listLocalAppointments,
   listLocalPatients,
   listLocalInventory,
   getCurrentClinicId,
@@ -27,6 +28,7 @@ import {
   type LocalPatient,
 } from '@/lib/local-first';
 import { Select } from '@/components/ui/select';
+import { openVisitToday } from '@/lib/queue';
 import { SuggestionInput } from '@/components/suggestion-input';
 import { LAB_TESTS_CATALOG, findLabTest } from '@/lib/lab-tests-catalog';
 import { VITAL_FIELDS, abnormalVitals } from '@/lib/wards';
@@ -147,8 +149,13 @@ function RecordConsultationForm() {
     try {
       const clinicId = getCurrentClinicId() || patient.clinicId;
       const user = getCurrentUser();
-      // A visit recorded without an appointment gets one, as a walk-in seen now.
+      // Recorded without its queue entry: the patient's open visit today is the
+      // one being seen (so they leave the queue); with none, a walk-in seen now.
       let visitAppointmentId = appointmentId;
+      if (!visitAppointmentId) {
+        const open = openVisitToday(await listLocalAppointments(clinicId), patient.id, visitUnit || null);
+        if (open) visitAppointmentId = open.id;
+      }
       if (!visitAppointmentId) {
         const now = serverNow();
         const made = await createAppointmentOffline({

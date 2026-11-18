@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Building2, CheckCircle2, ChevronRight, KeyRound, Pencil, Search, Trash2, UserCheck, UserPlus, UserX, X } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronRight, KeyRound, Pencil, Search, ShieldPlus, Trash2, UserCheck, UserPlus, UserX, X } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,8 +13,12 @@ import { useAuth } from '@/lib/useAuth';
 import { timeAgo } from '@/lib/analytics-format';
 import { rememberDepartments, sortDepartments, type Department } from '@/lib/departments';
 
-type StaffUser = { id: string; name: string; email: string; role: string; isActive: boolean; createdAt: string; lastLoginAt?: string | null; departmentIds?: string[] };
-type Panel = { userId: string; kind: 'edit' | 'units' | 'password' | 'deactivate' | 'delete' } | null;
+type StaffUser = {
+  id: string; name: string; email: string; role: string; isActive: boolean; createdAt: string; lastLoginAt?: string | null; departmentIds?: string[];
+  /** Other roles they also work in, and whether they may verify lab results. */
+  extraRoles?: string[]; canVerifyLab?: boolean;
+};
+type Panel = { userId: string; kind: 'edit' | 'units' | 'duties' | 'password' | 'deactivate' | 'delete' } | null;
 
 // The roles a facility administrator can give (never the platform administrator).
 const ROLE_OPTIONS = [
@@ -239,6 +243,10 @@ function StaffCard({
   const [error, setError] = useState('');
   const [hasRecords, setHasRecords] = useState(false);
   const [picked, setPicked] = useState<string[]>(user.departmentIds ?? []);
+  const [alsoAs, setAlsoAs] = useState<string[]>(user.extraRoles ?? []);
+  const [verifies, setVerifies] = useState(!!user.canVerifyLab);
+  // Any other staff role - never the administrator's, which is only ever a person's own role.
+  const otherRoles = ROLE_OPTIONS.filter((r) => r.value !== 'ADMIN' && r.value !== user.role);
   const theirUnits = units.filter((u) => (user.departmentIds ?? []).includes(u.id));
   const openUnits = units.filter((u) => u.isActive || picked.includes(u.id));
 
@@ -262,6 +270,8 @@ function StaffCard({
     setEdit({ name: user.name, email: user.email, role: user.role });
     setPassword('');
     setPicked(user.departmentIds ?? []);
+    setAlsoAs(user.extraRoles ?? []);
+    setVerifies(!!user.canVerifyLab);
     setPanel(kind);
   };
 
@@ -283,6 +293,8 @@ function StaffCard({
             <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs">
               <span className={`rounded px-2 py-0.5 font-medium ${ROLE_BADGE[user.role] ?? ROLE_BADGE.STAFF}`}>{roleLabel(user.role)}</span>
               {!user.isActive && <span className="rounded bg-red-100 px-2 py-0.5 font-medium text-red-800 dark:bg-red-950 dark:text-red-300">Deactivated</span>}
+              {(user.extraRoles ?? []).map((r) => <span key={r} className="rounded border border-dashed border-slate-300 px-2 py-0.5 text-slate-600 dark:border-slate-600 dark:text-slate-300">Also {roleLabel(r)}</span>)}
+              {user.canVerifyLab && !['DOCTOR', 'ADMIN'].includes(user.role) && <span className="rounded border border-dashed border-emerald-400 px-2 py-0.5 text-emerald-800 dark:border-emerald-700 dark:text-emerald-300">Verifies lab results</span>}
               {theirUnits.map((u) => <span key={u.id} className="rounded border border-slate-200 px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:text-slate-300">{u.name}</span>)}
               {user.lastLoginAt !== undefined && (
                 <span className="text-slate-500 dark:text-slate-400">{user.lastLoginAt ? `Last signed in ${timeAgo(user.lastLoginAt)}` : 'Never signed in'}</span>
@@ -293,6 +305,7 @@ function StaffCard({
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={() => open('edit')} aria-label={`Edit ${user.name}`}><Pencil className="size-4" aria-hidden="true" /> Edit</Button>
           {units.some((u) => u.isActive) && <Button size="sm" variant="outline" onClick={() => open('units')} aria-label={`Units ${user.name} works in`}><Building2 className="size-4" aria-hidden="true" /> Units</Button>}
+          {user.role !== 'ADMIN' && <Button size="sm" variant="outline" onClick={() => open('duties')} aria-label={`Roles and duties for ${user.name}`}><ShieldPlus className="size-4" aria-hidden="true" /> Duties</Button>}
           {!isMe && <Button size="sm" variant="outline" onClick={() => open('password')} aria-label={`Reset password for ${user.name}`}><KeyRound className="size-4" aria-hidden="true" /> Password</Button>}
           {!isMe && (user.isActive ? (
             <Button size="sm" variant="outline" onClick={() => open('deactivate')} aria-label={`Deactivate ${user.name}`}><UserX className="size-4" aria-hidden="true" /> Deactivate</Button>
@@ -339,6 +352,49 @@ function StaffCard({
           </div>
           {error && <p role="alert" className="text-sm text-red-600 sm:col-span-3">{error}</p>}
           <div className="flex gap-2 sm:col-span-3">
+            <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving...' : 'Save'}</Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => setPanel(null)}>Cancel</Button>
+          </div>
+        </form>
+      )}
+
+      {panel === 'duties' && (
+        <form
+          className="mt-4 rounded-lg border border-slate-200 p-4 dark:border-slate-800"
+          aria-label={`Roles and duties for ${user.name}`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const also = otherRoles.filter((r) => alsoAs.includes(r.value)).map((r) => r.label);
+            run(() => call(`/users/${user.id}/duties`, 'PUT', { extraRoles: alsoAs, canVerifyLab: verifies }),
+              `${user.name} works as ${[roleLabel(user.role), ...also].join(', ')}${verifies ? ', and verifies lab results' : ''}. It applies on their device at the next sync.`);
+          }}
+        >
+          <p className="text-sm font-medium">What else {user.name} does</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Their role is {roleLabel(user.role)}. Choose any other roles they also work in - they get those screens and may do that work too, for example a nurse who also runs the lab.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Also works as">
+            {otherRoles.map((r) => {
+              const on = alsoAs.includes(r.value);
+              return (
+                <button key={r.value} type="button" aria-pressed={on} title={r.hint} onClick={() => setAlsoAs((list) => (on ? list.filter((x) => x !== r.value) : [...list, r.value]))}
+                  className={`rounded-full border px-3 py-1 text-sm transition-colors ${on ? 'border-emerald-700 bg-emerald-700 text-white' : 'border-slate-300 text-slate-700 hover:border-emerald-600 dark:border-slate-700 dark:text-slate-300'}`}>
+                  {r.label}
+                </button>
+              );
+            })}
+          </div>
+          {!['DOCTOR', 'ADMIN'].includes(user.role) && (
+            <label className="mt-4 flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-0.5 size-4 accent-emerald-600" checked={verifies} onChange={(e) => setVerifies(e.target.checked)} />
+              <span>
+                <span className="font-medium">Verifies lab results</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">For the person in charge of the lab: they may check and release results to patients, as clinicians do.</span>
+              </span>
+            </label>
+          )}
+          {error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}
+          <div className="mt-3 flex gap-2">
             <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving...' : 'Save'}</Button>
             <Button type="button" size="sm" variant="outline" onClick={() => setPanel(null)}>Cancel</Button>
           </div>
