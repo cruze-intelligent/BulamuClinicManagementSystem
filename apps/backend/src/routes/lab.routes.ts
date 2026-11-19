@@ -145,9 +145,12 @@ export async function labRoutes(fastify: FastifyInstance) {
       });
 
       if (existing.status !== 'COMPLETED') {
+        const visit = existing.consultationId
+          ? await prisma.consultation.findFirst({ where: { id: existing.consultationId, awaitingResults: true, deletedAt: null }, select: { id: true, patientId: true } })
+          : null;
         await notifyLabResultToOrderer({
           clinicId: existing.patient.clinicId, patientName: existing.patient.name, testName: test.testName,
-          orderedByUserId: existing.orderedByUserId, recordedByUserId: authUser.userId,
+          orderedByUserId: existing.orderedByUserId, recordedByUserId: authUser.userId, visit,
         }, (message) => fastify.log.warn(message));
       }
       return { success: true, test };

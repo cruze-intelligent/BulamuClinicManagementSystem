@@ -261,10 +261,14 @@ export async function syncRoutes(fastify: FastifyInstance) {
               if (stale) continue;
             }
 
+            // Saved with tests or imaging sent, to be finished when the results
+            // are in: the diagnosis may still be to come.
+            const awaitingResults = payload.awaitingResults === true;
+            const noDiagnosisYet = awaitingResults && (payload.diagnoses === undefined || payload.diagnoses === null || (Array.isArray(payload.diagnoses) && payload.diagnoses.length === 0)) && !String(payload.diagnosis ?? '').trim();
             // Diagnoses and prescriptions are validated and reduced to known
             // fields, exactly as on the online route. An older client that only
             // sends a `diagnosis` string is upgraded to one uncoded primary.
-            const validDiagnoses = normalizeDiagnoses(payload.diagnoses, payload.diagnosis);
+            const validDiagnoses = noDiagnosisYet ? { ok: true as const, value: [] } : normalizeDiagnoses(payload.diagnoses, payload.diagnosis);
             if (!validDiagnoses.ok) {
               reject(`Rejected consultation mutation ${mutationId}: ${validDiagnoses.error}`);
               continue;
@@ -284,7 +288,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
               continue;
             }
             const diagnoses = validDiagnoses.value;
-            const diagnosisText = primaryDiagnosisText(diagnoses);
+            const diagnosisText = diagnoses.length ? primaryDiagnosisText(diagnoses) : '';
             const clinicalNotes = typeof payload.clinicalNotes === 'string' ? payload.clinicalNotes.trim().slice(0, 4000) || null : undefined;
             const visitNotes = parseConsultationNotes(payload);
             if ('error' in visitNotes) {
@@ -312,6 +316,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                   ...visitText,
                   ...vitalsData,
                   serviceTags: payload.serviceTags || [],
+                  awaitingResults,
                   updatedAt: incomingUpdatedAt,
                 },
                 create: {
@@ -325,6 +330,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                   ...visitText,
                   ...vitalsData,
                   serviceTags: payload.serviceTags || [],
+                  awaitingResults,
                   createdAt: deviceTime(payload.createdAt),
                   updatedAt: incomingUpdatedAt,
                 },
@@ -381,7 +387,9 @@ export async function syncRoutes(fastify: FastifyInstance) {
               metadata: { offline: true, prescriptions: prescribedCount, ...(fee ? { fee } : {}) },
             });
 
-            if (!existing) {
+            // The pharmacist hears of a new visit's prescription, and of one
+            // written when a visit that waited for results is finished.
+            if (!existing || (existing.awaitingResults && !awaitingResults)) {
               const consultedPatient = await prisma.patient.findUnique({ where: { id: payload.patientId }, select: { name: true } });
               await notifyNewPrescription({
                 clinicId: appointment.clinicId,

@@ -19,21 +19,28 @@ import {
   createImagingRequestOffline,
   getLocalAppointment,
   listLocalAppointments,
+  listLocalConsultations,
+  listLocalLabTests,
   listLocalPatients,
   listLocalInventory,
   getCurrentClinicId,
   getCurrentUser,
   subscribeToLocalChanges,
+  type LocalConsultation,
+  type LocalLabTest,
   type LocalMedicine,
   type LocalPatient,
+  type LocalPrescription,
 } from '@/lib/local-first';
 import { Select } from '@/components/ui/select';
 import { openVisitToday } from '@/lib/queue';
 import { SuggestionInput } from '@/components/suggestion-input';
 import { LAB_TESTS_CATALOG, findLabTest } from '@/lib/lab-tests-catalog';
 import { VITAL_FIELDS, abnormalVitals } from '@/lib/wards';
-import { diagnosesToPayload, diagnosisProblems, emptyDiagnosis, type DiagnosisDraft } from '@/lib/diagnosis';
-import { draftProblems, draftToPayload, emptyDraft, isBlankDraft, type PrescriptionDraft } from '@/lib/prescription';
+import { diagnosesToPayload, diagnosisProblems, diagnosisToDraft, emptyDiagnosis, type DiagnosisDraft } from '@/lib/diagnosis';
+import { draftProblems, draftToPayload, emptyDraft, isBlankDraft, payloadToDraft, type PrescriptionDraft } from '@/lib/prescription';
+import { LabValuesTable } from '@/components/lab-values';
+import { formatDateTime } from '@/lib/time';
 import { ageText } from '@/lib/age';
 import { formatTime, serverNow } from '@/lib/time';
 import { patientIdText } from '@/lib/patient-id';
@@ -58,8 +65,18 @@ function RecordConsultationForm() {
   const searchParams = useSearchParams();
   // From the waiting room or an appointment; otherwise an appointment is made
   // for this visit when it is saved, so the visit reaches the server.
-  const appointmentId = searchParams.get('appointmentId') || '';
+  const queryAppointmentId = searchParams.get('appointmentId') || '';
   const queryPatientId = searchParams.get('patientId') || '';
+  // Going on with a visit saved to wait for results (from its notice or the Consultations page).
+  const continueId = searchParams.get('consultationId') || '';
+  const [continuing, setContinuing] = useState<LocalConsultation | null>(null);
+  const [continueMissing, setContinueMissing] = useState(false);
+  // What was asked for at the visit already, with the results as they come in.
+  const [sentTests, setSentTests] = useState<LocalLabTest[]>([]);
+  const [sentImaging, setSentImaging] = useState<SentImaging[]>([]);
+  // Prescription items the pharmacist has already dispensed: kept as they are.
+  const [dispensed, setDispensed] = useState<LocalPrescription[]>([]);
+  const appointmentId = continuing?.appointmentId || queryAppointmentId;
 
   const [patient, setPatient] = useState<LocalPatient | null>(null);
   const [stock, setStock] = useState<LocalMedicine[]>([]);
@@ -75,6 +92,9 @@ function RecordConsultationForm() {
   const [fee, setFee] = useState('');
   const [prescriptions, setPrescriptions] = useState<PrescriptionDraft[]>([emptyDraft()]);
   const [attempted, setAttempted] = useState(false);
+  // Saving to finish later: no diagnosis is asked for yet.
+  const [finishingLater, setFinishingLater] = useState(false);
+  const [laterProblem, setLaterProblem] = useState('');
   const [loading, setLoading] = useState(false);
   // The unit the visit is in (from the queue, or chosen for a walk-in), and one to send the patient on to.
   const [units, setUnits] = useState<Department[]>([]);
@@ -108,7 +128,43 @@ function RecordConsultationForm() {
     return subscribeToLocalChanges(() => { void loadPatients(); });
   }, [queryPatientId, appointmentId]);
 
-  const diagnosisIssues = attempted ? diagnosisProblems(diagnoses) : [];
+  // The visit being gone on with: its notes in the form, and what was asked for with the results so far.
+  useEffect(() => {
+    if (!continueId) return;
+    let filled = false;
+    const load = async () => {
+      const visit = (await listLocalConsultations()).find((c) => c.id === continueId);
+      if (!visit) return setContinueMissing(true);
+      setContinueMissing(false);
+      setSentTests((await listLocalLabTests()).filter((t) => t.consultationId === visit.id));
+      if (filled) return;
+      filled = true;
+      setContinuing(visit);
+      setSymptoms(visit.symptoms ?? '');
+      setHistory(visit.history ?? '');
+      setExamination(visit.examination ?? '');
+      setVitals(Object.fromEntries(Object.entries(visit.vitals ?? {}).map(([k, v]) => [k, String(v)])));
+      setClinicalNotes(visit.clinicalNotes ?? '');
+      if (visit.diagnoses?.length) setDiagnoses(visit.diagnoses.map(diagnosisToDraft));
+      const given = visit.prescriptions.filter((rx) => rx.dispensedAt);
+      const open = visit.prescriptions.filter((rx) => !rx.dispensedAt);
+      setDispensed(given);
+      setPrescriptions(open.length ? open.map((rx) => payloadToDraft(rx)) : [emptyDraft()]);
+      getLocalAppointment(visit.appointmentId).then((a) => setVisitUnit(a?.departmentId ?? '')).catch(() => undefined);
+      if (navigator.onLine) {
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${visit.patientId}/imaging`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+          .then((r) => r.json())
+          .then((d) => setSentImaging((d.requests ?? []).filter((r: SentImaging & { consultationId?: string }) => r.consultationId === visit.id)))
+          .catch(() => undefined);
+      }
+    };
+    void load();
+    return subscribeToLocalChanges(() => { void load(); });
+  }, [continueId]);
+
+  // Saved to finish later, a diagnosis is not needed yet - but one written must be right.
+  const diagnosesWritten = diagnoses.some((d) => d.description.trim() || d.icd10Code.trim());
+  const diagnosisIssues = attempted && (!finishingLater || diagnosesWritten) ? diagnosisProblems(diagnoses) : [];
   // Whole shillings; a slip of the finger adding zeros is caught before saving.
   const feeProblem = fee && Number(fee) > 100_000_000 ? 'That fee looks too large - check the amount' : '';
   const conflictCount = (d: PrescriptionDraft) => findAllergyConflicts(patient, d.medication).length;
@@ -134,13 +190,23 @@ function RecordConsultationForm() {
     setLabText('');
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const requestsSent = sentTests.length + sentImaging.length;
+  const requestsToSend = labRequests.length + imaging.length;
+
+  const handleSubmit = async (e: React.FormEvent, later = false) => {
     e.preventDefault();
     setAttempted(true);
+    setFinishingLater(later);
+    setLaterProblem('');
 
+    if (later && requestsSent + requestsToSend === 0) {
+      setLaterProblem('Add a lab test or an imaging request first - this sends them now and keeps the visit open until the results are in.');
+      return;
+    }
     // Everything is checked before anything is saved - a half-written
     // prescription must never reach a pharmacist.
-    if (!patient || diagnosisProblems(diagnoses).length > 0 || prescriptions.some((d) => draftProblems(d, conflictCount(d)).length > 0) || feeProblem || vitalsProblem) {
+    const diagnosisWrong = later ? diagnosesWritten && diagnosisProblems(diagnoses).length > 0 : diagnosisProblems(diagnoses).length > 0;
+    if (!patient || diagnosisWrong || prescriptions.some((d) => draftProblems(d, conflictCount(d)).length > 0) || feeProblem || vitalsProblem) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -167,6 +233,8 @@ function RecordConsultationForm() {
         visitAppointmentId = made.id;
       }
       const consultation = await createConsultationOffline({
+        ...(continuing ? { id: continuing.id, createdAt: continuing.createdAt } : {}),
+        awaitingResults: later,
         appointmentId: visitAppointmentId,
         patientId: patient.id,
         clinicId,
@@ -176,8 +244,9 @@ function RecordConsultationForm() {
         diagnoses: diagnosesToPayload(diagnoses),
         symptoms: symptoms.trim(),
         clinicalNotes: clinicalNotes.trim(),
-        prescriptions: prescriptions.filter((d) => !isBlankDraft(d)).map(draftToPayload),
-        fee: fee ? Number(fee) : undefined,
+        // What was dispensed already is sent as it is, so it is never given out twice.
+        prescriptions: [...dispensed, ...prescriptions.filter((d) => !isBlankDraft(d)).map(draftToPayload)],
+        fee: fee && !continuing ? Number(fee) : undefined,
         patientName: patient.name,
       });
       // Tests requested at the visit go to the lab's worklist, linked to this visit.
@@ -191,7 +260,7 @@ function RecordConsultationForm() {
       }
 
       // Sent on to another unit (OPD to Dentistry, say): they join its queue now.
-      if (sendTo) {
+      if (sendTo && !later) {
         const now = serverNow();
         const from = departmentName(knownDepartments(clinicId), visitUnit);
         await createAppointmentOffline({
@@ -201,7 +270,7 @@ function RecordConsultationForm() {
         });
       }
 
-      router.push('/consultations');
+      router.push(later ? '/consultations?waiting=1' : '/consultations');
     } catch (error: any) {
       alert(`Error recording consultation: ${error.message}`);
     } finally {
@@ -219,6 +288,7 @@ function RecordConsultationForm() {
     : null;
 
   const summary = [
+    laterProblem ? 'a lab test or imaging request to send' : null,
     attempted && diagnosisIssues.length > 0 ? 'the diagnosis' : null,
     attempted && prescriptionIssues ? 'the prescription details marked below' : null,
     attempted && feeProblem ? 'the fee' : null,
@@ -229,10 +299,20 @@ function RecordConsultationForm() {
   return (
     <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl font-bold mb-1 text-slate-800 dark:text-slate-200">Record a visit</h1>
+        <h1 className="text-3xl font-bold mb-1 text-slate-800 dark:text-slate-200">{continuing ? 'Finish the visit' : 'Record a visit'}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
           {patientLine ? `Patient: ${patientLine}` : 'Record a visit'}
         </p>
+        {continueId && continueMissing && !continuing && (
+          <p role="status" className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            This visit has not reached this device yet. It appears here once Bulamu has synced - keep the page open, or come back from the Consultations page.
+          </p>
+        )}
+        {continuing && (
+          <p role="status" className="mb-4 rounded-md border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
+            Started {formatDateTime(continuing.createdAt)} and sent for tests. The results are under Investigations and Imaging below: add or adjust the diagnosis and the prescription, then save.
+          </p>
+        )}
 
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-8" noValidate>
@@ -320,7 +400,8 @@ function RecordConsultationForm() {
             </section>
 
             <section>
-              <StepHeading n={5} title="Investigations" hint="Lab tests requested now go straight to the lab's worklist, linked to this visit." />
+              <StepHeading n={5} title="Investigations" hint="Tests requested go to the lab's worklist, linked to this visit. To see other patients while you wait, use Send to lab and imaging below - you are told when each result is in." />
+              {sentTests.length > 0 && <SentTestsList tests={sentTests} />}
               <Label htmlFor="lab-request" className="sr-only">Request a lab test</Label>
               <SuggestionInput
                 id="lab-request"
@@ -346,7 +427,8 @@ function RecordConsultationForm() {
             </section>
 
             <section>
-              <StepHeading n={6} title="Imaging" hint="Optional. X-ray, ultrasound, CT and other scans - choose the kind, then write the examination. Requests go to the imaging unit's worklist, linked to this visit." />
+              <StepHeading n={6} title="Imaging" hint="Optional. X-ray, ultrasound, CT, ECG and other examinations - choose the kind, then write the examination. Requests go to the imaging unit's worklist, linked to this visit." />
+              {sentImaging.length > 0 && <SentImagingList requests={sentImaging} />}
               <div className="grid gap-3 sm:grid-cols-[12rem_1fr]">
                 <div>
                   <Label htmlFor="imaging-modality">Kind of imaging</Label>
@@ -418,10 +500,16 @@ function RecordConsultationForm() {
 
             <section>
               <StepHeading n={9} title="Prescription" hint="Leave empty if nothing is prescribed. The pharmacist is told when a prescription is waiting." />
+              {dispensed.length > 0 && (
+                <div className="mb-3 rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  <p className="font-medium">Already dispensed</p>
+                  <ul className="mt-1 list-disc pl-5">{dispensed.map((rx, i) => <li key={rx.id ?? i}>{rx.medication} {rx.dosage} {rx.frequency} {rx.duration}</li>)}</ul>
+                </div>
+              )}
               <PrescriptionBuilder value={prescriptions} onChange={setPrescriptions} stock={stock} showProblems={attempted} allergies={patient} />
             </section>
 
-            <section>
+            {!continuing && <section>
               <StepHeading n={10} title="Consultation fee" hint="Optional. Opens the patient's bill under Bills & Payments, where lab tests, medicines and payments are added. Leave empty if there is no charge." />
               <Label htmlFor="fee" className="sr-only">Consultation fee in UGX</Label>
               <div className="flex max-w-xs items-center gap-2">
@@ -436,7 +524,7 @@ function RecordConsultationForm() {
                 />
               </div>
               {attempted && feeProblem && <p className="mt-1 text-sm text-rose-700 dark:text-rose-300">{feeProblem}</p>}
-            </section>
+            </section>}
 
             {units.length > 1 && (
               <section>
@@ -455,13 +543,73 @@ function RecordConsultationForm() {
               </section>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full">
-              {loading ? 'Saving record...' : 'Save consultation (works offline)'}
-            </Button>
+            {laterProblem && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{laterProblem}</p>}
+            <div className="space-y-2">
+              <Button type="submit" disabled={loading} className="w-full">
+                {loading && !finishingLater ? 'Saving record...' : continuing ? 'Finish the visit (works offline)' : 'Save consultation (works offline)'}
+              </Button>
+              {(requestsToSend > 0 || requestsSent > 0) && (
+                <>
+                  <Button type="button" variant="outline" disabled={loading} className="w-full" onClick={(e) => void handleSubmit(e, true)}>
+                    {loading && finishingLater ? 'Sending...' : requestsToSend > 0 ? 'Send to lab and imaging - finish the visit when the results are in' : 'Save notes - keep waiting for the results'}
+                  </Button>
+                  <p className="text-center text-xs text-slate-500 dark:text-slate-400">The diagnosis and prescription can wait. See other patients meanwhile: you are told as each result comes in, and the visit waits under Consultations.</p>
+                </>
+              )}
+            </div>
           </form>
         </Card>
       </div>
     </div>
+  );
+}
+
+type SentImaging = { id: string; examination: string; modality: string; status: string; urgent?: boolean; impression?: string | null; findings?: string | null };
+
+const RESULT_STYLE = 'rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-700';
+
+/** The tests already asked for at this visit, each with its result when the lab has entered it. */
+function SentTestsList({ tests }: { tests: LocalLabTest[] }) {
+  return (
+    <ul className="mb-3 space-y-2" aria-label="Tests requested at this visit">
+      {tests.map((t) => (
+        <li key={t.id} className={RESULT_STYLE}>
+          <p className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium">{t.testName}</span>
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${t.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200' : t.status === 'CANCELLED' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'}`}>
+              {t.status === 'COMPLETED' ? (t.verifiedAt ? 'Result verified' : 'Result in - not yet verified') : t.status === 'CANCELLED' ? 'Cancelled' : 'Waiting for the result'}
+            </span>
+          </p>
+          {t.status === 'COMPLETED' && (t.values?.length
+            ? <div className="mt-1"><LabValuesTable values={t.values} comment={t.comment} /></div>
+            : <p className="mt-1 whitespace-pre-wrap text-slate-700 dark:text-slate-300">{t.results}</p>)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The imaging already asked for at this visit, with the report's conclusion when it is written. */
+function SentImagingList({ requests }: { requests: SentImaging[] }) {
+  return (
+    <ul className="mb-3 space-y-2" aria-label="Imaging requested at this visit">
+      {requests.map((r) => (
+        <li key={r.id} className={RESULT_STYLE}>
+          <p className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium">{r.examination} <span className="text-xs font-normal text-slate-500">({modalityLabel(r.modality)})</span></span>
+            <span className={`rounded px-2 py-0.5 text-xs font-medium ${r.status === 'REPORTED' ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200' : r.status === 'CANCELLED' ? 'bg-slate-100 text-slate-600' : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'}`}>
+              {r.status === 'REPORTED' ? 'Reported' : r.status === 'CANCELLED' ? 'Cancelled' : 'Waiting for the report'}
+            </span>
+          </p>
+          {r.status === 'REPORTED' && (
+            <>
+              {r.findings && <p className="mt-1 whitespace-pre-wrap text-slate-700 dark:text-slate-300">{r.findings}</p>}
+              {r.impression && <p className="mt-1"><strong className="font-medium">Impression:</strong> {r.impression}</p>}
+            </>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

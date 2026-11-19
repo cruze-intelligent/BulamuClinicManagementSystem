@@ -42,6 +42,29 @@ export const LAB_TESTS_CATALOG: LabTestEntry[] = [
   { name: 'Prostate specific antigen (PSA)', group: 'Blood', sample: 'Blood (serum)', resultHint: 'ng/mL', aka: 'psa prostate' },
   { name: 'Serum calcium', group: 'Blood', sample: 'Blood (serum)', resultHint: 'mmol/L', aka: 'calcium ca' },
 
+  // Hormones (fertility, menstrual and endocrine)
+  { name: 'Estradiol (E2)', group: 'Hormones', sample: 'Blood (serum)', resultHint: 'pmol/L, with the day of the cycle', aka: 'estrogen oestrogen oestradiol e2 hormone fertility' },
+  { name: 'Progesterone', group: 'Hormones', sample: 'Blood (serum)', resultHint: 'nmol/L, with the day of the cycle', aka: 'day 21 ovulation hormone fertility' },
+  { name: 'Prolactin', group: 'Hormones', sample: 'Blood (serum)', resultHint: 'ng/mL', aka: 'prl galactorrhoea hormone fertility' },
+  { name: 'Follicle stimulating hormone (FSH)', group: 'Hormones', sample: 'Blood (serum)', resultHint: 'IU/L, with the day of the cycle', aka: 'fsh hormone fertility menopause' },
+  { name: 'Luteinising hormone (LH)', group: 'Hormones', sample: 'Blood (serum)', resultHint: 'IU/L, with the day of the cycle', aka: 'lh luteinizing hormone fertility ovulation' },
+  { name: 'Anti-Mullerian hormone (AMH)', group: 'Hormones', sample: 'Blood (serum)', resultHint: 'ng/mL', aka: 'amh ovarian reserve hormone fertility' },
+  { name: 'Testosterone (total)', group: 'Hormones', sample: 'Blood (serum)', resultHint: 'nmol/L', aka: 'testosterone androgen hormone' },
+
+  // Cardiac markers
+  { name: 'Troponin I', group: 'Cardiac markers', sample: 'Blood (serum or plasma)', resultHint: 'ng/mL against the assay cut-off, or Positive / Negative for a rapid test', aka: 'troponin trop ctni heart attack myocardial infarction cardiac' },
+  { name: 'Creatine kinase-MB (CK-MB)', group: 'Cardiac markers', sample: 'Blood (serum)', resultHint: 'U/L or ng/mL, by the assay', aka: 'ckmb ck mb heart cardiac' },
+  { name: 'Creatine kinase (CK, total)', group: 'Cardiac markers', sample: 'Blood (serum)', resultHint: 'U/L', aka: 'cpk ck muscle cardiac' },
+  { name: 'NT-proBNP', group: 'Cardiac markers', sample: 'Blood (serum or plasma)', resultHint: 'pg/mL', aka: 'bnp heart failure cardiac' },
+  { name: 'D-dimer', group: 'Cardiac markers', sample: 'Blood (citrate)', resultHint: 'mg/L FEU', aka: 'ddimer dvt clot embolism' },
+
+  // Tumour markers
+  { name: 'CA 19-9', group: 'Tumour markers', sample: 'Blood (serum)', resultHint: 'U/mL', aka: 'ca19-9 ca199 pancreas tumour marker cancer' },
+  { name: 'Beta hCG (quantitative)', group: 'Tumour markers', sample: 'Blood (serum)', resultHint: 'mIU/mL', aka: 'bhcg b-hcg serum pregnancy tumour marker' },
+  { name: 'CA 125', group: 'Tumour markers', sample: 'Blood (serum)', resultHint: 'U/mL', aka: 'ca125 ovary ovarian tumour marker cancer' },
+  { name: 'Carcinoembryonic antigen (CEA)', group: 'Tumour markers', sample: 'Blood (serum)', resultHint: 'ng/mL', aka: 'cea colon bowel tumour marker cancer' },
+  { name: 'Alpha-fetoprotein (AFP)', group: 'Tumour markers', sample: 'Blood (serum)', resultHint: 'ng/mL', aka: 'afp liver hepatoma tumour marker cancer' },
+
   // HIV, TB and other infections
   { name: 'HIV rapid test', group: 'HIV, TB and infections', sample: 'Blood', resultHint: 'Reactive / Non-reactive (per national algorithm)', aka: 'hct determine statpak' },
   { name: 'CD4 count', group: 'HIV, TB and infections', sample: 'Blood', resultHint: 'cells/mm3' },

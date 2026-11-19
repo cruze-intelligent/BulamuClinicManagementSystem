@@ -60,7 +60,7 @@ export function StockPanel({ item, mode, canChange, onClose, onChanged }: {
   const [counted, setCounted] = useState('');
   const [note, setNote] = useState('');
   // Edit
-  const [details, setDetails] = useState({ name: item.name, unit: item.unit, reorderLevel: String(item.reorderLevel), price: String(item.price) });
+  const [details, setDetails] = useState({ name: item.name, unit: item.unit, reorderLevel: String(item.reorderLevel), price: String(item.price), quantity: String(item.quantity), why: '' });
   // History
   const [history, setHistory] = useState<{ movements: Movement[]; batches: Batch[] } | null>(null);
 
@@ -94,6 +94,23 @@ export function StockPanel({ item, mode, canChange, onClose, onChanged }: {
     }
   };
 
+  // Details, and the quantity as an adjustment kept in the stock history with its reason (as a count is).
+  const saveEdit = async (changes: object | null, adjustment: { counted: number; note: string } | null) => {
+    setBusy(true);
+    setError('');
+    try {
+      let medicine: StockItem | null = null;
+      if (changes) medicine = (await call(`/inventory/${item.id}`, { method: 'PATCH', body: JSON.stringify(changes) })).medicine;
+      if (adjustment) medicine = (await call(`/inventory/${item.id}/count`, { method: 'POST', body: JSON.stringify(adjustment) })).medicine;
+      if (medicine) onChanged(medicine);
+      onClose();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (mode === 'receive') {
@@ -118,10 +135,16 @@ export function StockPanel({ item, mode, canChange, onClose, onChanged }: {
     if (mode === 'edit') {
       const reorderLevel = wholeNumber(details.reorderLevel);
       const price = wholeNumber(details.price);
+      const quantity = wholeNumber(details.quantity);
       if (!details.name.trim()) return setError('Enter the name');
+      if (quantity === null) return setError('The quantity on the shelf must be a whole number, 0 or more');
       if (reorderLevel === null) return setError('The reorder level must be a whole number, 0 or more');
       if (price === null) return setError('The price must be a whole number of shillings, 0 or more');
-      return send(`/inventory/${item.id}`, { name: details.name.trim(), unit: details.unit, reorderLevel, price }, 'PATCH');
+      const quantityChanged = quantity !== item.quantity;
+      if (quantityChanged && !details.why.trim()) return setError('Say why the quantity changes (for example: miscounted earlier, opening stock entered wrongly)');
+      const detailsChanged = details.name.trim() !== item.name || details.unit !== item.unit || reorderLevel !== item.reorderLevel || price !== item.price;
+      if (!quantityChanged && !detailsChanged) return onClose();
+      return saveEdit(detailsChanged ? { name: details.name.trim(), unit: details.unit, reorderLevel, price } : null, quantityChanged ? { counted: quantity, note: details.why.trim() } : null);
     }
   };
 
@@ -199,8 +222,15 @@ export function StockPanel({ item, mode, canChange, onClose, onChanged }: {
 
               {mode === 'edit' && (
                 <>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">The quantity changes only by receiving, removing or counting stock.</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">A change of quantity is kept in the stock history with your reason, as a stock count is. For a delivery use Receive, so its expiry date is kept.</p>
                   <Field id="edit-name" label="Name"><Input id="edit-name" value={details.name} onChange={(e) => setDetails({ ...details, name: e.target.value })} maxLength={120} required /></Field>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field id="edit-quantity" label={`Quantity on the shelf (${details.unit})`}><Input id="edit-quantity" inputMode="numeric" value={details.quantity} onChange={(e) => setDetails({ ...details, quantity: e.target.value })} /></Field>
+                    {wholeNumber(details.quantity) !== null && wholeNumber(details.quantity) !== item.quantity && (
+                      <Field id="edit-why" label="Why the quantity changes"><Input id="edit-why" value={details.why} onChange={(e) => setDetails({ ...details, why: e.target.value })} maxLength={200} placeholder="e.g. Opening stock entered wrongly" /></Field>
+                    )}
+                  </div>
+                  {wholeNumber(details.quantity) !== null && wholeNumber(details.quantity) !== item.quantity && <p className="text-sm text-slate-700 dark:text-slate-300" role="status">{countDifference(wholeNumber(details.quantity), item.quantity, item.unit)}</p>}
                   <div className="grid gap-3 sm:grid-cols-3">
                     <Field id="edit-unit" label="Unit">
                       <Select id="edit-unit" value={details.unit} onChange={(e) => setDetails({ ...details, unit: e.target.value })}>
@@ -208,7 +238,7 @@ export function StockPanel({ item, mode, canChange, onClose, onChanged }: {
                       </Select>
                     </Field>
                     <Field id="edit-reorder" label="Reorder level"><Input id="edit-reorder" inputMode="numeric" value={details.reorderLevel} onChange={(e) => setDetails({ ...details, reorderLevel: e.target.value })} /></Field>
-                    <Field id="edit-price" label="Price (UGX)"><Input id="edit-price" inputMode="numeric" value={details.price} onChange={(e) => setDetails({ ...details, price: e.target.value })} /></Field>
+                    <Field id="edit-price" label={`Price per ${details.unit.replace(/s$/, '')} (UGX)`}><Input id="edit-price" inputMode="numeric" value={details.price} onChange={(e) => setDetails({ ...details, price: e.target.value })} /></Field>
                   </div>
                 </>
               )}

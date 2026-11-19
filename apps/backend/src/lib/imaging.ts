@@ -13,6 +13,7 @@ export const MODALITIES: Record<ImagingModality, string> = {
   MRI: 'MRI scan',
   MAMMOGRAPHY: 'Mammography',
   FLUOROSCOPY: 'Fluoroscopy',
+  ECG: 'Electrocardiography (ECG/EKG)',
   OTHER: 'Other imaging',
 };
 

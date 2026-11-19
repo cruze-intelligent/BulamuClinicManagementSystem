@@ -521,6 +521,7 @@ enum ImagingModality {
   MRI
   MAMMOGRAPHY
   FLUOROSCOPY
+  ECG
   OTHER
 }
 
@@ -770,6 +771,10 @@ model Consultation {
   recordedByUserId String?
   recordedBy       User?    @relation("ConsultationRecordedBy", fields: [recordedByUserId], references: [id], onDelete: SetNull)
   serviceTags   String[] @default([])
+  // Saved with tests or imaging sent and the diagnosis and prescription still to
+  // come: the clinician sees other patients meanwhile, and finishes the visit
+  // when the results are in.
+  awaitingResults Boolean @default(false)
   diagnoses     Diagnosis[]
   prescriptions Prescription[]
   invoice       Invoice?

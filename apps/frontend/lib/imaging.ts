@@ -4,7 +4,7 @@
  * always write the examination in their own words. Kept in step with
  * apps/backend/src/lib/imaging.ts.
  */
-export type Modality = 'XRAY' | 'ULTRASOUND' | 'CT' | 'MRI' | 'MAMMOGRAPHY' | 'FLUOROSCOPY' | 'OTHER';
+export type Modality = 'XRAY' | 'ULTRASOUND' | 'CT' | 'MRI' | 'MAMMOGRAPHY' | 'FLUOROSCOPY' | 'ECG' | 'OTHER';
 
 export const MODALITIES: ReadonlyArray<{ value: Modality; label: string; examples: string[] }> = [
   {
@@ -22,6 +22,7 @@ export const MODALITIES: ReadonlyArray<{ value: Modality; label: string; example
   { value: 'MRI', label: 'MRI scan', examples: ['MRI brain', 'MRI spine', 'MRI knee', 'MRI shoulder', 'MRI pelvis'] },
   { value: 'MAMMOGRAPHY', label: 'Mammography', examples: ['Screening mammogram', 'Diagnostic mammogram'] },
   { value: 'FLUOROSCOPY', label: 'Fluoroscopy', examples: ['Barium swallow', 'Barium meal', 'Barium enema', 'Hysterosalpingogram (HSG)', 'Intravenous urogram (IVU)', 'Retrograde urethrogram'] },
+  { value: 'ECG', label: 'Electrocardiography (ECG/EKG)', examples: ['Resting 12-lead ECG', 'Rhythm strip ECG', 'Exercise (stress) ECG', '24-hour Holter ECG'] },
   { value: 'OTHER', label: 'Other imaging', examples: [] },
 ];
 

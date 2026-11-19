@@ -114,6 +114,34 @@ export const LAB_PANELS: LabPanel[] = [
   { test: 'Prostate specific antigen (PSA)', parameters: [{ name: 'Total PSA', unit: 'ng/mL', range: r(0, 4) }] },
   { test: 'Serum calcium', parameters: [{ name: 'Calcium (adjusted)', unit: 'mmol/L', range: r(2.15, 2.55) }] },
   { test: 'CD4 count', parameters: [{ name: 'CD4', unit: 'cells/uL', range: r(500, 1500) }] },
+
+  // Hormones. A woman's estradiol, progesterone, FSH and LH depend on the day of
+  // her cycle (and on pregnancy or menopause), so no one range is filled in for
+  // her: the lab writes the range for the phase. `female: {}` keeps a man's
+  // range from being offered for a woman.
+  { test: 'Estradiol (E2)', parameters: [{ name: 'Estradiol', unit: 'pmol/L', male: r(41, 159), female: {} }] },
+  { test: 'Progesterone', parameters: [{ name: 'Progesterone', unit: 'nmol/L', male: r(0.16, 0.47), female: {} }] },
+  { test: 'Prolactin', parameters: [{ name: 'Prolactin', unit: 'ng/mL', male: r(4.0, 15.2), female: r(4.8, 23.3) }] },
+  { test: 'Follicle stimulating hormone (FSH)', parameters: [{ name: 'FSH', unit: 'IU/L', male: r(1.5, 12.4), female: {} }] },
+  { test: 'Luteinising hormone (LH)', parameters: [{ name: 'LH', unit: 'IU/L', male: r(1.7, 8.6), female: {} }] },
+  // AMH falls with age: the lab writes the range for the woman's age.
+  { test: 'Anti-Mullerian hormone (AMH)', parameters: [{ name: 'AMH', unit: 'ng/mL' }] },
+  { test: 'Testosterone (total)', parameters: [{ name: 'Testosterone', unit: 'nmol/L', male: r(8.6, 29.0), female: r(0.29, 1.67) }] },
+
+  // Cardiac markers. Troponin and CK-MB cut-offs belong to each assay, so the
+  // lab writes its own; the others are common adult ranges.
+  { test: 'Troponin I', parameters: [{ name: 'Troponin I', unit: 'ng/mL' }] },
+  { test: 'Creatine kinase-MB (CK-MB)', parameters: [{ name: 'CK-MB', unit: 'U/L' }] },
+  { test: 'Creatine kinase (CK, total)', parameters: [{ name: 'CK (total)', unit: 'U/L', male: r(39, 308), female: r(26, 192) }] },
+  { test: 'NT-proBNP', parameters: [{ name: 'NT-proBNP', unit: 'pg/mL', range: r(undefined, 125) }] },
+  { test: 'D-dimer', parameters: [{ name: 'D-dimer', unit: 'mg/L FEU', range: r(undefined, 0.5) }] },
+
+  // Tumour markers: the usual upper limits.
+  { test: 'CA 19-9', parameters: [{ name: 'CA 19-9', unit: 'U/mL', range: r(undefined, 37) }] },
+  { test: 'Beta hCG (quantitative)', parameters: [{ name: 'Beta hCG', unit: 'mIU/mL', range: r(undefined, 5) }] },
+  { test: 'CA 125', parameters: [{ name: 'CA 125', unit: 'U/mL', range: r(undefined, 35) }] },
+  { test: 'Carcinoembryonic antigen (CEA)', parameters: [{ name: 'CEA', unit: 'ng/mL', range: r(undefined, 5) }] },
+  { test: 'Alpha-fetoprotein (AFP)', parameters: [{ name: 'AFP', unit: 'ng/mL', range: r(undefined, 10) }] },
   {
     test: 'Urinalysis',
     parameters: [

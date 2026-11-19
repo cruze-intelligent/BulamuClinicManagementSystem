@@ -212,6 +212,38 @@ export function draftToPayload(d: PrescriptionDraft): PrescriptionPayload {
   return payload;
 }
 
+/**
+ * A saved prescription back in the form ("2 tablets", "5 days" read into the
+ * dose and duration fields), to go on with a visit that waited for results.
+ * Saving it again gives the same text.
+ */
+export function payloadToDraft(rx: {
+  medication: string; dosage: string; frequency: string; duration: string; route?: string | null; strength?: string | null; form?: string | null;
+  quantity?: number | null; instructions?: string | null; medicineId?: string | null; allergyOverride?: boolean;
+}): PrescriptionDraft {
+  const dose = rx.dosage.trim().match(/^(.+?)\s+(\S+)$/);
+  const unitText = dose?.[2] ?? "";
+  const doseUnit = DOSE_UNITS.find((u) => u === unitText || pluralUnit(u, 2) === unitText) ?? "tablet";
+  const length = rx.duration.trim().match(/^(\S+)\s+(\S+)$/);
+  const durationUnit = DURATION_UNITS.find((u) => u === length?.[2] || u.replace(/s$/, "") === length?.[2]) ?? "days";
+  return {
+    ...emptyDraft(),
+    medication: rx.medication,
+    medicineId: rx.medicineId ?? "",
+    strength: rx.strength ?? "",
+    form: rx.form ?? "",
+    doseAmount: dose ? dose[1] : rx.dosage,
+    doseUnit,
+    route: rx.route ?? "",
+    frequency: rx.frequency,
+    durationValue: length ? length[1] : "",
+    durationUnit,
+    quantity: rx.quantity ? String(rx.quantity) : "",
+    instructions: rx.instructions ?? "",
+    allergyOverride: rx.allergyOverride === true,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Reading a prescription back
 // ---------------------------------------------------------------------------

@@ -59,6 +59,17 @@ export function diagnosisProblems(drafts: DiagnosisDraft[]): string[] {
   return problems;
 }
 
+/** A saved diagnosis back in the form, to go on with a visit that waited for results. */
+export function diagnosisToDraft(d: DiagnosisView): DiagnosisDraft {
+  return {
+    ...emptyDiagnosis(),
+    icd10Code: d.icd10Code ?? '',
+    description: d.description,
+    certainty: d.certainty === 'PROVISIONAL' ? 'PROVISIONAL' : 'CONFIRMED',
+    notes: d.notes ?? '',
+  };
+}
+
 /** Blank rows are dropped; the first remaining diagnosis is the primary. */
 export function diagnosesToPayload(drafts: DiagnosisDraft[]): DiagnosisPayload[] {
   return drafts

@@ -8,10 +8,11 @@ import { useAuth } from '@/lib/useAuth';
 import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
 import { Select } from '@/components/ui/select';
 import { downloadWithAuth, reportReadyMessage } from '@/lib/download';
+import { ActivityReport } from '@/components/activity-report';
 
 export default function ReportsPage() {
   const { hasRole } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'hmis105'>('overview');
+  const [activeTab, setActiveTab] = useState<'activity' | 'overview' | 'hmis105'>('activity');
   const [report, setReport] = useState<any>(null);
   const [hmisReport, setHmisReport] = useState<any>(null);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
@@ -141,6 +142,12 @@ export default function ReportsPage() {
         {/* Tab Selection */}
         <div className="flex flex-wrap gap-2 mb-6 border-b border-slate-200 dark:border-slate-800 pb-2">
           <Button
+            variant={activeTab === 'activity' ? 'default' : 'ghost'}
+            onClick={() => setActiveTab('activity')}
+          >
+            Daily & weekly
+          </Button>
+          <Button
             variant={activeTab === 'overview' ? 'default' : 'ghost'}
             onClick={() => setActiveTab('overview')}
           >
@@ -157,8 +164,10 @@ export default function ReportsPage() {
           </Button>
         </div>
 
+        {activeTab === 'activity' && <ActivityReport />}
+
         {/* Control Card */}
-        <Card className="p-6 mb-6">
+        {activeTab !== 'activity' && <Card className="p-6 mb-6">
           <div className="flex flex-wrap gap-4 items-end">
             <div>
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Reporting Month</label>
@@ -195,7 +204,7 @@ export default function ReportsPage() {
             )}
           </div>
           {pdfNotice && <p role="status" className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{pdfNotice}</p>}
-        </Card>
+        </Card>}
 
         {/* Overview Tab Content */}
         {activeTab === 'overview' && report && (

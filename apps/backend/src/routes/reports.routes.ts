@@ -14,6 +14,7 @@ import { facilityLetterhead, generateTableReportPdf } from '../lib/pdf';
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer } from '../lib/document-signer';
 import { emailReportCopy } from '../lib/report-delivery';
+import { buildActivityReport, parseActivityQuery, whoText } from '../lib/activity-report';
 
 /** This month in Kampala, for a report asked for without one. */
 const thisMonth = () => { const day = eatDateKey(new Date()); return { month: Number(day.slice(5, 7)), year: Number(day.slice(0, 4)) }; };
@@ -179,6 +180,94 @@ export async function reportsRoutes(fastify: FastifyInstance) {
   });
 
   // Ministry of Health Uganda HMIS 105 Outpatient Monthly Report
+  // Day by day, week by week or month by month: outpatients, inpatients and
+  // the tests and imaging asked for - for everyone, or one sex or age group.
+  fastify.get('/reports/activity/:clinicId', { preHandler: [requireRole('ADMIN', 'DOCTOR')] }, async (request, reply) => {
+    const clinicId = resolveClinicScope(request, reply, (request.params as { clinicId: string }).clinicId);
+    if (!clinicId) return;
+    const query = parseActivityQuery((request.query ?? {}) as Record<string, unknown>);
+    if ('error' in query) return reply.status(400).send({ error: query.error });
+    try {
+      return { success: true, report: await buildActivityReport(clinicId, query) };
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
+  // The same as a PDF under the facility's letterhead, with a copy emailed to whoever made it (?email=0 to skip).
+  fastify.get('/reports/activity/:clinicId/pdf', { preHandler: [requireRole('ADMIN', 'DOCTOR')] }, async (request, reply) => {
+    const clinicId = resolveClinicScope(request, reply, (request.params as { clinicId: string }).clinicId);
+    if (!clinicId) return;
+    const raw = (request.query ?? {}) as Record<string, unknown>;
+    const query = parseActivityQuery(raw);
+    if ('error' in query) return reply.status(400).send({ error: query.error });
+    try {
+      const authUser = getAuthUser(request);
+      const [report, clinic] = await Promise.all([
+        buildActivityReport(clinicId, query),
+        prisma.clinic.findUniqueOrThrow({ where: { id: clinicId }, select: { name: true, facilityCode: true, phone: true, motto: true } }),
+      ]);
+      const day = (key: string) => new Date(`${key}T12:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+      const span = query.from === query.to ? day(query.from) : `${day(query.from)} to ${day(query.to)}`;
+      const kind = query.period === 'day' ? 'DAILY' : query.period === 'week' ? 'WEEKLY' : 'MONTHLY';
+      const by = query.period === 'day' ? 'Day' : query.period === 'week' ? 'Week' : 'Month';
+      const filename = `${kind.toLowerCase()}-report-${query.from}-to-${query.to}.pdf`;
+      const n = (x: number) => String(x);
+      // A test or examination by period when the periods fit across the page; its total otherwise.
+      const fits = report.periods.length <= 8;
+      const perPeriod = (title: string, note: string, rows: Array<{ name: string; detail?: string; counts: number[]; total: number }>) => {
+        const nameWidth = fits ? 495 - 45 * (report.periods.length + 1) : 395;
+        return {
+          title, note,
+          columns: [{ header: title === 'Lab tests' ? 'Test' : 'Examination', width: nameWidth },
+            ...(fits ? report.periods.map((p) => ({ header: p.short, width: 45, align: 'right' as const })) : []),
+            { header: 'Total', width: fits ? 45 : 100, align: 'right' as const }],
+          rows: rows.map((r) => [r.detail ? `${r.name} (${r.detail})` : r.name, ...(fits ? r.counts.map(n) : []), n(r.total)]),
+        };
+      };
+      const pdf = await generateTableReportPdf({
+        letterhead: facilityLetterhead({ name: clinic.name, facilityCode: clinic.facilityCode, phone: clinic.phone, motto: clinic.motto, logo: await facilityLogo(clinicId) }),
+        title: `${kind} REPORT`,
+        subtitle: `${span} - ${whoText(query)}`,
+        facts: [
+          ['Outpatient visits', n(report.totals.outpatients)],
+          ['Different patients seen', n(report.totals.patientsSeen)],
+          ['New patients registered', n(report.totals.newPatients)],
+          ['Inpatients admitted', n(report.totals.admitted)],
+          ['Inpatients discharged', n(report.totals.discharged)],
+          ['Lab tests requested', n(report.totals.labTests)],
+          ['Imaging requested', n(report.totals.imaging)],
+        ],
+        tables: [
+          {
+            title: `${by} by ${by.toLowerCase()}`,
+            note: 'Outpatients: visits recorded. In the ward: inpatients there at any time in the period.',
+            columns: [{ header: by, width: 135 }, ...['Outpatients', 'New patients', 'Admitted', 'Discharged', 'In the ward'].map((header) => ({ header, width: 72, align: 'right' as const }))],
+            rows: report.periods.map((p) => [p.label, n(p.outpatients), n(p.newPatients), n(p.admitted), n(p.discharged), n(p.inWard)]),
+          },
+          {
+            title: 'Outpatient visits by age and sex',
+            note: 'Age at the time of the visit.',
+            columns: [{ header: 'Age group', width: 175 }, ...['Female', 'Male', 'Sex not recorded', 'Total'].map((header) => ({ header, width: 80, align: 'right' as const }))],
+            rows: report.outpatientsByAgeAndSex.map((r) => [r.group, n(r.female), n(r.male), n(r.sexNotRecorded), n(r.total)]),
+          },
+          ...(report.labTests.length ? [perPeriod('Lab tests', 'Tests requested (cancelled ones left out), most requested first.', report.labTests)] : []),
+          ...(report.imaging.length ? [perPeriod('Imaging', 'Examinations requested (cancelled ones left out).', report.imaging)] : []),
+        ],
+        producedBy: await documentProducer(authUser.userId),
+      });
+      await recordAudit({ entity: 'ActivityReport', recordId: clinicId, clinicId, action: 'VIEW', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { from: query.from, to: query.to, period: query.period, format: 'pdf' } });
+      if (raw.email !== '0') {
+        await emailReportCopy(reply, authUser.userId, { title: `${kind.charAt(0)}${kind.slice(1).toLowerCase()} report - ${clinic.name}, ${span}`, filename, content: pdf, contentType: 'application/pdf', facts: [['Facility', clinic.name], ['Period', span], ['Patients', whoText(query)]] }, (m) => request.log.warn(m));
+      }
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+      return reply.send(pdf);
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
   fastify.get('/reports/hmis-105/:clinicId', { preHandler: [requireRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF')] }, async (request, reply) => {
     const { clinicId: requestedClinicId } = request.params as any;
     const clinicId = resolveClinicScope(request, reply, requestedClinicId);

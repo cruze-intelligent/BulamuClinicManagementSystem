@@ -101,6 +101,8 @@ export type LocalConsultation = {
   clinicalNotes?: string | null;
   serviceTags?: string[];
   prescriptions: LocalPrescription[];
+  /** Saved with tests or imaging sent; the diagnosis and prescription come when the results are in. */
+  awaitingResults?: boolean;
   patient?: { name: string; phone: string };
   createdAt: string;
   updatedAt: string;
@@ -674,12 +676,17 @@ export async function createConsultationOffline(input: {
   /** Consultation fee in UGX - becomes the facility's invoice to the patient. */
   fee?: number;
   patientName?: string;
+  /** Going on with a visit saved earlier (one that waited for results): the same record, updated. */
+  id?: string;
+  createdAt?: string;
+  /** Tests or imaging sent; the diagnosis and prescription to come when the results are in. */
+  awaitingResults?: boolean;
 }): Promise<LocalConsultation> {
   await assertCanSave();
   const now = serverNowIso();
   const primary = input.diagnoses.find((d) => d.type === "PRIMARY") ?? input.diagnoses[0];
   const consultation: LocalConsultation = {
-    id: createId(),
+    id: input.id ?? createId(),
     appointmentId: input.appointmentId,
     patientId: input.patientId,
     diagnosis: primary?.description ?? "",
@@ -691,8 +698,9 @@ export async function createConsultationOffline(input: {
     clinicalNotes: input.clinicalNotes || null,
     serviceTags: input.serviceTags,
     prescriptions: input.prescriptions,
+    awaitingResults: input.awaitingResults === true,
     patient: input.patientName ? { name: input.patientName, phone: "" } : undefined,
-    createdAt: now,
+    createdAt: input.createdAt ?? now,
     updatedAt: now,
     syncStatus: "pending",
   };
@@ -716,6 +724,7 @@ export async function createConsultationOffline(input: {
       clinicalNotes: consultation.clinicalNotes,
       serviceTags: consultation.serviceTags || [],
       prescriptions: consultation.prescriptions,
+      awaitingResults: consultation.awaitingResults,
       ...(input.fee ? { fee: input.fee } : {}),
       createdAt: consultation.createdAt,
       updatedAt: consultation.updatedAt,

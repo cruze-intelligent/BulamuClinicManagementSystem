@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DOSAGE_FORMS, ROUTES, FREQUENCIES,
   defaultDoseUnit, describeFrequency, doseText, draftProblems, draftToPayload, durationText, emptyDraft,
-  formatPrescription, parseAmount, pluralUnit, suggestQuantity, type PrescriptionDraft,
+  formatPrescription, parseAmount, payloadToDraft, pluralUnit, suggestQuantity, type PrescriptionDraft,
 } from './prescription';
 import { MEDICINES_CATALOG, searchMedicinesCatalog } from './medicines-catalog';
 
@@ -252,5 +252,20 @@ describe('branded medicines in the list', () => {
     expect(names('telvas')).toEqual(expect.arrayContaining(['Telvas (Telmisartan)', 'Telvas-H (Telmisartan/Hydrochlorothiazide)']));
     expect(names('limzar')).toContain('Limzar (Omeprazole/Domperidone)');
     expect(names('etoricoxib')).toEqual(expect.arrayContaining(['Etoricoxib', 'Nucoxia (Etoricoxib)', 'Brutaflam (Etoricoxib)']));
+  });
+});
+
+describe('going on with a visit that waited for results', () => {
+  it('reads a saved prescription back into the form, and saving it again gives the same line', () => {
+    for (const saved of [
+      { medication: 'Artemether/Lumefantrine', strength: '20/120 mg', form: 'tablet', dosage: '4 tablets', route: 'PO', frequency: 'BD', duration: '3 days', quantity: 24 },
+      { medication: 'Paracetamol', dosage: '1/2 tablet', route: 'PO', frequency: 'TDS', duration: '1 week' },
+      { medication: 'Amoxicillin', form: 'suspension', dosage: '5 ml', route: 'PO', frequency: 'TDS', duration: '5 days', instructions: 'Shake well before use' },
+      { medication: 'Ceftriaxone', dosage: '1 g', route: 'IV', frequency: 'STAT', duration: '' },
+    ]) {
+      const draft = payloadToDraft(saved);
+      expect(draftProblems(draft)).toEqual([]);
+      expect(draftToPayload(draft)).toMatchObject({ medication: saved.medication, dosage: saved.dosage, frequency: saved.frequency, duration: saved.duration, route: saved.route });
+    }
   });
 });

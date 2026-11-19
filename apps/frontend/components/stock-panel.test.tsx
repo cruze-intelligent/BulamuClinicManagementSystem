@@ -34,6 +34,25 @@ describe('the stock panel', () => {
     expect(JSON.parse(String(init.body))).toEqual({ counted: 47, note: 'Three missing at month-end' });
   });
 
+  it('changes the price and the quantity from Edit details - the quantity as an adjustment with its reason', async () => {
+    const fetchMock = server();
+    const changed = vi.fn();
+    render(<StockPanel item={ITEM} mode="edit" canChange onClose={() => {}} onChanged={changed} />);
+    fireEvent.change(screen.getByLabelText('Price per capsule (UGX)'), { target: { value: '250' } });
+    fireEvent.change(screen.getByLabelText('Quantity on the shelf (capsules)'), { target: { value: '47' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByRole('alert').textContent).toMatch(/Say why the quantity changes/);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Why the quantity changes'), { target: { value: 'Opening stock entered wrongly' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(changed).toHaveBeenCalled());
+    const calls = fetchMock.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls.map(([url, init]) => [url.replace(/^.*\/inventory/, '/inventory'), init.method])).toEqual([['/inventory/med-1', 'PATCH'], ['/inventory/med-1/count', 'POST']]);
+    expect(JSON.parse(String(calls[0][1].body))).toMatchObject({ price: 250 });
+    expect(JSON.parse(String(calls[1][1].body))).toEqual({ counted: 47, note: 'Opening stock entered wrongly' });
+  });
+
   it('removes stock only with a reason, and never more than is on the shelf', async () => {
     const fetchMock = server();
     render(<StockPanel item={ITEM} mode="remove" canChange onClose={() => {}} onChanged={() => {}} />);

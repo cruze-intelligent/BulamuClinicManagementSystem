@@ -437,16 +437,21 @@ export async function notifyLabOrdered(
 }
 
 /** A completed result goes back to the clinician who ordered it - unless they recorded it themselves. */
+/** Where a clinician finishes a visit that was saved to wait for results. */
+export const continueVisitLink = (visit: { id: string; patientId: string }) => `/consultations/record?consultationId=${visit.id}&patientId=${visit.patientId}`;
+
 export async function notifyLabResultToOrderer(
-  input: { clinicId: string; patientName: string; testName: string; orderedByUserId: string | null; recordedByUserId: string },
+  input: { clinicId: string; patientName: string; testName: string; orderedByUserId: string | null; recordedByUserId: string; visit?: { id: string; patientId: string } | null },
   log?: Logger
 ): Promise<void> {
   await notifyStaff({
     type: 'LAB_RESULT_AVAILABLE',
     clinicId: input.clinicId,
     title: `Result ready: ${input.testName}`,
-    body: `The ${input.testName} result for ${input.patientName} has been recorded. Review and verify it on the Lab page - the patient is told once it is verified.`,
-    link: '/lab',
+    body: input.visit
+      ? `The ${input.testName} result for ${input.patientName} has been recorded. Open the visit to read it and finish the diagnosis and prescription.`
+      : `The ${input.testName} result for ${input.patientName} has been recorded. Review and verify it on the Lab page - the patient is told once it is verified.`,
+    link: input.visit ? continueVisitLink(input.visit) : '/lab',
     emailSummary: 'The result of a lab test you ordered has been recorded and is waiting for review. Sign in to Bulamu to see and verify it.',
     userIds: [input.orderedByUserId],
     excludeUserId: input.recordedByUserId,
@@ -689,7 +694,7 @@ export async function notifyImagingRequested(
 
 /** The requester hears that the report is written. */
 export async function notifyImagingReported(
-  input: { clinicId: string; patientName: string; examination: string; requestedByUserId: string | null; reportedByUserId: string },
+  input: { clinicId: string; patientName: string; examination: string; requestedByUserId: string | null; reportedByUserId: string; visit?: { id: string; patientId: string } | null },
   log?: Logger
 ): Promise<void> {
   if (!input.requestedByUserId || input.requestedByUserId === input.reportedByUserId) return;
@@ -697,8 +702,10 @@ export async function notifyImagingReported(
     type: 'IMAGING_REPORTED',
     clinicId: input.clinicId,
     title: `Imaging report ready: ${input.examination}`,
-    body: `The ${input.examination} report for ${input.patientName} is ready on the Imaging page and in the patient's clinical summary.`,
-    link: '/imaging?status=REPORTED',
+    body: input.visit
+      ? `The ${input.examination} report for ${input.patientName} is ready. Open the visit to read it and finish the diagnosis and prescription.`
+      : `The ${input.examination} report for ${input.patientName} is ready on the Imaging page and in the patient's clinical summary.`,
+    link: input.visit ? continueVisitLink(input.visit) : '/imaging?status=REPORTED',
     emailSummary: 'The report of imaging you requested has been written. Sign in to Bulamu to read it.',
     userIds: [input.requestedByUserId],
     log,

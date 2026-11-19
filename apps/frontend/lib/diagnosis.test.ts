@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diagnosesOf, diagnosesToPayload, diagnosisHeadline, diagnosisProblems, emptyDiagnosis, type DiagnosisDraft } from './diagnosis';
+import { diagnosesOf, diagnosesToPayload, diagnosisHeadline, diagnosisProblems, diagnosisToDraft, emptyDiagnosis, type DiagnosisDraft } from './diagnosis';
 
 const draft = (patch: Partial<DiagnosisDraft>): DiagnosisDraft => ({ ...emptyDiagnosis(), ...patch });
 
@@ -43,5 +43,18 @@ describe('reading diagnoses back', () => {
     expect(diagnosisHeadline({ diagnoses: [{ description: 'Malaria', type: 'PRIMARY', icd10Code: 'B54' }, { description: 'Anaemia', type: 'SECONDARY' }] })).toBe('Malaria (B54) + Anaemia');
     expect(diagnosisHeadline({ diagnosis: 'Sprained ankle' })).toBe('Sprained ankle');
     expect(diagnosisHeadline({})).toBe('No diagnosis recorded');
+  });
+});
+
+describe('going on with a visit that waited for results', () => {
+  it('reads saved diagnoses back into the form unchanged', () => {
+    const saved = [
+      { description: 'Malaria, uncomplicated', icd10Code: 'B54', type: 'PRIMARY', certainty: 'PROVISIONAL', notes: 'RDT pending' },
+      { description: 'Anaemia', icd10Code: null, type: 'SECONDARY', certainty: 'CONFIRMED', notes: null },
+    ];
+    expect(diagnosesToPayload(saved.map(diagnosisToDraft))).toEqual([
+      { description: 'Malaria, uncomplicated', icd10Code: 'B54', type: 'PRIMARY', certainty: 'PROVISIONAL', notes: 'RDT pending' },
+      { description: 'Anaemia', type: 'SECONDARY', certainty: 'CONFIRMED' },
+    ]);
   });
 });

@@ -62,6 +62,7 @@ const PRESCRIBING_LIST: CatalogMedicine[] = [
   { name: 'Mebendazole', aka: 'worms deworming', route: 'PO', variants: [v('100 mg', 'tablet'), v('500 mg', 'tablet')] },
   { name: 'Praziquantel', aka: 'bilharzia schistosomiasis', route: 'PO', variants: [v('600 mg', 'tablet')] },
   { name: 'Fluconazole', route: 'PO', variants: [v('50 mg', 'capsule'), v('150 mg', 'capsule'), v('200 mg', 'tablet')] },
+  { name: 'Itraconazole', aka: 'sporanox fungal tinea onychomycosis candida aspergillosis histoplasmosis', route: 'PO', variants: [v('100 mg', 'capsule'), v('10 mg/ml', 'oral solution')] },
   { name: 'Clotrimazole', aka: 'canesten thrush', route: 'TOP', variants: [v('1%', 'cream'), v('500 mg', 'pessary', 'PV')] },
   { name: 'Benzyl benzoate', aka: 'scabies', route: 'TOP', variants: [v('25%', 'lotion')] },
   { name: 'Ivermectin', aka: 'scabies onchocerciasis', route: 'PO', variants: [v('3 mg', 'tablet')] },

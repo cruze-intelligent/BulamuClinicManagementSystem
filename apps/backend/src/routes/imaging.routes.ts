@@ -118,7 +118,10 @@ export async function imagingRoutes(fastify: FastifyInstance) {
       });
       await recordAudit({ entity: 'ImagingRequest', recordId: id, clinicId: existing.clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { report: existing.status === 'REPORTED' ? 'corrected' : 'written' } });
       if (existing.status !== 'REPORTED') {
-        await notifyImagingReported({ clinicId: existing.clinicId, patientName: existing.patient.name, examination: existing.examination, requestedByUserId: existing.requestedByUserId, reportedByUserId: authUser.userId }, (m) => fastify.log.warn(m));
+        const visit = existing.consultationId
+          ? await prisma.consultation.findFirst({ where: { id: existing.consultationId, awaitingResults: true, deletedAt: null }, select: { id: true, patientId: true } })
+          : null;
+        await notifyImagingReported({ clinicId: existing.clinicId, patientName: existing.patient.name, examination: existing.examination, requestedByUserId: existing.requestedByUserId, reportedByUserId: authUser.userId, visit }, (m) => fastify.log.warn(m));
       }
       return { success: true, request: view(updated) };
     } catch (error: any) {

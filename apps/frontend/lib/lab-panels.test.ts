@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blankValues, flagFor, labPanelFor, referenceText } from './lab-panels';
+import { LAB_PANELS, blankValues, flagFor, labPanelFor, referenceText } from './lab-panels';
 import { LAB_TESTS_CATALOG } from './lab-tests-catalog';
 
 describe('lab results entered value by value', () => {
@@ -9,6 +9,18 @@ describe('lab results entered value by value', () => {
       expect(LAB_TESTS_CATALOG.some((t) => t.name === name), `${name} on the lab list`).toBe(true);
     }
     expect(labPanelFor('Malaria RDT')).toBeUndefined();
+  });
+
+  it('names every template exactly as the lab list does, so a test ordered finds its template', () => {
+    for (const panel of LAB_PANELS) expect(LAB_TESTS_CATALOG.some((t) => t.name === panel.test), panel.test).toBe(true);
+  });
+
+  it("leaves a woman's cycle-dependent hormone range for the lab to write, instead of offering a man's", () => {
+    const fsh = labPanelFor('Follicle stimulating hormone (FSH)')!;
+    expect(blankValues(fsh, 'FEMALE')[0]).toMatchObject({ low: null, high: null, unit: 'IU/L' });
+    expect(blankValues(fsh, 'MALE')[0]).toMatchObject({ low: 1.5, high: 12.4 });
+    expect(blankValues(labPanelFor('Prolactin')!, 'FEMALE')[0]).toMatchObject({ low: 4.8, high: 23.3 });
+    expect(referenceText(blankValues(labPanelFor('CA 125')!, 'FEMALE')[0])).toBe('< 35');
   });
 
   it("fills in the patient's reference ranges, by sex where they differ", () => {
