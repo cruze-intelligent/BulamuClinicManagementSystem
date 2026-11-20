@@ -5,7 +5,7 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { sendRouteError } from '../lib/http-error';
 import { patientIdText, sexAgeText } from '../lib/patient-text';
-import { imagingUnitFor, parseImagingReport, parseImagingRequest, REPORT_ROLES, REQUEST_ROLES, WORKLIST_ROLES } from '../lib/imaging';
+import { imagingUnitFor, parseImagingReport, parseImagingRequest, REPORT_ROLES, REQUEST_ROLES, WORKLIST_ROLES, requesterName } from '../lib/imaging';
 import { notifyImagingReported, notifyImagingRequested } from '../lib/notifications';
 
 const VIEW = {
@@ -88,7 +88,7 @@ export async function imagingRoutes(fastify: FastifyInstance) {
         data: {
           ...parsed, clinicId: patient.clinicId, patientId: patient.id,
           departmentId: await imagingUnitFor(patient.clinicId, parsed.modality),
-          requestedBy: await nameOf(authUser.userId), requestedByUserId: authUser.userId,
+          requestedBy: requesterName(body.requestedBy) ?? (await nameOf(authUser.userId)), requestedByUserId: authUser.userId,
         },
         include: VIEW,
       });

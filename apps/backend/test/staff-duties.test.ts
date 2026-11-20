@@ -38,10 +38,12 @@ describe("a person's other roles and the right to verify lab results", () => {
     expect((await duties(desk.token, labTech.user.id, { extraRoles: ['NURSE'] })).statusCode).toBe(403);
     expect((await duties(admin.token, labTech.user.id, { extraRoles: ['ADMIN'] })).statusCode).toBe(400);
 
-    const given = await duties(admin.token, labTech.user.id, { extraRoles: ['PHARMACIST', 'LAB_TECH'], canVerifyLab: true });
+    expect((await duties(admin.token, labTech.user.id, { extraRoles: [], hiddenSections: ['not a path'] })).statusCode).toBe(400);
+    const given = await duties(admin.token, labTech.user.id, { extraRoles: ['PHARMACIST', 'LAB_TECH'], canVerifyLab: true, hiddenSections: ['/inventory', '/dashboard'] });
     expect(given.statusCode).toBe(200);
     // Their own role is not repeated as an extra one.
-    expect(given.json().user).toMatchObject({ extraRoles: ['PHARMACIST'], canVerifyLab: true });
+    // The dashboard always stays in their menu.
+    expect(given.json().user).toMatchObject({ extraRoles: ['PHARMACIST'], canVerifyLab: true, hiddenSections: ['/inventory'] });
 
     // Same session: now they verify, and work as a pharmacist too.
     expect((await verify(labTech.token)).statusCode).toBe(200);
@@ -49,8 +51,8 @@ describe("a person's other roles and the right to verify lab results", () => {
 
     // Their device learns of it at the next sync.
     const pull = await app.inject({ method: 'GET', url: `/sync/pull?clinicId=${clinic.id}&lastSyncedAt=${new Date(0).toISOString()}`, headers: authHeader(labTech.token) });
-    expect(pull.json().me).toEqual({ extraRoles: ['PHARMACIST'], canVerifyLab: true });
+    expect(pull.json().me).toEqual({ extraRoles: ['PHARMACIST'], canVerifyLab: true, hiddenSections: ['/inventory'] });
     const list = await app.inject({ method: 'GET', url: `/users/${clinic.id}`, headers: authHeader(admin.token) });
-    expect(list.json().users.find((u: any) => u.id === labTech.user.id)).toMatchObject({ extraRoles: ['PHARMACIST'], canVerifyLab: true });
+    expect(list.json().users.find((u: any) => u.id === labTech.user.id)).toMatchObject({ extraRoles: ['PHARMACIST'], canVerifyLab: true, hiddenSections: ['/inventory'] });
   });
 });

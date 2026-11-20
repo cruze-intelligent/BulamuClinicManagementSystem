@@ -63,3 +63,6 @@ export function imagingLine(r: { modality: ImagingModality; examination: string;
   if (r.status === 'CANCELLED') return `${what}: cancelled`;
   return `${what}: requested - no report yet`;
 }
+
+/** A requester's name as typed (a clinician asking on another's behalf): one line, at most 80 characters. */
+export const requesterName = (value: unknown): string | null => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, 80) || null : null);

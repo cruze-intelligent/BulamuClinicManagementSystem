@@ -1,3 +1,5 @@
+import path from 'path';
+import fs from 'fs';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { formatPrescriptionLine } from './clinical';
@@ -8,6 +10,14 @@ const BRAND_TEAL_DARK = '#0c5f58';
 const INK = '#1e293b';
 const MUTED = '#64748b';
 const SITE_URL = 'https://bulamu.site';
+/** Bulamu's tagline is set in Playfair Display (SIL Open Font License), with a built-in italic if the file is missing. */
+const TAGLINE_FONT_FILE = path.join(__dirname, '..', '..', 'assets', 'fonts', 'PlayfairDisplay-SemiBoldItalic.woff');
+const hasTaglineFont = fs.existsSync(TAGLINE_FONT_FILE);
+function taglineFont(doc: PDFKit.PDFDocument): string {
+  if (!hasTaglineFont) return 'Times-BoldItalic';
+  doc.registerFont('BulamuTagline', TAGLINE_FONT_FILE);
+  return 'BulamuTagline';
+}
 export const COMPANY_NAME = 'Cruze Intelligent Systems (U) Ltd';
 
 // Every date on a document is East Africa Time, day-month-year - the server
@@ -121,13 +131,15 @@ async function finishDocument(doc: PDFKit.PDFDocument, options: SampleOption = {
     const textX = 50 + qrSize + 12;
     const textWidth = doc.page.width - 50 - textX;
     if (qr) doc.image(qr, 50, topY, { width: qrSize, height: qrSize });
+    // Bulamu, and its tagline in a serif italic; then where it comes from, who produced this copy, and the page.
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL).text('Bulamu', textX, topY - 1, { lineBreak: false, continued: true })
+      .font(taglineFont(doc)).fontSize(10.5).fillColor(BRAND_TEAL_DARK).text('   Transforming patient care.', { lineBreak: false });
     doc
       .font('Helvetica')
-      .fontSize(8)
+      .fontSize(7.5)
       .fillColor(MUTED)
-      .text(`Powered by Bulamu - transforming patient care. bulamu.site, a product of ${COMPANY_NAME}`, textX, topY, { width: textWidth, lineBreak: false })
-      .text(`Produced ${generated}`, textX, topY + 11, { width: textWidth, lineBreak: false })
-      .text(`Page ${i - start + 1} of ${count}`, textX, topY + 22, { width: textWidth, lineBreak: false });
+      .text(`bulamu.site - a product of ${COMPANY_NAME}`, textX, topY + 15, { width: textWidth, lineBreak: false })
+      .text(`Produced ${generated}   |   Page ${i - start + 1} of ${count}`, textX, topY + 25, { width: textWidth, lineBreak: false });
   }
   doc.end();
 }
@@ -599,6 +611,8 @@ export type LabResultsPdfInput = SampleOption & {
     comment?: string | null;
     resultedBy?: Signer | null; resultedAt?: Date | null; verifiedBy?: Signer | null; verifiedAt?: Date | null;
   }>;
+  /** Imaging reports printed with the lab results (an ECG, a scan...). */
+  imaging?: Array<{ examination: string; modality: string; findings: string | null; impression: string | null; requestedBy: string; requestedAt: Date; reportedBy?: Signer | null; reportedAt?: Date | null }>;
 };
 
 /**
@@ -610,48 +624,115 @@ export type LabResultsPdfInput = SampleOption & {
 export async function generateLabResultsPdf(input: LabResultsPdfInput): Promise<Buffer> {
   const { doc, done } = newDocument();
   drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
+  const imaging = input.imaging ?? [];
+  const L = 50;
+  const W = 495;
 
-  doc.moveDown(1.5);
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('LABORATORY RESULTS', 50);
   doc.moveDown(0.8);
+  doc.font('Helvetica-Bold').fontSize(15).fillColor(INK).text(imaging.length && input.tests.length ? 'LABORATORY AND IMAGING RESULTS' : imaging.length ? 'IMAGING RESULTS' : 'LABORATORY RESULTS', L);
+  doc.moveDown(0.5);
 
+  // Who the patient is, in two columns to leave the page for the results.
   const sexAge = [input.patientSex ? input.patientSex.charAt(0) + input.patientSex.slice(1).toLowerCase() : '', input.patientAge].filter(Boolean).join(', ');
-  const first = input.tests.reduce((min, t) => (t.requestedAt < min ? t.requestedAt : min), input.tests[0]?.requestedAt ?? new Date());
-  drawRows(doc, [
-    ['Patient', input.patientName],
-    ['Patient ID', input.patientNumber],
-    ['Age / sex', sexAge || '-'],
-    ['Phone', input.patientPhone],
-    ['Requested', documentDate(first)],
-    ['Requested by', [...new Set(input.tests.map((t) => t.orderedBy).filter(Boolean))].join(', ')],
-  ], 170, 0.5);
+  const requested = [...input.tests.map((t) => t.requestedAt), ...imaging.map((r) => r.requestedAt)];
+  const first = requested.reduce((min, d) => (d < min ? d : min), requested[0] ?? new Date());
+  const requesters = [...new Set([...input.tests.map((t) => t.orderedBy), ...imaging.map((r) => r.requestedBy)].filter(Boolean))].join(', ');
+  const halves: Array<Array<[string, string | null | undefined]>> = [
+    [['Patient', input.patientName], ['Patient ID', input.patientNumber], ['Age / sex', sexAge || '-']],
+    [['Phone', input.patientPhone], ['Requested', documentDate(first)], ['Requested by', requesters]],
+  ];
+  const blockTop = doc.y;
+  let blockBottom = blockTop;
+  halves.forEach((rows, col) => {
+    const x = col === 0 ? L : 310;
+    let y = blockTop;
+    for (const [label, value] of rows) {
+      if (!value) continue;
+      doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(label, x, y, { width: 72, lineBreak: false });
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK).text(value, x + 74, y, { width: col === 0 ? 180 : 161 });
+      y = Math.max(y + 13, doc.y + 2);
+    }
+    blockBottom = Math.max(blockBottom, y);
+  });
+  doc.y = blockBottom + 4;
 
   const pageEnd = () => doc.page.maxY() - 70;
   const continuePage = () => {
     doc.addPage();
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED).text(`Laboratory results for ${input.patientName} (continued)`, 50, 50, { width: 495 });
-    doc.y = 80;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED).text(`Results for ${input.patientName} (continued)`, L, 50, { width: W });
+    doc.y = 72;
+  };
+  const rule = () => {
+    doc.strokeColor('#e2e8f0').lineWidth(0.8).moveTo(L, doc.y).lineTo(L + W, doc.y).stroke();
+  };
+  const statusOf = (verified: boolean) => ({ text: verified ? 'Verified' : 'Preliminary', color: verified ? BRAND_TEAL : '#b45309' });
+  const flagWord = (f: 'H' | 'L' | 'A' | null) => (f ? ({ H: 'High', L: 'Low', A: 'Abnormal' } as const)[f] : '');
+  const sectionTitle = (title: string, right: { text: string; color: string }) => {
+    if (doc.y > pageEnd() - 50) continuePage();
+    doc.moveDown(0.6);
+    rule();
+    doc.moveDown(0.4);
+    const top = doc.y;
+    doc.font('Helvetica-Bold').fontSize(10.5).fillColor(BRAND_TEAL_DARK).text(title, L, top, { width: 380 });
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(right.color).text(right.text.toUpperCase(), L + 330, top + 2, { width: 165, align: 'right' });
+    doc.y = Math.max(doc.y, top + 13);
   };
 
-  for (const test of input.tests) {
-    if (doc.y > pageEnd() - 90) continuePage();
-    doc.moveDown(0.8);
-    doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(50, doc.y).lineTo(doc.page.width - 50, doc.y).stroke();
-    doc.moveDown(0.7);
-    const top = doc.y;
-    doc.font('Helvetica-Bold').fontSize(11.5).fillColor(BRAND_TEAL_DARK).text(test.testName, 50, top, { width: 360 });
-    const status = test.verifiedAt ? 'VERIFIED' : 'PRELIMINARY - NOT YET VERIFIED';
-    doc.font('Helvetica-Bold').fontSize(8).fillColor(test.verifiedAt ? BRAND_TEAL : '#b45309').text(status, 330, top + 2, { width: 215, align: 'right' });
-    doc.y = Math.max(doc.y, top + 14);
-    doc.moveDown(0.3);
+  // Short results (one value, or a line of text - B/S, RBS, RDTs...) share one table, so several fit on a page.
+  const isShort = (t: LabResultsPdfInput['tests'][number]) => (t.values?.length ?? 0) === 1 || (!t.values?.length && t.results.trim().length <= 140 && !t.results.includes('\n'));
+  const short = input.tests.filter(isShort);
+  const panels = input.tests.filter((t) => !isShort(t));
+
+  if (short.length) {
+    sectionTitle(short.length === 1 ? 'Result' : 'Results', { text: '', color: MUTED });
+    const cols = [{ x: L, w: 150, t: 'Test' }, { x: 200, w: 110, t: 'Result' }, { x: 310, w: 48, t: 'Flag' }, { x: 358, w: 80, t: 'Reference' }, { x: 438, w: 55, t: 'Units' }, { x: 493, w: 52, t: 'Status' }];
+    const header = () => {
+      const y = doc.y;
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(MUTED);
+      for (const c of cols) doc.text(c.t, c.x, y, { width: c.w - 4, lineBreak: false });
+      doc.y = y + 11;
+    };
+    header();
+    for (const t of short) {
+      const v = t.values?.length === 1 ? t.values[0] : null;
+      // A text result runs across the result, flag, reference and units columns.
+      const resultWidth = v ? cols[1].w - 4 : 290;
+      const resultText = v ? v.value : t.results.trim();
+      doc.font('Helvetica').fontSize(9);
+      const h = Math.max(doc.heightOfString(t.testName, { width: cols[0].w - 4 }), doc.heightOfString(resultText, { width: resultWidth })) + 4;
+      if (doc.y + h > pageEnd()) {
+        continuePage();
+        header();
+      }
+      const y = doc.y;
+      const flagged = !!v?.flag;
+      const st = statusOf(!!t.verifiedAt);
+      doc.font('Helvetica').fontSize(9).fillColor(INK).text(t.testName, cols[0].x, y, { width: cols[0].w - 4 });
+      doc.font(flagged ? 'Helvetica-Bold' : 'Helvetica').fillColor(flagged ? '#b91c1c' : INK).text(resultText, cols[1].x, y, { width: resultWidth });
+      if (v) {
+        doc.font(flagged ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor(flagged ? '#b91c1c' : MUTED).text(flagWord(v.flag) || (v.low !== null || v.high !== null || v.normal ? 'Normal' : ''), cols[2].x, y, { width: cols[2].w - 4, lineBreak: false });
+        doc.font('Helvetica').fontSize(8.5).fillColor(INK).text(labReference(v), cols[3].x, y, { width: cols[3].w - 4, lineBreak: false, ellipsis: true });
+        doc.text(v.unit ?? '', cols[4].x, y, { width: cols[4].w - 4, lineBreak: false, ellipsis: true });
+      }
+      doc.font('Helvetica-Bold').fontSize(7.5).fillColor(st.color).text(st.text, cols[5].x, y + 1, { width: cols[5].w, lineBreak: false });
+      doc.y = y + h;
+      if (t.comment) {
+        doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(INK).text(`Comment: ${t.comment}`, cols[1].x, doc.y, { width: 295 });
+        doc.moveDown(0.2);
+      }
+    }
+  }
+
+  // A test with several values (a blood count, kidney or liver tests): its own table, in tight rows.
+  for (const test of panels) {
+    sectionTitle(test.testName, statusOf(!!test.verifiedAt));
     if (test.values?.length) {
-      // As a laboratory report sets it out: parameter, result, flag, reference range, units.
-      const cols = [{ x: 50, w: 165, title: 'Parameter' }, { x: 215, w: 80, title: 'Result' }, { x: 295, w: 70, title: 'Flag' }, { x: 365, w: 110, title: 'Reference' }, { x: 475, w: 70, title: 'Units' }];
+      const cols = [{ x: L, w: 165, t: 'Parameter' }, { x: 215, w: 80, t: 'Result' }, { x: 295, w: 60, t: 'Flag' }, { x: 355, w: 105, t: 'Reference' }, { x: 460, w: 85, t: 'Units' }];
       const header = () => {
         const y = doc.y;
-        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(MUTED);
-        for (const c of cols) doc.text(c.title, c.x, y, { width: c.w - 6, lineBreak: false });
-        doc.y = y + 12;
+        doc.font('Helvetica-Bold').fontSize(7.5).fillColor(MUTED);
+        for (const c of cols) doc.text(c.t, c.x, y, { width: c.w - 4, lineBreak: false });
+        doc.y = y + 10;
       };
       header();
       for (const v of test.values) {
@@ -661,40 +742,65 @@ export async function generateLabResultsPdf(input: LabResultsPdfInput): Promise<
         }
         const y = doc.y;
         const flagged = !!v.flag;
-        const cells = [v.name, v.value, v.flag ? ({ H: 'High', L: 'Low', A: 'Abnormal' } as const)[v.flag] : v.low !== null || v.high !== null || v.normal ? 'Normal' : '', labReference(v), v.unit ?? ''];
+        const cells = [v.name, v.value, flagWord(v.flag) || (v.low !== null || v.high !== null || v.normal ? 'Normal' : ''), labReference(v), v.unit ?? ''];
         cells.forEach((cell, i) => {
           const bold = flagged && (i === 1 || i === 2);
-          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9.5).fillColor(bold ? '#b91c1c' : INK).text(cell, cols[i].x, y, { width: cols[i].w - 6, lineBreak: false, ellipsis: true });
+          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor(bold ? '#b91c1c' : i === 2 ? MUTED : INK).text(cell, cols[i].x, y, { width: cols[i].w - 4, lineBreak: false, ellipsis: true });
         });
-        doc.y = y + 13;
+        doc.y = y + 10.2;
       }
-      if (test.comment) doc.font('Helvetica').fontSize(9.5).fillColor(INK).text(`Comment: ${test.comment}`, 50, doc.y + 2, { width: 495 });
+      if (test.comment) doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(INK).text(`Comment: ${test.comment}`, L, doc.y + 2, { width: W });
     } else {
-      doc.font('Helvetica').fontSize(10.5).fillColor(INK).text(test.results.trim(), 50, doc.y, { width: 495 });
+      doc.font('Helvetica').fontSize(9.5).fillColor(INK).text(test.results.trim(), L, doc.y, { width: W });
     }
-    doc.moveDown(0.4);
-    const who = [
-      test.resultedBy ? `Result entered by ${test.resultedBy.name} (${test.resultedBy.role})${test.resultedAt ? `, ${documentDateTime(test.resultedAt)}` : ''}` : null,
-      test.verifiedBy ? `Verified by ${test.verifiedBy.name} (${test.verifiedBy.role})${test.verifiedAt ? `, ${documentDateTime(test.verifiedAt)}` : ''}` : null,
-    ].filter(Boolean).join('\n');
-    if (who) doc.font('Helvetica').fontSize(8.5).fillColor(MUTED).text(who, 50, doc.y, { width: 495 });
   }
 
+  // Imaging: the examination, what was seen, and the conclusion.
+  for (const r of imaging) {
+    sectionTitle(`${r.examination} (${r.modality})`, { text: 'Reported', color: BRAND_TEAL });
+    if (r.findings) {
+      if (doc.y > pageEnd() - 30) continuePage();
+      doc.font('Helvetica').fontSize(9).fillColor(INK).text(r.findings.trim(), L, doc.y, { width: W });
+    }
+    if (r.impression) {
+      if (doc.y > pageEnd() - 20) continuePage();
+      doc.moveDown(0.2);
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(INK).text(`Impression: ${r.impression.trim()}`, L, doc.y, { width: W });
+    }
+  }
+
+  // Who entered, verified and reported - once, not under every test.
+  const named = (people: Array<Signer | null | undefined>) => [...new Map(people.filter((p): p is Signer => !!p).map((p) => [p.name, `${p.name} (${p.role})`])).values()].join(', ');
+  const times = [...input.tests.map((t) => t.resultedAt), ...imaging.map((r) => r.reportedAt)].filter((d): d is Date => !!d);
+  const latest = times.reduce<Date | null>((max, d) => (!max || d > max ? d : max), null);
+  const accountable = [
+    named(input.tests.map((t) => t.resultedBy)) && `Results entered by ${named(input.tests.map((t) => t.resultedBy))}`,
+    named(input.tests.map((t) => t.verifiedBy)) && `verified by ${named(input.tests.map((t) => t.verifiedBy))}`,
+    named(imaging.map((r) => r.reportedBy)) && `imaging reported by ${named(imaging.map((r) => r.reportedBy))}`,
+  ].filter(Boolean).join('; ');
+  if (doc.y > pageEnd() - 40) continuePage();
+  doc.moveDown(0.6);
+  rule();
+  doc.moveDown(0.4);
+  if (accountable) doc.font('Helvetica').fontSize(8).fillColor(MUTED).text(`${accountable}${latest ? `. Last result ${documentDateTime(latest)}` : ''}.`, L, doc.y, { width: W });
   if (input.tests.some((t) => !t.verifiedAt)) {
-    if (doc.y > pageEnd() - 40) continuePage();
-    doc.moveDown(1);
-    doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(MUTED)
-      .text('A preliminary result has not yet been checked by a clinician and may be corrected. Discuss your results with the clinician who requested them.', 50, doc.y, { width: 495 });
+    doc.font('Helvetica-Oblique').fontSize(8).fillColor(MUTED)
+      .text('A preliminary result has not yet been checked by a clinician and may be corrected. Discuss your results with the clinician who requested them.', L, doc.y + 2, { width: W });
   }
 
-  if (doc.y > pageEnd() - 80) continuePage();
-  doc.moveDown(2);
-  const lastEntered = input.tests.find((t) => t.resultedBy)?.resultedBy ?? null;
+  // Compact signature lines (name and role on one line), so the results keep to one page.
+  if (doc.y > pageEnd() - 26) continuePage();
+  const lastEntered = input.tests.find((t) => t.resultedBy)?.resultedBy ?? imaging.find((r) => r.reportedBy)?.reportedBy ?? null;
   const lastVerified = input.tests.find((t) => t.verifiedBy)?.verifiedBy ?? null;
-  drawSignatures(doc, [
-    { label: 'Laboratory - signature', signer: lastEntered },
-    { label: 'Verified by - signature', signer: lastVerified },
-  ]);
+  const sigY = doc.y + 6;
+  [
+    { x: L, w: 220, label: input.tests.length ? 'Laboratory - signature' : 'Reported by - signature', signer: lastEntered },
+    { x: 310, w: 235, label: 'Verified by - signature', signer: lastVerified },
+  ].forEach((line) => {
+    doc.strokeColor(MUTED).lineWidth(0.5).moveTo(line.x, sigY + 14).lineTo(line.x + line.w, sigY + 14).stroke();
+    if (line.signer) doc.font('Helvetica-Bold').fontSize(8.5).fillColor(INK).text(`${line.signer.name}, ${line.signer.role}`, line.x, sigY + 17, { width: line.w, lineBreak: false, ellipsis: true });
+    doc.font('Helvetica').fontSize(7.5).fillColor(MUTED).text(line.label, line.x, sigY + 28, { width: line.w, lineBreak: false });
+  });
 
   await finishDocument(doc, input);
   return done;

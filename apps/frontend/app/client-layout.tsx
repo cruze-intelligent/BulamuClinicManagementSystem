@@ -8,6 +8,7 @@ import { BrandMark } from '@/components/brand';
 import { Sidebar } from '@/components/sidebar';
 import { PwaRuntime } from '@/components/pwa-runtime';
 import { UpdateNotice } from '@/components/update-notice';
+import { ResultAlerts } from '@/components/result-alerts';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { TrialBanner } from '@/components/trial-banner';
 import { useSidebar } from '@/lib/sidebar-provider';
@@ -83,6 +84,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     <>
       <PwaRuntime showWidget={showSidebar} />
       <UpdateNotice />
+      {showSidebar && <ResultAlerts />}
       {showSidebar && <OnboardingTour />}
       {showSidebar && <Sidebar />}
       {showSidebar && (

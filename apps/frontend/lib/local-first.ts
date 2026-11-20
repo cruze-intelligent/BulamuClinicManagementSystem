@@ -836,6 +836,8 @@ export async function createImagingRequestOffline(input: {
   examination: string;
   clinicalInfo?: string;
   urgent?: boolean;
+  /** Who asked for it, when entered on someone's behalf; the person signed in otherwise. */
+  requestedBy?: string;
 }): Promise<void> {
   await assertCanSave();
   const now = serverNowIso();
@@ -848,7 +850,7 @@ export async function createImagingRequestOffline(input: {
     clinicId: input.clinicId,
     payload: {
       id, patientId: input.patientId, consultationId: input.consultationId ?? null, modality: input.modality,
-      examination: input.examination, clinicalInfo: input.clinicalInfo ?? "", urgent: !!input.urgent, createdAt: now, updatedAt: now,
+      examination: input.examination, clinicalInfo: input.clinicalInfo ?? "", urgent: !!input.urgent, requestedBy: input.requestedBy || undefined, createdAt: now, updatedAt: now,
     },
     createdAt: now,
     attempts: 0,
@@ -1092,13 +1094,43 @@ function describeChange(op: LocalMutation | undefined, entity: string): string {
   return [ENTITY_WORDS[entity] ?? entity, who].filter(Boolean).join(" - ");
 }
 
-export async function flushSyncQueue() {
+let flushRun: Promise<{ synced: number }> | null = null;
+let flushAgain = false;
+
+/**
+ * Sends what was saved on this device. One push at a time: saving a visit, its
+ * tests and its imaging together used to send several pushes at once, and a
+ * test that reached the server before its visit was left behind. A push asked
+ * for while one is running runs straight after it.
+ */
+export function flushSyncQueue(): Promise<{ synced: number }> {
+  if (flushRun) {
+    flushAgain = true;
+    return flushRun;
+  }
+  flushRun = (async () => {
+    try {
+      let result: { synced: number };
+      do {
+        flushAgain = false;
+        result = await flushOnce();
+      } while (flushAgain);
+      return result;
+    } finally {
+      flushRun = null;
+    }
+  })();
+  return flushRun;
+}
+
+async function flushOnce() {
   const apiUrl = getApiUrl();
   if (!apiUrl || typeof navigator === "undefined" || !navigator.onLine) {
     return { synced: 0 };
   }
 
-  const operations = await getAllRecords<LocalMutation>(MUTATION_STORE);
+  // In the order they were saved (the store keeps them by random id).
+  const operations = (await getAllRecords<LocalMutation>(MUTATION_STORE)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   if (operations.length === 0) {
     return { synced: 0 };
   }
@@ -1165,14 +1197,15 @@ export async function flushSyncQueue() {
   return { synced: data.applied ? data.applied.length : 0 };
 }
 
-function rememberMyDuties(me: { extraRoles?: string[]; canVerifyLab?: boolean }) {
+function rememberMyDuties(me: { extraRoles?: string[]; canVerifyLab?: boolean; hiddenSections?: string[] }) {
   try {
     const user = JSON.parse(localStorage.getItem('user') || 'null');
     if (!user) return;
     const extraRoles = Array.isArray(me.extraRoles) ? me.extraRoles : [];
     const canVerifyLab = !!me.canVerifyLab;
-    if (JSON.stringify(user.extraRoles ?? []) === JSON.stringify(extraRoles) && !!user.canVerifyLab === canVerifyLab) return;
-    localStorage.setItem('user', JSON.stringify({ ...user, extraRoles, canVerifyLab }));
+    const hiddenSections = Array.isArray(me.hiddenSections) ? me.hiddenSections : [];
+    if (JSON.stringify(user.extraRoles ?? []) === JSON.stringify(extraRoles) && !!user.canVerifyLab === canVerifyLab && JSON.stringify(user.hiddenSections ?? []) === JSON.stringify(hiddenSections)) return;
+    localStorage.setItem('user', JSON.stringify({ ...user, extraRoles, canVerifyLab, hiddenSections }));
     emitLocalChange();
   } catch {
     // Storage blocked: the next sign-in carries them.

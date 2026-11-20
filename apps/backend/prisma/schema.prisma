@@ -37,6 +37,8 @@ model User {
   // May verify (release) lab results - given by the administrator to a lab
   // technician who supervises, as clinicians and administrators already can.
   canVerifyLab  Boolean  @default(false)
+  // Parts of Bulamu (menu paths, e.g. "/inventory") the administrator has left out of this person's menu and dashboard.
+  hiddenSections String[] @default([])
   // Platform usage, for the operator's analytics: when they last signed in and
   // when they were last seen using the app (updated at most every few minutes).
   lastLoginAt DateTime?

@@ -10,13 +10,14 @@ import { Label } from '@/components/ui/label';
 import { roleLabel } from '@/lib/role-labels';
 import { Select } from '@/components/ui/select';
 import { useAuth } from '@/lib/useAuth';
+import { ALWAYS_SHOWN, menuFor } from '@/lib/nav-items';
 import { timeAgo } from '@/lib/analytics-format';
 import { rememberDepartments, sortDepartments, type Department } from '@/lib/departments';
 
 type StaffUser = {
   id: string; name: string; email: string; role: string; isActive: boolean; createdAt: string; lastLoginAt?: string | null; departmentIds?: string[];
   /** Other roles they also work in, and whether they may verify lab results. */
-  extraRoles?: string[]; canVerifyLab?: boolean;
+  extraRoles?: string[]; canVerifyLab?: boolean; hiddenSections?: string[];
 };
 type Panel = { userId: string; kind: 'edit' | 'units' | 'duties' | 'password' | 'deactivate' | 'delete' } | null;
 
@@ -245,6 +246,9 @@ function StaffCard({
   const [picked, setPicked] = useState<string[]>(user.departmentIds ?? []);
   const [alsoAs, setAlsoAs] = useState<string[]>(user.extraRoles ?? []);
   const [verifies, setVerifies] = useState(!!user.canVerifyLab);
+  // Parts of Bulamu left out of their menu and dashboard.
+  const [hidden, setHidden] = useState<string[]>(user.hiddenSections ?? []);
+  const sections = menuFor([user.role, ...alsoAs]).filter((item) => !ALWAYS_SHOWN.includes(item.path));
   // Any other staff role - never the administrator's, which is only ever a person's own role.
   const otherRoles = ROLE_OPTIONS.filter((r) => r.value !== 'ADMIN' && r.value !== user.role);
   const theirUnits = units.filter((u) => (user.departmentIds ?? []).includes(u.id));
@@ -272,6 +276,7 @@ function StaffCard({
     setPicked(user.departmentIds ?? []);
     setAlsoAs(user.extraRoles ?? []);
     setVerifies(!!user.canVerifyLab);
+    setHidden(user.hiddenSections ?? []);
     setPanel(kind);
   };
 
@@ -365,8 +370,9 @@ function StaffCard({
           onSubmit={(e) => {
             e.preventDefault();
             const also = otherRoles.filter((r) => alsoAs.includes(r.value)).map((r) => r.label);
-            run(() => call(`/users/${user.id}/duties`, 'PUT', { extraRoles: alsoAs, canVerifyLab: verifies }),
-              `${user.name} works as ${[roleLabel(user.role), ...also].join(', ')}${verifies ? ', and verifies lab results' : ''}. It applies on their device at the next sync.`);
+            const leftOut = hidden.filter((path) => sections.some((s) => s.path === path));
+            run(() => call(`/users/${user.id}/duties`, 'PUT', { extraRoles: alsoAs, canVerifyLab: verifies, hiddenSections: leftOut }),
+              `${user.name} works as ${[roleLabel(user.role), ...also].join(', ')}${verifies ? ', and verifies lab results' : ''}${leftOut.length ? `; ${leftOut.length} part${leftOut.length === 1 ? ' is' : 's are'} left out of their menu` : ''}. It applies on their device within a minute.`);
           }}
         >
           <p className="text-sm font-medium">What else {user.name} does</p>
@@ -392,6 +398,23 @@ function StaffCard({
                 <span className="block text-xs text-slate-500 dark:text-slate-400">For the person in charge of the lab: they may check and release results to patients, as clinicians do.</span>
               </span>
             </label>
+          )}
+          {sections.length > 0 && (
+            <fieldset className="mt-4">
+              <legend className="text-sm font-medium">Parts of Bulamu they see</legend>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">What their roles give them. Untick any part to leave it out of their menu and dashboard - the Dashboard, Notifications and Help always stay.</p>
+              <div className="mt-2 grid gap-1.5 sm:grid-cols-3">
+                {sections.map((item) => {
+                  const shown = !hidden.includes(item.path);
+                  return (
+                    <label key={item.path} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" className="size-4 accent-emerald-600" checked={shown} onChange={() => setHidden((list) => (shown ? [...list, item.path] : list.filter((p) => p !== item.path)))} />
+                      {item.name}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
           )}
           {error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}
           <div className="mt-3 flex gap-2">

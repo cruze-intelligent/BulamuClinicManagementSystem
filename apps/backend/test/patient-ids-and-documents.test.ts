@@ -151,6 +151,6 @@ describe("the facility's documents", () => {
     expect(text).toMatch(/\(estimated\)/);
     expect(text).toContain('I.V Artesunate 120mg 12hrly x 1 day');
     expect(text).not.toMatch(/\bGive\b/);
-    expect(text).toContain('Powered by Bulamu');
+    expect(text).toContain('bulamu.site - a product of');
   });
 });

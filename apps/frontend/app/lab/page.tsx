@@ -61,7 +61,7 @@ export default function LabTestsPage() {
   const [tests, setTests] = useState<LocalLabTest[]>([]);
   const [patients, setPatients] = useState<LocalPatient[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ patientId: '', testName: '' });
+  const [formData, setFormData] = useState({ patientId: '', testName: '', requestedBy: '' });
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('todo');
   const [notice, setNotice] = useState('');
@@ -111,11 +111,11 @@ export default function LabTestsPage() {
         clinicId: user.clinicId || 'default-clinic',
         testName: findLabTest(formData.testName)?.name ?? formData.testName.trim(),
         results: '',
-        orderedBy: user.name || 'Clinical Staff',
+        orderedBy: formData.requestedBy.trim() || user.name || 'Clinical Staff',
         patientName: selectedPatient?.name,
       });
       setShowForm(false);
-      setFormData({ patientId: '', testName: '' });
+      setFormData({ patientId: '', testName: '', requestedBy: '' });
       setNotice(`${formData.testName} ordered for ${selectedPatient?.name ?? 'the patient'}. The lab has been notified.`);
       loadData();
     } catch (error: any) {
@@ -144,7 +144,7 @@ export default function LabTestsPage() {
               The lab's worklist: tests requested during consultations arrive here. Record each result; a clinician verifies it before the patient is told.
             </p>
           </div>
-          {canOrder && <Button variant="outline" onClick={() => setShowForm(!showForm)}>{showForm ? 'Cancel' : '+ Request a test outside a visit'}</Button>}
+          {canOrder && <Button variant="outline" onClick={() => { setShowForm(!showForm); setFormData((f) => ({ ...f, requestedBy: f.requestedBy || user?.name || '' })); }}>{showForm ? 'Cancel' : '+ Request a test outside a visit'}</Button>}
         </div>
 
         {notice && (
@@ -170,6 +170,11 @@ export default function LabTestsPage() {
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {catalogEntry ? `Sample: ${catalogEntry.sample}` : 'Choose from the list where you can - any other test can be typed.'}
                 </p>
+              </div>
+              <div>
+                <Label htmlFor="lab-requested-by">Requested by</Label>
+                <Input id="lab-requested-by" value={formData.requestedBy} onChange={(e) => setFormData({ ...formData, requestedBy: e.target.value })} maxLength={80} placeholder="Name of the clinician asking" />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Printed on the results. Change it when the test is asked for by someone else.</p>
               </div>
               <Button type="submit" className="sm:col-span-2">Order test (works offline)</Button>
             </form>
@@ -215,6 +220,9 @@ function LabTestCard({
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Correcting who requested it (entered under the wrong name, or asked on someone's behalf).
+  const [editingRequester, setEditingRequester] = useState(false);
+  const [requester, setRequester] = useState(test.orderedBy);
   const hint = findLabTest(test.testName)?.resultHint;
   // A test with a result template (a blood count, kidney tests...) is entered value by value.
   const panel = labPanelFor(test.testName);
@@ -255,13 +263,34 @@ function LabTestCard({
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
+        {/* At least 15rem wide: on a phone the actions drop below rather than squeezing the patient and test into a sliver. */}
+        <div className="min-w-[15rem] flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold text-slate-800 dark:text-slate-200">{test.patient?.name || 'Patient'}</h3>
             {test.syncStatus === 'pending' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Not synced yet</span>}
           </div>
           <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-sky-800 dark:text-sky-300"><FlaskConical className="size-4" aria-hidden="true" />{test.testName}</p>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Ordered by {test.orderedBy} · {when(test.createdAt)}</p>
+          {editingRequester ? (
+            <form
+              className="mt-1 flex flex-wrap items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                run(() => call(`/lab/${test.id}/requester`, 'PATCH', { orderedBy: requester }), `${test.testName}: requested by ${requester.trim()}.`).then(() => setEditingRequester(false));
+              }}
+            >
+              <Label htmlFor={`requester-${test.id}`} className="text-xs">Requested by</Label>
+              <Input id={`requester-${test.id}`} className="h-8 w-full max-w-[14rem] text-sm" value={requester} onChange={(e) => setRequester(e.target.value)} maxLength={80} required autoFocus />
+              <Button type="submit" size="sm" disabled={busy}>Save</Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingRequester(false); setRequester(test.orderedBy); }}>Cancel</Button>
+            </form>
+          ) : (
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Requested by {test.orderedBy} · {when(test.createdAt)}
+              {canEnter && test.syncStatus !== 'pending' && (
+                <button type="button" className="ml-2 font-medium text-emerald-700 underline-offset-2 hover:underline dark:text-emerald-400" onClick={() => setEditingRequester(true)}>Change</button>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col items-end gap-2">

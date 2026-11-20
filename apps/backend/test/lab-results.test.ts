@@ -214,3 +214,49 @@ describe('a result entered value by value', () => {
     for (const words of ['Parameter', 'Reference', 'Direct bilirubin', 'High', '(0 - 5)', 'Comment: Mildly raised direct bilirubin']) expect(text).toContain(words);
   });
 });
+
+describe('printing chosen results together, on as little paper as they need', () => {
+  it('puts a B/S, an RBS, a full blood count and an ECG report of one patient on one page', async () => {
+    const { clinic, users, patient } = await facility();
+    const { pdfPages, pdfText } = await import('./pdf-text');
+    const now = new Date();
+    const lab = (testName: string, data: Record<string, unknown>) => prisma.labTest.create({
+      data: { patientId: patient.id, testName, orderedBy: 'Dr Okello', status: 'COMPLETED', resultedByUserId: users.LAB_TECH.id, resultedAt: now, ...data } as any,
+    });
+    const bs = await lab('Malaria blood smear (B/S)', { results: 'No malaria parasites seen' });
+    const rbs = await lab('Random blood sugar (RBS)', { results: 'Random blood glucose: 11.2 mmol/L (H)', values: [{ name: 'Random blood glucose', value: '11.2', unit: 'mmol/L', low: 3.9, high: 7.8, normal: null, flag: 'H' }] });
+    const cbcValues = ['WBC', 'Lym%', 'Gran%', 'Mid%', 'Lym#', 'Gran#', 'Mid#', '*GLR', '*PLR', 'RBC', 'HGB', 'HCT', 'MCV', 'MCH', 'MCHC', 'RDW-CV', 'RDW-SD', '*RDWI', '*Micro%', '*Micro#', '*Macro%', '*Macro#', '*Mentzer index', 'PLT', 'MPV', 'PDW', 'PCT', 'P-LCR', 'P-LCC']
+      .map((name, i) => ({ name, value: String(1 + i / 10), unit: '10^3/uL', low: 1, high: 9, normal: null, flag: null }));
+    const cbc = await lab('Complete blood count (CBC)', { results: 'CBC', values: cbcValues, comment: 'Iron deficiency picture' });
+    const ecg = await prisma.imagingRequest.create({
+      data: { clinicId: clinic.id, patientId: patient.id, modality: 'ECG', examination: 'Resting 12-lead ECG', requestedBy: 'Dr Okello', status: 'REPORTED', findings: 'Sinus rhythm, rate 78.', impression: 'Normal ECG', reportedBy: 'DOCTOR person', reportedByUserId: users.DOCTOR.id, reportedAt: now },
+    });
+    const other = await prisma.patient.create({ data: { name: 'Someone Else', phone: '0711', clinicId: clinic.id } });
+    const theirs = await prisma.labTest.create({ data: { patientId: other.id, testName: 'Malaria RDT', results: 'Negative', orderedBy: 'Dr', status: 'COMPLETED' } });
+
+    const res = await app.inject({ method: 'GET', url: `/results/pdf?lab=${bs.id},${rbs.id},${cbc.id}&imaging=${ecg.id}`, headers: authHeader(users.NURSE.token) });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('application/pdf');
+    expect(pdfPages(res.rawPayload)).toHaveLength(1);
+    const text = pdfText(res.rawPayload);
+    for (const expected of ['LABORATORY AND IMAGING RESULTS', 'Malaria blood smear (B/S)', 'No malaria parasites seen', 'Random blood sugar (RBS)', '11.2', 'P-LCC', 'Iron deficiency picture', 'Resting 12-lead ECG', 'Impression: Normal ECG', 'Achieng Mary']) {
+      expect(text).toContain(expected);
+    }
+
+    const mixed = await app.inject({ method: 'GET', url: `/results/pdf?lab=${bs.id},${theirs.id}`, headers: authHeader(users.NURSE.token) });
+    expect(mixed.statusCode).toBe(400);
+    expect(mixed.json().error).toMatch(/one patient at a time/);
+  });
+});
+
+describe('who requested a test', () => {
+  it('can be corrected on the test, and is named as typed on imaging asked for at a visit', async () => {
+    const { users, patient } = await facility();
+    const test = await prisma.labTest.create({ data: { patientId: patient.id, testName: 'Malaria RDT', results: '', orderedBy: 'NURSE person' } });
+    const changed = await app.inject({ method: 'PATCH', url: `/lab/${test.id}/requester`, headers: authHeader(users.LAB_TECH.token), payload: { orderedBy: '  Dr   Okello Isaac ' } });
+    expect(changed.statusCode).toBe(200);
+    expect(changed.json().test.orderedBy).toBe('Dr Okello Isaac');
+    expect((await app.inject({ method: 'PATCH', url: `/lab/${test.id}/requester`, headers: authHeader(users.LAB_TECH.token), payload: { orderedBy: ' ' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'PATCH', url: `/lab/${test.id}/requester`, headers: authHeader(users.PHARMACIST.token), payload: { orderedBy: 'X' } })).statusCode).toBe(403);
+  });
+});

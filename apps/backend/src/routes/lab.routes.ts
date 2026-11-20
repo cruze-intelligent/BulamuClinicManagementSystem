@@ -1,3 +1,4 @@
+import { requesterName } from '../lib/imaging';
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, assertClinicMatch, getAuthUser, resolveClinicScope, worksAs, type AuthUser } from '../middleware/auth.middleware';
@@ -5,7 +6,7 @@ import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
 import { notifyLabOrdered, notifyLabResultReady, notifyLabResultToOrderer } from '../lib/notifications';
 import { sendRouteError } from '../lib/http-error';
-import { buildLabResultsPdf } from '../lib/consultation-records';
+import { buildChosenResultsPdf, buildLabResultsPdf } from '../lib/consultation-records';
 import { documentProducer } from '../lib/document-signer';
 import { parseLabValues, summariseValues } from '../lib/lab-values';
 import { Prisma } from '@prisma/client';
@@ -93,6 +94,41 @@ export async function labRoutes(fastify: FastifyInstance) {
       if ('error' in built) return reply.status(built.status).send({ error: built.error });
       reply.header('Content-Type', 'application/pdf');
       reply.header('Content-Disposition', `inline; filename="lab-results-${id.slice(0, 8)}.pdf"`);
+      return reply.send(built.pdf);
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
+  // Who requested the test, corrected: the name entered with it was wrong, or it was asked for on someone's behalf.
+  fastify.patch('/lab/:id/requester', { preHandler: [requireRole(...RESULT_ROLES)] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const orderedBy = requesterName((request.body as { orderedBy?: unknown } | null)?.orderedBy);
+    if (!orderedBy) return reply.status(400).send({ error: 'Enter the name of the person who requested the test' });
+    try {
+      const existing = await prisma.labTest.findUnique({ where: { id }, include: { patient: { select: { clinicId: true } } } });
+      if (!existing || existing.deletedAt) return reply.status(404).send({ error: 'Lab test not found' });
+      if (!assertClinicMatch(request, reply, existing.patient.clinicId)) return;
+      const authUser = getAuthUser(request);
+      const test = await prisma.labTest.update({ where: { id }, data: { orderedBy }, include: LAB_INCLUDE });
+      await recordAudit({ entity: 'LabTest', recordId: id, clinicId: existing.patient.clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { requester: 'changed' } });
+      return { success: true, test };
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
+  // Lab results and imaging reports of one patient, chosen to print together:
+  // ?lab=<ids>&imaging=<ids>, comma-separated.
+  fastify.get('/results/pdf', { preHandler: [authenticate] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const query = (request.query ?? {}) as { lab?: string; imaging?: string };
+    const ids = (text?: string) => [...new Set((text ?? '').split(',').map((x) => x.trim()).filter(Boolean))].slice(0, 40);
+    try {
+      const built = await buildChosenResultsPdf(authUser.clinicId, { labIds: ids(query.lab), imagingIds: ids(query.imaging) }, await documentProducer(authUser.userId));
+      if ('error' in built) return reply.status(built.status).send({ error: built.error });
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `inline; filename="results-${built.patientId.slice(0, 8)}.pdf"`);
       return reply.send(built.pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);

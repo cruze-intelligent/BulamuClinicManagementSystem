@@ -10,7 +10,7 @@ import { useSidebar } from '@/lib/sidebar-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { roleLabel } from '@/lib/role-labels';
 import { useUnreadNotifications } from '@/lib/useUnreadNotifications';
-import { NAV_ITEMS } from '@/lib/nav-items';
+import { ALWAYS_SHOWN, NAV_ITEMS } from '@/lib/nav-items';
 import { clearStaffSession } from '@/lib/staff-session';
 import { useFacilityLogo } from '@/lib/facility-logo';
 
@@ -119,7 +119,9 @@ export function Sidebar() {
     router.push('/');
   };
 
-  const filteredNavItems = navItems.filter((item) => hasRole(...item.roles));
+  // What their roles give them, less any part the administrator has left out for them.
+  const hiddenSections: string[] = Array.isArray(user?.hiddenSections) ? user.hiddenSections : [];
+  const filteredNavItems = navItems.filter((item) => hasRole(...item.roles) && (ALWAYS_SHOWN.includes(item.path) || !hiddenSections.includes(item.path)));
 
   return (
     <>

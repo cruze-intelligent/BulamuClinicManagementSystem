@@ -68,10 +68,13 @@ describe('every document Bulamu produces is branded the same way', () => {
       const pages = pdfPages(pdf);
       const text = pages.join('\n');
       pages.forEach((page, i) => {
-        expect(page).toContain('Powered by Bulamu - transforming patient care. bulamu.site, a product of Cruze Intelligent Systems (U) Ltd');
+        // The tagline is set in Playfair Display, embedded in the file (its glyphs are not read back as text).
+        expect(page).toMatch(/^Bulamu$/m);
+        expect(page).toContain('bulamu.site - a product of Cruze Intelligent Systems (U) Ltd');
         expect(page).toContain('Produced 14 October 2026');
         expect(page).toContain(`Page ${i + 1} of ${pages.length}`);
       });
+      expect(Buffer.from(pdf).toString('latin1')).toMatch(/\/BaseFont \/[A-Z]+\+PlayfairDisplay/);
       // No claim the QR code can't back up.
       expect(text).not.toMatch(/verify/i);
     }

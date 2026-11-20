@@ -25,6 +25,9 @@ function isPlatformAdmin() {
   }
 }
 
+/** How often an open page sends what is waiting and fetches what changed. */
+const BACKGROUND_SYNC_MS = 45_000;
+
 export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
@@ -40,9 +43,9 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
     setNotSaved(listRejectedChanges().length);
   }, []);
 
-  const syncData = useCallback(async () => {
+  const syncData = useCallback(async (quiet = false) => {
     if (isPlatformAdmin()) return;
-    setSyncing(true);
+    if (!quiet) setSyncing(true);
     try {
       await flushSyncQueue();
       const clinicId = getCurrentClinicId();
@@ -110,7 +113,14 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
     refreshPending();
     sync();
 
+    // Every so often while the page is open: anything still waiting is sent again,
+    // and results and changes made by colleagues arrive - without a reload.
+    const background = window.setInterval(() => {
+      if (navigator.onLine && document.visibilityState === 'visible') void syncData(true);
+    }, BACKGROUND_SYNC_MS);
+
     return () => {
+      window.clearInterval(background);
       unsubscribe();
       window.removeEventListener(SUBSCRIPTION_CHANGE_EVENT, subscriptionChanged);
       window.removeEventListener('online', sync);

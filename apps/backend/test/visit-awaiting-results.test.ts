@@ -67,3 +67,44 @@ describe('a visit saved with tests sent, finished when the results are in', () =
     expect(await prisma.notification.count({ where: { userId: pharmacist.id, type: 'NEW_PRESCRIPTION' } })).toBe(1);
   });
 });
+
+describe('tests and imaging asked for at a visit reach the lab and imaging, whatever order they arrive in', () => {
+  it('applies a walk-in, its visit, a test and an imaging request sent in the wrong order, and links them', async () => {
+    const clinic = await seedClinic();
+    const { user: doctor, password } = await seedUser({ clinicId: clinic.id, role: 'DOCTOR' });
+    const { token } = await loginAs(app, doctor.email, password);
+    const { user: lab } = await seedUser({ clinicId: clinic.id, role: 'LAB_TECH' });
+    const patient = await prisma.patient.create({ data: { name: 'Filder Ogwang', phone: '0700', clinicId: clinic.id } });
+    const t = (s: number) => new Date(Date.now() + s * 1000).toISOString();
+    const op = (entity: string, payload: Record<string, unknown>, at: string) => ({ id: randomUUID(), entity, action: 'upsert', recordId: payload.id, clinicId: clinic.id, payload: { updatedAt: at, createdAt: at, ...payload }, createdAt: at, attempts: 0 });
+    const appointmentId = randomUUID();
+    const visitId = randomUUID();
+    const testId = randomUUID();
+    const imagingId = randomUUID();
+    const operations = [
+      op('imagingRequest', { id: imagingId, patientId: patient.id, consultationId: visitId, modality: 'ECG', examination: 'Resting 12-lead ECG' }, t(4)),
+      op('labTest', { id: testId, patientId: patient.id, consultationId: visitId, testName: 'Random blood sugar (RBS)', results: '', status: 'PENDING', orderedBy: doctor.name }, t(3)),
+      op('consultation', { id: visitId, appointmentId, patientId: patient.id, symptoms: 'Dizzy', diagnoses: [], prescriptions: [], awaitingResults: true }, t(2)),
+      op('appointment', { id: appointmentId, patientId: patient.id, doctorId: doctor.id, clinicId: clinic.id, date: t(1), time: '10:00', status: 'SCHEDULED', checkedInAt: t(1), notes: 'Walk-in' }, t(1)),
+    ];
+    const res = await app.inject({ method: 'POST', url: '/sync/push', headers: authHeader(token), payload: { operations } });
+    const body = res.json();
+    expect(body.rejected).toEqual([]);
+    expect(body.applied).toHaveLength(4);
+    expect(await prisma.labTest.findUniqueOrThrow({ where: { id: testId } })).toMatchObject({ consultationId: visitId, status: 'PENDING' });
+    expect(await prisma.imagingRequest.findUniqueOrThrow({ where: { id: imagingId } })).toMatchObject({ consultationId: visitId });
+    expect(await prisma.notification.count({ where: { userId: lab.id, type: 'LAB_TEST_ORDERED' } })).toBe(1);
+  });
+
+  it('keeps a test whose visit has not arrived waiting, instead of losing it', async () => {
+    const clinic = await seedClinic();
+    const { user: doctor, password } = await seedUser({ clinicId: clinic.id, role: 'DOCTOR' });
+    const { token } = await loginAs(app, doctor.email, password);
+    const patient = await prisma.patient.create({ data: { name: 'Filder Ogwang', phone: '0700', clinicId: clinic.id } });
+    const test = { id: randomUUID(), patientId: patient.id, consultationId: randomUUID(), testName: 'Malaria RDT', results: '', orderedBy: doctor.name };
+    const res = await push(token, 'labTest', test);
+    const body = res.json();
+    expect([...body.applied, ...body.done, ...body.rejected]).toEqual([]);
+    expect(await prisma.labTest.findUnique({ where: { id: test.id } })).toBeNull();
+  });
+});

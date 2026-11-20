@@ -1,5 +1,5 @@
 import {
-  ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FileText, FlaskConical, HelpCircle,
+  ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FileCheck2, FileText, FlaskConical, HelpCircle,
   History, Home, MapPinned, Package, Pill, Receipt, ScanLine, Stethoscope, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 
@@ -18,6 +18,7 @@ export const NAV_ITEMS: NavItem[] = [
   { name: 'Consultations', path: '/consultations', icon: Stethoscope, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST'] },
   { name: 'Lab Tests', path: '/lab', icon: FlaskConical, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECH'] },
   { name: 'Imaging', path: '/imaging', icon: ScanLine, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'RADIOGRAPHER'] },
+  { name: 'Results', path: '/results', icon: FileCheck2, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECH', 'RADIOGRAPHER'] },
   { name: 'Wards', path: '/wards', icon: BedDouble, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
   { name: 'Clinical summary', path: '/summary', icon: FileText, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
   { name: 'Referrals', path: '/referrals', icon: ArrowRightLeft, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
@@ -34,3 +35,14 @@ export const NAV_ITEMS: NavItem[] = [
   { name: 'Billing', path: '/billing', icon: CreditCard, roles: ['ADMIN'] },
   { name: 'Help & FAQ', path: '/help', icon: HelpCircle, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
 ];
+
+/** In everyone's menu, whatever the administrator leaves out. */
+export const ALWAYS_SHOWN = ['/dashboard', '/notifications', '/help'];
+
+/**
+ * The menu for a person: what their roles (their own and any others they also
+ * work in) give them, less the parts the administrator has left out for them.
+ */
+export function menuFor(roles: string[], hiddenSections: string[] = []): NavItem[] {
+  return NAV_ITEMS.filter((item) => item.roles.some((r) => roles.includes(r)) && (ALWAYS_SHOWN.includes(item.path) || !hiddenSections.includes(item.path)));
+}

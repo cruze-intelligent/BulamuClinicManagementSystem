@@ -85,6 +85,8 @@ function RecordConsultationForm() {
   const [examination, setExamination] = useState('');
   const [vitals, setVitals] = useState<Record<string, string>>({});
   const [labText, setLabText] = useState('');
+  // Who is asking for the tests and imaging: the person signed in, unless entering on someone's behalf.
+  const [requestedBy, setRequestedBy] = useState(() => getCurrentUser().name || '');
   const [labRequests, setLabRequests] = useState<string[]>([]);
   const [patients, setPatients] = useState<LocalPatient[]>([]);
   const [diagnoses, setDiagnoses] = useState<DiagnosisDraft[]>([emptyDiagnosis()]);
@@ -137,6 +139,13 @@ function RecordConsultationForm() {
       if (!visit) return setContinueMissing(true);
       setContinueMissing(false);
       setSentTests((await listLocalLabTests()).filter((t) => t.consultationId === visit.id));
+      // Imaging lives on the server only: fetched again whenever this device syncs, so a report shows as it is written.
+      if (navigator.onLine) {
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${visit.patientId}/imaging`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+          .then((r) => r.json())
+          .then((d) => setSentImaging((d.requests ?? []).filter((r: SentImaging & { consultationId?: string }) => r.consultationId === visit.id)))
+          .catch(() => undefined);
+      }
       if (filled) return;
       filled = true;
       setContinuing(visit);
@@ -151,12 +160,6 @@ function RecordConsultationForm() {
       setDispensed(given);
       setPrescriptions(open.length ? open.map((rx) => payloadToDraft(rx)) : [emptyDraft()]);
       getLocalAppointment(visit.appointmentId).then((a) => setVisitUnit(a?.departmentId ?? '')).catch(() => undefined);
-      if (navigator.onLine) {
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/patients/${visit.patientId}/imaging`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
-          .then((r) => r.json())
-          .then((d) => setSentImaging((d.requests ?? []).filter((r: SentImaging & { consultationId?: string }) => r.consultationId === visit.id)))
-          .catch(() => undefined);
-      }
     };
     void load();
     return subscribeToLocalChanges(() => { void load(); });
@@ -251,12 +254,12 @@ function RecordConsultationForm() {
       });
       // Tests requested at the visit go to the lab's worklist, linked to this visit.
       for (const testName of labRequests) {
-        await createLabTestOffline({ patientId: patient.id, clinicId, testName, results: '', orderedBy: user.name || 'Clinician', patientName: patient.name, consultationId: consultation.id });
+        await createLabTestOffline({ patientId: patient.id, clinicId, testName, results: '', orderedBy: requestedBy.trim() || user.name || 'Clinician', patientName: patient.name, consultationId: consultation.id });
       }
 
       // Imaging goes to the imaging unit's worklist, linked to this visit.
       for (const r of imaging) {
-        await createImagingRequestOffline({ patientId: patient.id, clinicId, consultationId: consultation.id, modality: r.modality, examination: r.examination, clinicalInfo: r.clinicalInfo, urgent: r.urgent });
+        await createImagingRequestOffline({ patientId: patient.id, clinicId, consultationId: consultation.id, modality: r.modality, examination: r.examination, clinicalInfo: r.clinicalInfo, urgent: r.urgent, requestedBy: requestedBy.trim() || undefined });
       }
 
       // Sent on to another unit (OPD to Dentistry, say): they join its queue now.
@@ -462,6 +465,13 @@ function RecordConsultationForm() {
                 </div>
               </div>
               {imagingProblem && <p role="alert" className="mt-1 text-sm text-rose-700 dark:text-rose-300">{imagingProblem}</p>}
+              {requestsToSend > 0 && (
+                <div className="mt-4 max-w-sm">
+                  <Label htmlFor="requested-by">Tests and imaging requested by</Label>
+                  <Input id="requested-by" className="mt-1" maxLength={80} value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)} placeholder="Name of the clinician asking" />
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Printed on the request and the results. Change it when asking on someone&apos;s behalf.</p>
+                </div>
+              )}
               {imaging.length > 0 && (
                 <ul className="mt-3 space-y-1.5" aria-label="Imaging requested">
                   {imaging.map((r, i) => (

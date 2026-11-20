@@ -5,6 +5,7 @@ import { eatDateKey, eatDayRange } from './invoices';
 import { facilityLogo } from './facility-logo';
 import { roleTitle, type Signer } from './document-signer';
 import { patientIdText } from './patient-text';
+import { MODALITIES } from './imaging';
 
 /**
  * Keeps a prescription's link to a stock item only when that item really is one
@@ -129,4 +130,67 @@ export async function buildLabResultsPdf(testId: string, options: { only?: boole
     producedBy: options.producedBy,
   });
   return { pdf, clinicId: patient.clinicId };
+}
+
+/**
+ * The results chosen to print together - lab tests and imaging reports of one
+ * patient - on as few pages as they need (several short results share one table).
+ */
+export async function buildChosenResultsPdf(
+  clinicId: string,
+  chosen: { labIds: string[]; imagingIds: string[] },
+  producedBy?: Signer | string | null,
+): Promise<{ pdf: Buffer; patientId: string } | { error: string; status: number }> {
+  const [tests, reports] = await Promise.all([
+    chosen.labIds.length
+      ? prisma.labTest.findMany({
+          where: { id: { in: chosen.labIds }, deletedAt: null, status: 'COMPLETED', patient: { clinicId } },
+          include: { resultedBy: { select: { name: true, role: true } }, verifiedBy: { select: { name: true, role: true } } },
+          orderBy: { createdAt: 'asc' },
+        })
+      : [],
+    chosen.imagingIds.length
+      ? prisma.imagingRequest.findMany({ where: { id: { in: chosen.imagingIds }, clinicId, status: 'REPORTED' }, orderBy: { createdAt: 'asc' } })
+      : [],
+  ]);
+  const printable = tests.filter((t) => t.results.trim());
+  if (!printable.length && !reports.length) return { error: 'Choose at least one result to print', status: 400 };
+  const patientIds = new Set([...printable.map((t) => t.patientId), ...reports.map((r) => r.patientId)]);
+  if (patientIds.size > 1) return { error: 'Choose results for one patient at a time - each patient gets their own copy', status: 400 };
+  const patientId = [...patientIds][0];
+
+  const patient = await prisma.patient.findUniqueOrThrow({
+    where: { id: patientId },
+    select: { name: true, phone: true, sex: true, dateOfBirth: true, dateOfBirthEstimated: true, patientNumber: true, clinicId: true, clinic: { select: { name: true, facilityCode: true, phone: true, motto: true } } },
+  });
+  const staff = (u: { name: string; role: string } | null) => (u ? { name: u.name, role: roleTitle(u.role) } : null);
+  const reporters = await prisma.user.findMany({ where: { id: { in: reports.map((r) => r.reportedByUserId).filter((x): x is string => !!x) } }, select: { id: true, name: true, role: true } });
+  const firstDate = [...printable.map((t) => t.createdAt), ...reports.map((r) => r.createdAt)].reduce((a, b) => (b < a ? b : a));
+  const pdf = await generateLabResultsPdf({
+    clinicName: patient.clinic.name,
+    facilityCode: patient.clinic.facilityCode,
+    clinicPhone: patient.clinic.phone,
+    clinicMotto: patient.clinic.motto,
+    clinicLogo: await facilityLogo(patient.clinicId),
+    patientName: patient.name,
+    patientNumber: patientIdText(patient.patientNumber),
+    patientPhone: patient.phone,
+    patientSex: patient.sex,
+    patientAge: ageLabel(patient.dateOfBirth, firstDate, patient.dateOfBirthEstimated),
+    tests: printable.map((t) => ({
+      id: t.id, testName: t.testName, results: t.results, orderedBy: t.orderedBy, requestedAt: t.createdAt,
+      values: Array.isArray(t.values) ? (t.values as any) : null, comment: t.comment,
+      resultedBy: staff(t.resultedBy), resultedAt: t.resultedAt, verifiedBy: staff(t.verifiedBy), verifiedAt: t.verifiedAt,
+    })),
+    imaging: reports.map((r) => {
+      const by = reporters.find((u) => u.id === r.reportedByUserId);
+      return {
+        examination: r.examination, modality: MODALITIES[r.modality], findings: r.findings, impression: r.impression,
+        requestedBy: r.requestedBy, requestedAt: r.createdAt, reportedAt: r.reportedAt,
+        reportedBy: r.reportedBy ? { name: r.reportedBy, role: by ? roleTitle(by.role) : 'Imaging' } : null,
+      };
+    }),
+    producedBy,
+  });
+  return { pdf, patientId };
 }

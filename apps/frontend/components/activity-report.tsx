@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
-import { Card } from '@/components/ui/card';
+import { Panel, Stat } from '@/components/report-parts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -71,7 +71,7 @@ export function ActivityReport() {
 
   return (
     <div className="space-y-6">
-      <Card className="p-4 sm:p-6">
+      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:border-slate-800 dark:bg-slate-900">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <div className="col-span-2 sm:col-span-1">
             <Label htmlFor="activity-period">Show</Label>
@@ -116,7 +116,7 @@ export function ActivityReport() {
             {message.text}
           </p>
         )}
-      </Card>
+      </div>
 
       {report && (
         <>
@@ -130,12 +130,7 @@ export function ActivityReport() {
               ['Inpatients in the ward', report.totals.inWard],
               ['Lab tests requested', report.totals.labTests],
               ['Imaging requested', report.totals.imaging],
-            ] as const).map(([label, value]) => (
-              <Card key={label} className="p-4">
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
-                <p className="mt-1 text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-200">{value.toLocaleString('en-US')}</p>
-              </Card>
-            ))}
+            ] as const).map(([label, value]) => <Stat key={label} label={label} value={value} />)}
           </div>
 
           <Section title={`${BY[choice.period]} by ${BY[choice.period].toLowerCase()}`} note="Outpatients: visits recorded. In the ward: inpatients there at any time in the period.">
@@ -186,11 +181,9 @@ export function ActivityReport() {
 
 function Section({ title, note, children }: { title: string; note: string; children: React.ReactNode }) {
   return (
-    <Card className="p-4 sm:p-6">
-      <h3 className="font-semibold text-slate-800 dark:text-slate-200">{title}</h3>
-      <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">{note}</p>
+    <Panel title={title} note={note}>
       <div className="-mx-2 overflow-x-auto">{children}</div>
-    </Card>
+    </Panel>
   );
 }
 

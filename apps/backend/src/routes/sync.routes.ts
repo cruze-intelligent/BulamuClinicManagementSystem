@@ -13,7 +13,7 @@ import { parseFee } from '../lib/invoices';
 import { sendRouteError } from '../lib/http-error';
 import { parseConsultationNotes } from '../lib/consultation-notes';
 import { sortDepartments } from '../lib/departments';
-import { imagingUnitFor, parseImagingRequest, REQUEST_ROLES } from '../lib/imaging';
+import { imagingUnitFor, parseImagingRequest, REQUEST_ROLES, requesterName } from '../lib/imaging';
 
 /**
  * A time a device recorded (when a record was made, when a patient arrived).
@@ -29,6 +29,18 @@ function deviceTime(value: unknown, now: Date = new Date()): Date {
 }
 
 const DEPENDENCY_WAIT_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * What each kind of change depends on comes first: a patient before their
+ * appointment, an appointment before its visit, a visit before the tests and
+ * imaging asked for at it. Within a kind, oldest first.
+ */
+const DEPENDENCY_RANK: Record<string, number> = { inventory: 0, patient: 0, patientAllergies: 1, appointment: 2, consultation: 3, labTest: 4, imagingRequest: 4, reproductiveHealth: 4 };
+export function inDependencyOrder<T extends { entity?: string; createdAt?: string }>(operations: T[]): T[] {
+  const rank = (op: T) => DEPENDENCY_RANK[op.entity ?? ''] ?? 5;
+  const time = (op: T) => new Date(op.createdAt ?? 0).getTime() || 0;
+  return operations.map((op, i) => ({ op, i })).sort((a, b) => rank(a.op) - rank(b.op) || time(a.op) - time(b.op) || a.i - b.i).map((x) => x.op);
+}
 
 /** What to tell staff about a change the server refused, from the logged reason. */
 export function syncRejectionReason(logged: string): string {
@@ -61,7 +73,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
     const done: string[] = [];
     const rejected: Array<{ mutationId: string; entity: string; recordId: string | null; reason: string }> = [];
 
-    for (const op of operations) {
+    for (const op of inDependencyOrder(operations)) {
       let rejection: string | null = null;
       const reject = (message: string) => {
         rejection = message;
@@ -410,6 +422,11 @@ export async function syncRoutes(fastify: FastifyInstance) {
             reject(`Rejected labTest mutation ${mutationId}: record belongs to another patient`);
             continue;
           }
+          // Asked for at a visit that has not reached the server yet: it waits for it.
+          if (!existing && payload.consultationId && !(await prisma.consultation.findFirst({ where: { id: payload.consultationId, patientId: patient.id }, select: { id: true } }))) {
+            reject(`Rejected labTest mutation ${mutationId}: visit out of scope`);
+            continue;
+          }
 
           if (action === 'delete') {
             if (!existing || existing.deletedAt) continue;
@@ -475,12 +492,17 @@ export async function syncRoutes(fastify: FastifyInstance) {
             record = existing;
           } else {
             const visit = payload.consultationId ? await prisma.consultation.findFirst({ where: { id: payload.consultationId, patientId: patient.id }, select: { id: true } }) : null;
+            // Asked for at a visit that has not reached the server yet: it waits for it, so the report reaches the visit.
+            if (payload.consultationId && !visit) {
+              reject(`Rejected imagingRequest mutation ${mutationId}: visit out of scope`);
+              continue;
+            }
             const requester = await prisma.user.findUnique({ where: { id: authUser.userId }, select: { name: true } });
             record = await prisma.imagingRequest.create({
               data: {
                 id: payload.id, ...parsed, clinicId: patient.clinicId, patientId: patient.id, consultationId: visit?.id ?? null,
                 departmentId: await imagingUnitFor(patient.clinicId, parsed.modality),
-                requestedBy: requester?.name ?? 'A clinician', requestedByUserId: authUser.userId,
+                requestedBy: requesterName(payload.requestedBy) ?? requester?.name ?? 'A clinician', requestedByUserId: authUser.userId,
                 createdAt: deviceTime(payload.createdAt),
               },
             });
@@ -703,7 +725,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
         }),
         // A short list, sent whole each time: the units, closed ones too (old visits name them).
         prisma.department.findMany({ where: { clinicId }, select: { id: true, code: true, name: true, isActive: true } }),
-        prisma.user.findUnique({ where: { id: getAuthUser(request).userId }, select: { departmentIds: true, extraRoles: true, canVerifyLab: true } }),
+        prisma.user.findUnique({ where: { id: getAuthUser(request).userId }, select: { departmentIds: true, extraRoles: true, canVerifyLab: true, hiddenSections: true } }),
       ]);
 
       return {
@@ -718,7 +740,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
         departments: sortDepartments(departments),
         myDepartmentIds: me?.departmentIds ?? [],
         // What else this person may do now, so their device shows it without signing in again.
-        me: { extraRoles: me?.extraRoles ?? [], canVerifyLab: me?.canVerifyLab ?? false },
+        me: { extraRoles: me?.extraRoles ?? [], canVerifyLab: me?.canVerifyLab ?? false, hiddenSections: me?.hiddenSections ?? [] },
       };
     } catch (error: any) {
       return sendRouteError(reply, error);

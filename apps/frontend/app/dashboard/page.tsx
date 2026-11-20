@@ -6,13 +6,17 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { PatientSearch } from '@/components/patient-search';
 import { useAuth } from '@/lib/useAuth';
+import { Stat } from '@/components/report-parts';
+import { ALWAYS_SHOWN, menuFor } from '@/lib/nav-items';
 import { useRouter } from 'next/navigation';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
+  // A tile for each part of Bulamu this person works in (their menu, less what is always there).
+  const sections = user ? menuFor([user.role, ...(Array.isArray(user.extraRoles) ? user.extraRoles : [])], Array.isArray(user.hiddenSections) ? user.hiddenSections : []).filter((item) => !ALWAYS_SHOWN.includes(item.path) && item.path !== '/sync-activity') : [];
   const router = useRouter();
 
   useEffect(() => {
@@ -44,7 +48,7 @@ export default function Dashboard() {
       const data = await response.json();
       if (data.success) {
         setStats(data.stats);
-        setAppointments(data.todayAppointments);
+        setAppointments(data.todayAppointments ?? []);
       }
     } catch (error) {
       console.error(error);
@@ -57,7 +61,7 @@ export default function Dashboard() {
   if (!stats) return <div className="p-8 text-slate-500 dark:text-slate-400">Unable to load dashboard data. Try refreshing.</div>;
 
   return (
-    <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen p-4 sm:p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
         
@@ -67,27 +71,11 @@ export default function Dashboard() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-4 mb-8 sm:grid-cols-4">
-          <Card className="p-6">
-            <h3 className="text-sm text-muted-foreground">Total Patients</h3>
-            <p className="text-3xl font-bold">{stats.totalPatients}</p>
-          </Card>
-          <Card className="p-6">
-            <h3 className="text-sm text-muted-foreground">Today's Appointments</h3>
-            <p className="text-3xl font-bold">{stats.todayAppointments}</p>
-          </Card>
-          {hasRole('ADMIN', 'DOCTOR') && (
-            <Card className="p-6">
-              <h3 className="text-sm text-muted-foreground">Bills still owed</h3>
-              <p className="text-3xl font-bold">{stats.pendingInvoices}</p>
-            </Card>
-          )}
-          {hasRole('ADMIN') && (
-            <Card className="p-6">
-              <h3 className="text-sm text-muted-foreground">Received from patients, all time</h3>
-              <p className="text-3xl font-bold">UGX {stats.totalRevenue.toLocaleString()}</p>
-            </Card>
-          )}
+        <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Stat label="Patients" value={stats.totalPatients} />
+          <Stat label="Today's appointments" value={stats.todayAppointments} />
+          {hasRole('ADMIN', 'DOCTOR') && <Stat label="Bills still owed" value={stats.pendingInvoices} />}
+          {hasRole('ADMIN') && <Stat label="Received from patients, all time (UGX)" value={Math.round(stats.totalRevenue)} tone="good" />}
         </div>
 
         {/* Quick Actions */}
@@ -112,11 +100,26 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* The parts of Bulamu this person works in */}
+        {sections.length > 0 && (
+          <section aria-labelledby="sections-title" className="mb-8">
+            <h2 id="sections-title" className="mb-3 text-xl font-bold">Your work</h2>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {sections.map((item) => (
+                <Link key={item.path} href={item.path} className="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-800 transition-colors hover:border-emerald-600 hover:text-emerald-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:text-emerald-400">
+                  <item.icon className="size-4 shrink-0 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+                  <span className="truncate">{item.name}</span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Today's Appointments */}
         <h2 className="text-xl font-bold mb-4">Today's Appointments</h2>
         <div className="space-y-3">
           {appointments.map((apt: any) => (
-            <Card key={apt.id} className="p-4 flex justify-between items-center">
+            <Card key={apt.id} className="flex-row items-center justify-between gap-3 p-4">
               <div>
                 <h3 className="font-semibold">{apt.patient.name}</h3>
                 <p className="text-sm text-muted-foreground">{apt.time} • Dr. {apt.doctor.name}</p>

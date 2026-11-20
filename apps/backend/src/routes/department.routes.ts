@@ -8,6 +8,9 @@ import { sendRouteError } from '../lib/http-error';
 import { eatDayRange } from '../lib/invoices';
 import { cleanUnitName, sortDepartments, standardUnit } from '../lib/departments';
 
+/** Always in everyone's menu, whatever the administrator leaves out. */
+const ALWAYS_SHOWN = ['/dashboard', '/notifications', '/help'];
+
 /**
  * The facility's units (departments / clinics) - General OPD, Dentistry,
  * Orthopaedics... The administrator sets them up and says who works in each;
@@ -127,11 +130,17 @@ export async function departmentRoutes(fastify: FastifyInstance) {
   fastify.put('/users/:id/duties', { preHandler: [requireRole('ADMIN')] }, async (request, reply) => {
     const authUser = getAuthUser(request);
     const { id } = request.params as { id: string };
-    const body = (request.body ?? {}) as { extraRoles?: unknown; canVerifyLab?: unknown };
+    const body = (request.body ?? {}) as { extraRoles?: unknown; canVerifyLab?: unknown; hiddenSections?: unknown };
     if (!Array.isArray(body.extraRoles) || body.extraRoles.some((r) => typeof r !== 'string' || !EXTRA_ROLES.includes(r as Role))) {
       return reply.status(400).send({ error: 'Choose the other roles from the list' });
     }
     if (body.canVerifyLab !== undefined && typeof body.canVerifyLab !== 'boolean') return reply.status(400).send({ error: 'Say whether they may verify lab results' });
+    // Menu paths ("/inventory"), at most 40; the dashboard, notifications and help always stay.
+    const hiddenSections = body.hiddenSections === undefined ? undefined
+      : Array.isArray(body.hiddenSections) && body.hiddenSections.length <= 40 && body.hiddenSections.every((p) => typeof p === 'string' && /^\/[a-z0-9/-]{1,40}$/.test(p))
+        ? [...new Set(body.hiddenSections as string[])].filter((p) => !ALWAYS_SHOWN.includes(p))
+        : null;
+    if (hiddenSections === null) return reply.status(400).send({ error: 'Choose the parts of Bulamu from the list' });
 
     const user = await prisma.user.findUnique({ where: { id }, select: { clinicId: true, role: true } });
     if (!user || user.clinicId !== authUser.clinicId) return reply.status(404).send({ error: 'Staff member not found' });
@@ -140,10 +149,10 @@ export async function departmentRoutes(fastify: FastifyInstance) {
     try {
       const updated = await prisma.user.update({
         where: { id },
-        data: { extraRoles, ...(body.canVerifyLab === undefined ? {} : { canVerifyLab: body.canVerifyLab }) },
-        select: { id: true, extraRoles: true, canVerifyLab: true },
+        data: { extraRoles, ...(body.canVerifyLab === undefined ? {} : { canVerifyLab: body.canVerifyLab }), ...(hiddenSections === undefined ? {} : { hiddenSections }) },
+        select: { id: true, extraRoles: true, canVerifyLab: true, hiddenSections: true },
       });
-      await recordAudit({ entity: 'User', recordId: id, clinicId: authUser.clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { extraRoles: updated.extraRoles, canVerifyLab: updated.canVerifyLab } });
+      await recordAudit({ entity: 'User', recordId: id, clinicId: authUser.clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { extraRoles: updated.extraRoles, canVerifyLab: updated.canVerifyLab, hiddenSections: updated.hiddenSections } });
       return { success: true, user: updated };
     } catch (error: any) {
       return sendRouteError(reply, error);

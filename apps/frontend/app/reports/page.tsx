@@ -1,400 +1,259 @@
 'use client';
 
-import { useState } from 'react';
-import { Card } from '@/components/ui/card';
+import { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, Download, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import { getCurrentClinicId } from '@/lib/local-first';
 import { useAuth } from '@/lib/useAuth';
-import { AlertTriangle, Download, RefreshCw } from 'lucide-react';
-import { Select } from '@/components/ui/select';
 import { downloadWithAuth, reportReadyMessage } from '@/lib/download';
 import { ActivityReport } from '@/components/activity-report';
+import { CountTable, Panel, Stat } from '@/components/report-parts';
+
+type Tab = 'activity' | 'monthly' | 'hmis105';
+const TABS: Array<{ value: Tab; label: string }> = [
+  { value: 'activity', label: 'Daily & weekly' },
+  { value: 'monthly', label: 'Monthly summary' },
+  { value: 'hmis105', label: 'HMIS 105 (national)' },
+];
+const API = process.env.NEXT_PUBLIC_API_URL;
+const MONTHS = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, i, 1)).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' }));
+const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
+// "DEPO_PROVERA" reads "Depo provera"; a short abbreviation (ANC, HIV) stays as it is.
+const label = (text: string) => (/^[A-Z]{2,4}$/.test(text) ? text : text.replaceAll('_', ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()));
+
+type Monthly = {
+  totalPatients: number; totalAppointments: number; totalConsultations: number; revenue: number;
+  topDiagnoses: Array<{ diagnosis: string; icd10Code: string | null; _count: { diagnosis: number } }>;
+  byUnit?: Array<{ name: string; appointments: number; visits: number }>;
+};
 
 export default function ReportsPage() {
   const { hasRole } = useAuth();
-  const [activeTab, setActiveTab] = useState<'activity' | 'overview' | 'hmis105'>('activity');
-  const [report, setReport] = useState<any>(null);
-  const [hmisReport, setHmisReport] = useState<any>(null);
+  const [tab, setTab] = useState<Tab>('activity');
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [monthly, setMonthly] = useState<Monthly | null>(null);
+  const [hmis, setHmis] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [pushingDhis2, setPushingDhis2] = useState(false);
+  const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [pdfNotice, setPdfNotice] = useState('');
+  const [pushing, setPushing] = useState(false);
+  const thisYear = new Date().getFullYear();
 
-  // The month's report as a PDF under the facility's letterhead; the server also emails a copy to whoever made it.
+  // The month's figures load as soon as the tab or the month is chosen.
+  const load = useCallback(async () => {
+    if (tab === 'activity') return;
+    setLoading(true);
+    setMessage(null);
+    const path = tab === 'monthly' ? 'monthly' : 'hmis-105';
+    try {
+      const res = await fetch(`${API}/reports/${path}/${getCurrentClinicId()}?month=${month}&year=${year}`, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) throw new Error(data.error || 'The report could not be made - please try again.');
+      if (tab === 'monthly') setMonthly(data.report);
+      else setHmis(data);
+    } catch (error: any) {
+      setMessage({ tone: 'error', text: navigator.onLine ? error.message : 'Reports need a connection - they are counted from the facility\'s records on the server.' });
+    } finally {
+      setLoading(false);
+    }
+  }, [tab, month, year]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
   const downloadMonthlyPdf = async () => {
     setPdfBusy(true);
-    setPdfNotice('');
+    setMessage(null);
     try {
-      const { emailedTo } = await downloadWithAuth(
-        `${process.env.NEXT_PUBLIC_API_URL}/reports/monthly/${getCurrentClinicId()}/pdf?month=${month}&year=${year}`,
-        localStorage.getItem('token'),
-        `monthly-report-${year}-${String(month).padStart(2, '0')}.pdf`,
-      );
-      setPdfNotice(reportReadyMessage('Monthly report', emailedTo));
+      const { emailedTo } = await downloadWithAuth(`${API}/reports/monthly/${getCurrentClinicId()}/pdf?month=${month}&year=${year}`, localStorage.getItem('token'), `monthly-report-${year}-${String(month).padStart(2, '0')}.pdf`);
+      setMessage({ tone: 'ok', text: reportReadyMessage('Monthly report', emailedTo) });
     } catch (error: any) {
-      setPdfNotice(error.message || 'The report could not be prepared - please try again.');
+      setMessage({ tone: 'error', text: error.message || 'The report could not be prepared - please try again.' });
     } finally {
       setPdfBusy(false);
     }
   };
 
   const pushToDhis2 = async () => {
-    setPushingDhis2(true);
-    const token = localStorage.getItem('token');
-    const clinicId = getCurrentClinicId();
-
+    setPushing(true);
+    setMessage(null);
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/reports/hmis-105/${clinicId}/push-dhis2?month=${month}&year=${year}`,
-        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
-      );
-      const data = await response.json();
-      if (data.success) {
-        alert('Pushed to DHIS2 successfully.' + (data.unmappedFigures?.length ? ` ${data.unmappedFigures.length} figures have no dataElement mapping configured yet.` : ''));
-      } else {
-        alert(`DHIS2 push failed: ${data.error || 'Unknown error'}`);
-      }
-    } catch (err) {
-      alert("We couldn't reach Bulamu to send the report to DHIS2. Please check your connection and try again.");
+      const res = await fetch(`${API}/reports/hmis-105/${getCurrentClinicId()}/push-dhis2?month=${month}&year=${year}`, { method: 'POST', headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!data.success) throw new Error(`DHIS2 did not accept it: ${data.error || 'unknown error'}`);
+      setMessage({ tone: 'ok', text: `Sent to DHIS2.${data.unmappedFigures?.length ? ` ${data.unmappedFigures.length} figures have no DHIS2 data element set up yet.` : ''}` });
+    } catch (error: any) {
+      setMessage({ tone: 'error', text: navigator.onLine ? error.message : 'Sending to DHIS2 needs a connection.' });
     } finally {
-      setPushingDhis2(false);
-    }
-  };
-
-  const fetchOverviewReport = async () => {
-    setLoading(true);
-    const token = localStorage.getItem('token');
-    const clinicId = getCurrentClinicId();
-
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/reports/monthly/${clinicId}?month=${month}&year=${year}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      const data = await response.json();
-      if (data.success) setReport(data.report);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchHmis105Report = async () => {
-    setLoading(true);
-    const token = localStorage.getItem('token');
-    const clinicId = getCurrentClinicId();
-
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/reports/hmis-105/${clinicId}?month=${month}&year=${year}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      const data = await response.json();
-      if (data.success) setHmisReport(data);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+      setPushing(false);
     }
   };
 
   const downloadFhirExport = async () => {
-    const token = localStorage.getItem('token');
-    const clinicId = getCurrentClinicId();
-
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/reports/fhir/patients/${clinicId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
+      const res = await fetch(`${API}/reports/fhir/patients/${getCurrentClinicId()}`, { headers: authHeaders() });
+      const blob = new Blob([JSON.stringify(await res.json(), null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `fhir-patients-bundle.json`;
+      a.download = 'fhir-patients-bundle.json';
       a.click();
-    } catch (err) {
-      alert('The FHIR export could not be downloaded. Please try again.');
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      setMessage({ tone: 'error', text: 'The FHIR export could not be downloaded - please try again.' });
     }
   };
 
   return (
-    <div className="min-h-screen p-4 sm:p-8 bg-slate-50 dark:bg-slate-950">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Reports & Surveillance</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              National Health Data Aggregation & Interoperability (HMIS 105 / FHIR)
-            </p>
-          </div>
-          <Button variant="outline" onClick={downloadFhirExport}>
-            <Download className="size-4" aria-hidden="true" />
-            Export FHIR R4 Bundle
-          </Button>
-        </div>
+    <div className="min-h-screen bg-slate-50 p-4 sm:p-8 dark:bg-slate-950">
+      <div className="mx-auto max-w-5xl">
+        <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-200">Reports</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Your facility&apos;s figures: day by day and week by week, each month, and the national HMIS 105.</p>
 
-        {/* Tab Selection */}
-        <div className="flex flex-wrap gap-2 mb-6 border-b border-slate-200 dark:border-slate-800 pb-2">
-          <Button
-            variant={activeTab === 'activity' ? 'default' : 'ghost'}
-            onClick={() => setActiveTab('activity')}
-          >
-            Daily & weekly
-          </Button>
-          <Button
-            variant={activeTab === 'overview' ? 'default' : 'ghost'}
-            onClick={() => setActiveTab('overview')}
-          >
-            Facility Overview
-          </Button>
-          <Button
-            variant={activeTab === 'hmis105' ? 'default' : 'ghost'}
-            onClick={() => {
-              setActiveTab('hmis105');
-              fetchHmis105Report();
-            }}
-          >
-            Uganda HMIS 105 Monthly Report
-          </Button>
-        </div>
-
-        {activeTab === 'activity' && <ActivityReport />}
-
-        {/* Control Card */}
-        {activeTab !== 'activity' && <Card className="p-6 mb-6">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div>
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Reporting Month</label>
-              <Select className="mt-1"
-                value={month}
-                onChange={(e) => setMonth(Number(e.target.value))}
-              >
-                {[...Array(12)].map((_, i) => (
-                  <option key={i} value={i + 1}>
-                    {new Date(0, i).toLocaleString('default', { month: 'long' })}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Year</label>
-              <input
-                type="number"
-                className="w-full p-2 border border-slate-300 dark:border-slate-700 rounded mt-1 bg-white dark:bg-slate-900"
-                value={year}
-                onChange={(e) => setYear(Number(e.target.value))}
-              />
-            </div>
-            <Button
-              onClick={activeTab === 'overview' ? fetchOverviewReport : fetchHmis105Report}
-              disabled={loading}
+        <div role="tablist" aria-label="Reports" className="mb-6 mt-5 flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800">
+          {TABS.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.value}
+              onClick={() => { setTab(t.value); setMessage(null); }}
+              className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${tab === t.value ? 'border-emerald-700 text-emerald-800 dark:border-emerald-400 dark:text-emerald-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'}`}
             >
-              {loading ? 'Generating...' : 'Generate Report'}
-            </Button>
-            {activeTab === 'overview' && hasRole('ADMIN', 'DOCTOR') && (
-              <Button variant="outline" onClick={downloadMonthlyPdf} disabled={pdfBusy}>
-                <Download className="size-4" aria-hidden="true" />{pdfBusy ? 'Preparing...' : 'Download PDF (and email me a copy)'}
-              </Button>
-            )}
-          </div>
-          {pdfNotice && <p role="status" className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{pdfNotice}</p>}
-        </Card>}
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-        {/* Overview Tab Content */}
-        {activeTab === 'overview' && report && (
-          <>
-            <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2">
-              <Card className="p-6">
-                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">New Patients Registered</h3>
-                <p className="text-3xl font-bold text-slate-800 dark:text-slate-200 mt-2">{report.totalPatients}</p>
-              </Card>
-              <Card className="p-6">
-                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">Appointments Scheduled</h3>
-                <p className="text-3xl font-bold text-slate-800 dark:text-slate-200 mt-2">{report.totalAppointments}</p>
-              </Card>
-              <Card className="p-6">
-                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">Consultations</h3>
-                <p className="text-3xl font-bold text-slate-800 dark:text-slate-200 mt-2">{report.totalConsultations}</p>
-              </Card>
-              <Card className="p-6">
-                <h3 className="text-sm text-slate-500 dark:text-slate-400 font-medium">Facility Revenue</h3>
-                <p className="text-3xl font-bold text-emerald-600 mt-2">
-                  UGX {report.revenue.toLocaleString()}
-                </p>
-              </Card>
-            </div>
+        {tab === 'activity' && <ActivityReport />}
 
-            <Card className="p-6">
-              <h2 className="text-xl font-bold mb-4 text-slate-800 dark:text-slate-200">Top Diagnoses</h2>
-              <div className="space-y-2">
-                {report.topDiagnoses.map((item: any, index: number) => (
-                  <div key={index} className="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800 rounded-md">
-                    <span className="font-medium text-slate-800 dark:text-slate-200">
-                      {item.icd10Code && (
-                        <span className="mr-2 rounded bg-slate-200 px-1.5 py-0.5 font-mono text-xs font-semibold text-slate-800 dark:bg-slate-700 dark:text-slate-100">{item.icd10Code}</span>
-                      )}
-                      {item.diagnosis}
-                    </span>
-                    <span className="text-sm text-slate-500 dark:text-slate-400 font-semibold">{item._count.diagnosis} cases</span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {report.byUnit?.length > 0 && (
-              <Card className="mt-6 p-6" data-testid="visits-by-unit">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-slate-200">Visits by unit</h2>
-                <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">Booked: appointments in the unit this month. Seen: visits recorded there.</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-left text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                        <th scope="col" className="py-2 pr-4 font-medium">Unit</th>
-                        <th scope="col" className="py-2 pr-4 text-right font-medium">Booked</th>
-                        <th scope="col" className="py-2 text-right font-medium">Seen</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.byUnit.map((row: { name: string; appointments: number; visits: number }) => (
-                        <tr key={row.name} className="border-b border-slate-100 last:border-0 dark:border-slate-800/60">
-                          <td className="py-2 pr-4 font-medium text-slate-800 dark:text-slate-200">{row.name}</td>
-                          <td className="py-2 pr-4 text-right tabular-nums">{row.appointments}</td>
-                          <td className="py-2 text-right tabular-nums">{row.visits}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            )}
-          </>
-        )}
-
-        {/* HMIS 105 Tab Content */}
-        {activeTab === 'hmis105' && hmisReport && (
-          <Card className="p-6">
-            <div className="border-b pb-4 mb-6 flex justify-between items-start">
+        {tab !== 'activity' && (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <div>
-                <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
-                  Ministry of Health Uganda Standard
-                </span>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mt-2">{hmisReport.reportTitle}</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Facility: {hmisReport.facilityName} | Period: {hmisReport.period}
-                </p>
+                <Label htmlFor="report-month">Month</Label>
+                <Select id="report-month" className="mt-1 min-w-[10rem]" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+                  {MONTHS.map((name, i) => <option key={name} value={i + 1}>{name}</option>)}
+                </Select>
               </div>
-              {hasRole('ADMIN', 'SUPER_ADMIN') && (
-                <Button variant="outline" onClick={pushToDhis2} disabled={pushingDhis2}>
-                  <RefreshCw className="size-4" aria-hidden="true" />
-                  {pushingDhis2 ? 'Pushing...' : 'Push to DHIS2'}
+              <div>
+                <Label htmlFor="report-year">Year</Label>
+                <Select id="report-year" className="mt-1" value={year} onChange={(e) => setYear(Number(e.target.value))}>
+                  {Array.from({ length: 4 }, (_, i) => thisYear - i).map((y) => <option key={y} value={y}>{y}</option>)}
+                </Select>
+              </div>
+              <Button variant="outline" onClick={() => void load()} disabled={loading}>
+                {loading ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <RefreshCw className="size-4" aria-hidden="true" />}Refresh
+              </Button>
+              {tab === 'monthly' && hasRole('ADMIN', 'DOCTOR') && (
+                <Button onClick={downloadMonthlyPdf} disabled={pdfBusy}>
+                  <Download className="size-4" aria-hidden="true" />{pdfBusy ? 'Preparing...' : 'Download PDF (and email me a copy)'}
                 </Button>
               )}
             </div>
 
-            <div className="space-y-6">
-              <div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 1: Outpatient Attendance Summary</h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-center">
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Total Outpatient Visits</p>
-                    <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{hmisReport.section1_attendance.totalOutpatients}</p>
-                  </div>
-                  <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-center">
-                    <p className="text-xs text-slate-500 dark:text-slate-400">New Attenders</p>
-                    <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{hmisReport.section1_attendance.newAttenders}</p>
-                  </div>
-                  <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg text-center">
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Re-attenders</p>
-                    <p className="text-2xl font-bold text-slate-800 dark:text-slate-200">{hmisReport.section1_attendance.reAttenders}</p>
-                  </div>
+            {message && (
+              <p role={message.tone === 'error' ? 'alert' : 'status'} className={`rounded-md border px-3 py-2 text-sm ${message.tone === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200' : 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200'}`}>
+                {message.text}
+              </p>
+            )}
+
+            {loading && !(tab === 'monthly' ? monthly : hmis) && <p className="text-sm text-slate-500"><Loader2 className="mr-2 inline size-4 animate-spin" aria-hidden="true" />Counting...</p>}
+
+            {tab === 'monthly' && monthly && (
+              <>
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <Stat label="Patients seen (visits)" value={monthly.totalConsultations} />
+                  <Stat label="New patients registered" value={monthly.totalPatients} />
+                  <Stat label="Appointments booked" value={monthly.totalAppointments} />
+                  <Stat label="Money received (UGX)" value={Math.round(monthly.revenue)} tone="good" />
                 </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 2: Epidemic-Prone Disease Surveillance</h3>
-                <div className="space-y-2">
-                  {hmisReport.section2_epidemicSurveillance.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between items-center p-3 border rounded-md">
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{item.condition}</span>
-                      <span className="text-sm font-bold text-slate-900 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded">
-                        {item.cases} cases
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 3: Essential Medicines Availability</h3>
-                <div className="p-4 border rounded-lg bg-amber-50/50">
-                  <p className="text-sm text-slate-700 dark:text-slate-300">
-                    Tracked Medicines: <strong>{hmisReport.section3_essentialMedicines.totalTracked}</strong> |
-                    Stock-Out Alerts: <strong className="text-rose-600">{hmisReport.section3_essentialMedicines.stockOutAlerts}</strong>
-                  </p>
-                  {hmisReport.section3_essentialMedicines.lowStockList?.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      {hmisReport.section3_essentialMedicines.lowStockList.map((m: any, i: number) => (
-                        <div key={i} className="flex items-center gap-1.5 text-xs text-rose-800 dark:text-rose-400">
-                          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
-                          {m.name}: {m.currentQuantity} remaining (reorder level: {m.reorderLevel})
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 4: Family Planning</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
-                  Total records this period: <strong>{hmisReport.section4_familyPlanning.totalRecorded}</strong>
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(hmisReport.section4_familyPlanning.byMethod).map(([method, count]: any) => (
-                    <span key={method} className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{method}: {count}</span>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 5: Maternal Health</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  Pregnant clients: <strong>{hmisReport.section5_maternalHealth.pregnantClients}</strong> | Postpartum: <strong>{hmisReport.section5_maternalHealth.postpartumClients}</strong>
-                </p>
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 6: Other Tracked Services</h3>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(hmisReport.section6_services.byTag).map(([tag, count]: any) => (
-                    <span key={tag} className="text-xs bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">{tag.replaceAll('_', ' ')}: {count}</span>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Section 7: Referrals Out</h3>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">
-                  Total referred: <strong>{hmisReport.section7_referrals.totalReferred}</strong>
-                </p>
-                {hmisReport.section7_referrals.referrals?.length > 0 && (
-                  <div className="space-y-1">
-                    {hmisReport.section7_referrals.referrals.map((r: any, i: number) => (
-                      <div key={i} className="text-xs text-slate-600 dark:text-slate-400">
-                        → {r.toFacility}: {r.reason} ({r.status})
-                      </div>
-                    ))}
-                  </div>
+                <Panel title="Most common diagnoses" note="Primary diagnoses of the month's visits, counted by ICD-10 code.">
+                  <CountTable
+                    head={['Diagnosis', 'ICD-10', 'Visits']}
+                    rows={monthly.topDiagnoses.map((d) => [d.diagnosis, d.icd10Code ?? '-', d._count.diagnosis])}
+                    empty="No diagnoses recorded this month."
+                  />
+                </Panel>
+                {!!monthly.byUnit?.length && (
+                  <Panel title="Visits by unit" note="Booked: appointments in the unit this month. Seen: visits recorded there.">
+                    <div data-testid="visits-by-unit"><CountTable head={['Unit', 'Booked', 'Seen']} rows={monthly.byUnit.map((u) => [u.name, u.appointments, u.visits])} /></div>
+                  </Panel>
                 )}
-              </div>
-            </div>
-          </Card>
+              </>
+            )}
+
+            {tab === 'hmis105' && hmis && (
+              <>
+                <Panel
+                  title={hmis.reportTitle}
+                  note={`${hmis.facilityName} - ${MONTHS[month - 1]} ${year}. The Ministry of Health outpatient monthly report.`}
+                  action={hasRole('ADMIN', 'SUPER_ADMIN') ? (
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={pushToDhis2} disabled={pushing}><RefreshCw className="size-4" aria-hidden="true" />{pushing ? 'Sending...' : 'Send to DHIS2'}</Button>
+                      <Button size="sm" variant="outline" onClick={downloadFhirExport}><Download className="size-4" aria-hidden="true" />FHIR export</Button>
+                    </div>
+                  ) : undefined}
+                >
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <Stat label="Outpatient visits" value={hmis.section1_attendance.totalOutpatients} />
+                    <Stat label="New attendances" value={hmis.section1_attendance.newAttenders} />
+                    <Stat label="Re-attendances" value={hmis.section1_attendance.reAttenders} />
+                  </div>
+                </Panel>
+                {hmis.section1_attendance.byAgeCohortAndGender && (
+                  <Panel title="1. Outpatient attendance by age and sex" note="Patients with a date of birth recorded.">
+                    <CountTable
+                      head={['Age group', 'Female', 'Male', 'Not recorded', 'Total']}
+                      rows={Object.entries(hmis.section1_attendance.byAgeCohortAndGender as Record<string, { male: number; female: number; other: number }>).map(([cohort, c]) => [cohort, c.female, c.male, c.other, c.female + c.male + c.other])}
+                      minWidth="24rem"
+                    />
+                  </Panel>
+                )}
+                <Panel title="2. Epidemic-prone diseases" note="Cases among the month's visits.">
+                  <CountTable head={['Condition', 'Cases']} rows={hmis.section2_epidemicSurveillance.map((r: { condition: string; cases: number }) => [r.condition, r.cases])} />
+                </Panel>
+                <Panel title="3. Essential medicines">
+                  <div className="grid grid-cols-2 gap-3">
+                    <Stat label="Medicines tracked" value={hmis.section3_essentialMedicines.totalTracked} />
+                    <Stat label="Low or out of stock" value={hmis.section3_essentialMedicines.stockOutAlerts} tone={hmis.section3_essentialMedicines.stockOutAlerts ? 'warn' : undefined} />
+                  </div>
+                  {hmis.section3_essentialMedicines.lowStockList?.length > 0 && (
+                    <ul className="mt-3 space-y-1">
+                      {hmis.section3_essentialMedicines.lowStockList.map((m: { name: string; currentQuantity: number; reorderLevel: number }) => (
+                        <li key={m.name} className="flex items-start gap-1.5 text-sm text-rose-800 dark:text-rose-300">
+                          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />{m.name}: {m.currentQuantity} left (reorder at {m.reorderLevel})
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Panel>
+                <div className="grid gap-5 md:grid-cols-2">
+                  <Panel title="4. Family planning" note={`${hmis.section4_familyPlanning.totalRecorded} records this month.`}>
+                    <CountTable head={['Method', 'Clients']} rows={Object.entries(hmis.section4_familyPlanning.byMethod as Record<string, number>).map(([m, n]) => [label(m), n])} empty="None recorded this month." />
+                  </Panel>
+                  <Panel title="5. Maternal health">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Stat label="Pregnant clients" value={hmis.section5_maternalHealth.pregnantClients} />
+                      <Stat label="Postpartum clients" value={hmis.section5_maternalHealth.postpartumClients} />
+                    </div>
+                  </Panel>
+                </div>
+                <div className="grid gap-5 md:grid-cols-2">
+                  <Panel title="6. Other services">
+                    <CountTable head={['Service', 'Visits']} rows={Object.entries(hmis.section6_services.byTag as Record<string, number>).map(([t, n]) => [label(t), n])} empty="None recorded this month." />
+                  </Panel>
+                  <Panel title="7. Referrals out" note={`${hmis.section7_referrals.totalReferred} referred this month.`}>
+                    <CountTable head={['To', 'Reason', 'Status']} rows={(hmis.section7_referrals.referrals ?? []).map((r: { toFacility: string; reason: string; status: string }) => [r.toFacility, r.reason, label(r.status)])} empty="No referrals out this month." />
+                  </Panel>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
     </div>

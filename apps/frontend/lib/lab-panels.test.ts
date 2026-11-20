@@ -25,10 +25,13 @@ describe('lab results entered value by value', () => {
 
   it("fills in the patient's reference ranges, by sex where they differ", () => {
     const cbc = labPanelFor('Complete blood count (CBC)')!;
-    const hb = (sex: string) => blankValues(cbc, sex).find((v) => v.name === 'Haemoglobin (HGB)')!;
-    expect([hb('MALE').low, hb('MALE').high]).toEqual([13, 17]);
-    expect([hb('FEMALE').low, hb('FEMALE').high]).toEqual([12, 15.5]);
-    expect(blankValues(cbc, 'FEMALE').find((v) => v.name === 'WBC')).toMatchObject({ low: 4, high: 10, unit: 'x10^9/L', value: '' });
+    // The facility's 3-part analyser: its units and ranges.
+    const hb = (sex: string) => blankValues(cbc, sex).find((v) => v.name === 'HGB')!;
+    expect([hb('MALE').low, hb('MALE').high]).toEqual([13, 17.5]);
+    expect([hb('FEMALE').low, hb('FEMALE').high]).toEqual([11.5, 15]);
+    expect(blankValues(cbc, 'FEMALE').find((v) => v.name === 'WBC')).toMatchObject({ low: 3.5, high: 9.5, unit: '10^3/uL', value: '' });
+    expect(blankValues(cbc, 'FEMALE').find((v) => v.name === 'PLT')).toMatchObject({ low: 125, high: 350 });
+    expect(cbc.parameters.map((p) => p.name).slice(0, 7)).toEqual(['WBC', 'Lym%', 'Gran%', 'Mid%', 'Lym#', 'Gran#', 'Mid#']);
   });
 
   it('flags a value High or Low against its range, and a word reading that is not the normal one', () => {
