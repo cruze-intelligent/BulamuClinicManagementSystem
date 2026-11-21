@@ -30,22 +30,27 @@ export default function PatientsPage() {
     const localData = await listLocalPatients(clinicId);
     setPatients(localData);
     setLoading(false);
+  };
 
-    // Refresh from server in background if online
-    if (navigator.onLine) {
-      try {
-        const remoteData = await refreshPatientsFromServer(clinicId);
-        setPatients(remoteData);
-      } catch (err) {
-        console.warn('Network fetch failed, relying on local records:', err);
-      }
+  // The server's list when the page opens and when the connection returns - not on every
+  // change here: saving it is a change, and the page used to ask again without end.
+  const refreshFromServer = async () => {
+    const clinicId = getCurrentClinicId();
+    if (!clinicId || !navigator.onLine) return;
+    try {
+      await refreshPatientsFromServer(clinicId);
+    } catch (err) {
+      console.warn('Network fetch failed, relying on local records:', err);
     }
   };
 
   useEffect(() => {
     loadData();
+    void refreshFromServer();
     const unsubscribe = subscribeToLocalChanges(loadData);
-    return () => unsubscribe();
+    const online = () => void refreshFromServer();
+    window.addEventListener('online', online);
+    return () => { unsubscribe(); window.removeEventListener('online', online); };
   }, []);
 
   // By name, phone or Patient ID ("42" or "00042"), on this device - so it works offline too.

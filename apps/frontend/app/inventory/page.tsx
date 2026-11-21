@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Ban, ClipboardCheck, History, Minus, PackagePlus, Pencil, Plus, Search, XCircle } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,19 +36,28 @@ export default function InventoryPage() {
   const [panel, setPanel] = useState<{ item: StockItem; mode: StockMode } | null>(null);
   const [notice, setNotice] = useState('');
 
+  // When something was last changed from this page: a stock list that left the server before it is out of date.
+  const changedAt = useRef(0);
+
+  // What this device holds. Shown again on every change here or from a sync.
   const loadInventory = useCallback(async () => {
     const clinicId = getCurrentClinicId();
     if (!clinicId) return;
     setMedicines(await listLocalInventory(clinicId));
     setLoading(false);
-    if (!navigator.onLine) return;
+  }, []);
+
+  // The server's list, when the page opens and when the connection comes back. Not on every
+  // change: saving the list is a change, and the page used to ask again and again without end -
+  // and a list asked for before an edit, arriving after it, put the old price back.
+  const refreshInventory = useCallback(async () => {
+    const clinicId = getCurrentClinicId();
+    if (!clinicId || !navigator.onLine) return;
+    const askedAt = Date.now();
     try {
       const res = await fetch(`${API}/inventory/${clinicId}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
       const data = await res.json();
-      if (data.success && Array.isArray(data.medicines)) {
-        await replaceInventory(clinicId, data.medicines);
-        setMedicines(await listLocalInventory(clinicId));
-      }
+      if (data.success && Array.isArray(data.medicines) && changedAt.current < askedAt) await replaceInventory(clinicId, data.medicines);
     } catch (err) {
       console.warn('Inventory fetch failed, using local stock:', err);
     }
@@ -56,9 +65,12 @@ export default function InventoryPage() {
 
   useEffect(() => {
     void loadInventory();
+    void refreshInventory();
     const unsubscribe = subscribeToLocalChanges(() => void loadInventory());
-    return () => unsubscribe();
-  }, [loadInventory]);
+    const online = () => void refreshInventory();
+    window.addEventListener('online', online);
+    return () => { unsubscribe(); window.removeEventListener('online', online); };
+  }, [loadInventory, refreshInventory]);
 
   const addMedicine = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,6 +107,7 @@ export default function InventoryPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'The item could not be discontinued');
+      changedAt.current = Date.now();
       await cacheInventory([{ ...item, deletedAt: new Date().toISOString() }]);
       setNotice(`${item.name} is off the stock list.`);
     } catch (error: any) {
@@ -261,8 +274,8 @@ export default function InventoryPage() {
         <StockPanel
           item={panel.item} mode={panel.mode} canChange={canChange} onClose={() => setPanel(null)}
           onChanged={async (medicine) => {
+            changedAt.current = Date.now();
             await cacheInventory([medicine as LocalMedicine]);
-            void loadInventory();
           }}
         />
       )}

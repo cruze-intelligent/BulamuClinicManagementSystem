@@ -132,8 +132,13 @@ async function finishDocument(doc: PDFKit.PDFDocument, options: SampleOption = {
     const textWidth = doc.page.width - 50 - textX;
     if (qr) doc.image(qr, 50, topY, { width: qrSize, height: qrSize });
     // Bulamu, and its tagline in a serif italic; then where it comes from, who produced this copy, and the page.
-    doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL).text('Bulamu', textX, topY - 1, { lineBreak: false, continued: true })
-      .font(taglineFont(doc)).fontSize(10.5).fillColor(BRAND_TEAL_DARK).text('   Transforming patient care.', { lineBreak: false });
+    // Both on one baseline: drawn from the top of the line, the serif sat lower than the name.
+    const baseline = topY + 8;
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL);
+    const nameWidth = doc.widthOfString('Bulamu');
+    doc.text('Bulamu', textX, baseline, { lineBreak: false, baseline: 'alphabetic' });
+    doc.font(taglineFont(doc)).fontSize(11).fillColor(BRAND_TEAL_DARK)
+      .text('Transforming patient care.', textX + nameWidth + 7, baseline, { lineBreak: false, baseline: 'alphabetic' });
     doc
       .font('Helvetica')
       .fontSize(7.5)
@@ -590,6 +595,9 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
   return done;
 }
 
+/** A blood count's cell lines: white cells, red cells, platelets. */
+const isCellLine = (name: string) => /^(WBC|RBC|PLT)$/i.test(name.trim());
+
 const labReference = (v: { low: number | null; high: number | null; normal: string | null }) =>
   v.low !== null && v.high !== null ? `(${v.low} - ${v.high})` : v.high !== null ? `(< ${v.high})` : v.low !== null ? `(> ${v.low})` : v.normal ?? '';
 
@@ -735,20 +743,25 @@ export async function generateLabResultsPdf(input: LabResultsPdfInput): Promise<
         doc.y = y + 10;
       };
       header();
-      for (const v of test.values) {
+      test.values.forEach((v, index) => {
         if (doc.y > pageEnd()) {
           continuePage();
           header();
         }
+        // The cell lines of a blood count (WBC, RBC, PLT) stand out, as on the analyser's
+        // printout, each starting its group: the eye finds its place along the rows.
+        const cellLine = isCellLine(v.name);
+        if (cellLine && index > 0) doc.y += 3;
         const y = doc.y;
         const flagged = !!v.flag;
         const cells = [v.name, v.value, flagWord(v.flag) || (v.low !== null || v.high !== null || v.normal ? 'Normal' : ''), labReference(v), v.unit ?? ''];
         cells.forEach((cell, i) => {
-          const bold = flagged && (i === 1 || i === 2);
-          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor(bold ? '#b91c1c' : i === 2 ? MUTED : INK).text(cell, cols[i].x, y, { width: cols[i].w - 4, lineBreak: false, ellipsis: true });
+          const red = flagged && (i === 1 || i === 2);
+          const bold = red || (cellLine && i !== 2);
+          doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor(red ? '#b91c1c' : i === 2 ? MUTED : INK).text(cell, cols[i].x, y, { width: cols[i].w - 4, lineBreak: false, ellipsis: true });
         });
         doc.y = y + 10.2;
-      }
+      });
       if (test.comment) doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(INK).text(`Comment: ${test.comment}`, L, doc.y + 2, { width: W });
     } else {
       doc.font('Helvetica').fontSize(9.5).fillColor(INK).text(test.results.trim(), L, doc.y, { width: W });

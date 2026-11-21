@@ -175,6 +175,9 @@ export const LAB_PANELS: LabPanel[] = [
 ];
 
 /** The template for a test, by its name as the lab list writes it. */
+/** A blood count's cell lines (white cells, red cells, platelets): shown in bold, as on the analyser's printout. */
+export const isCellLine = (name: string) => /^(WBC|RBC|PLT)$/i.test(name.trim());
+
 export function labPanelFor(testName: string): LabPanel | undefined {
   const wanted = testName.trim().toLowerCase();
   return LAB_PANELS.find((p) => p.test.toLowerCase() === wanted);

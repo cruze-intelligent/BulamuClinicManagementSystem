@@ -1,7 +1,7 @@
 'use client';
 
 import { Input } from '@/components/ui/input';
-import { FLAG_WORDS, flagFor, referenceText, type LabValue } from '@/lib/lab-panels';
+import { FLAG_WORDS, flagFor, isCellLine, referenceText, type LabValue } from '@/lib/lab-panels';
 
 const FLAG_STYLE = 'font-semibold text-red-700 dark:text-red-400';
 
@@ -23,7 +23,7 @@ export function LabValuesForm({ idPrefix, values, onChange }: { idPrefix: string
         const id = `${idPrefix}-${i}`;
         return (
           <div key={v.name} className="grid grid-cols-12 items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5 dark:bg-slate-800/50">
-            <label htmlFor={id} className="col-span-12 text-sm font-medium text-slate-800 sm:col-span-4 dark:text-slate-200">
+            <label htmlFor={id} className={`col-span-12 text-sm text-slate-800 sm:col-span-4 dark:text-slate-200 ${isCellLine(v.name) ? 'font-bold' : 'font-medium'}`}>
               {v.name}{v.unit && <span className="ml-1 text-xs font-normal text-slate-500 dark:text-slate-400">{v.unit}</span>}
             </label>
             <Input id={id} className="col-span-5 h-8 sm:col-span-3" value={v.value} onChange={(e) => set(i, { value: e.target.value })} inputMode={v.normal ? 'text' : 'decimal'} autoComplete="off" />
@@ -59,7 +59,7 @@ export function LabValuesTable({ values, comment }: { values: LabValue[]; commen
           {values.map((v) => {
             const flag = v.flag ?? flagFor(v.value, v.low, v.high, v.normal);
             return (
-              <tr key={v.name} className="border-t border-slate-200 dark:border-slate-700">
+              <tr key={v.name} className={`border-t border-slate-200 dark:border-slate-700 ${isCellLine(v.name) ? 'font-bold' : ''}`}>
                 <td className="py-1 pr-2">{v.name}</td>
                 <td className={`py-1 pr-2 ${flag ? FLAG_STYLE : ''}`}>{v.value}{v.unit ? <span className="ml-1 text-xs font-normal text-slate-500">{v.unit}</span> : null}</td>
                 <td className={`py-1 pr-2 text-xs ${flag ? FLAG_STYLE : 'text-slate-500'}`}>{flag ? FLAG_WORDS[flag] : 'Normal'}</td>

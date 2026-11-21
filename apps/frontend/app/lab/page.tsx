@@ -80,25 +80,29 @@ export default function LabTestsPage() {
     if (clinicId) setPatients(await listLocalPatients(clinicId));
     setTests(await listLocalLabTests());
     setLoading(false);
+  };
 
-    if (navigator.onLine && clinicId) {
-      try {
-        const res = await fetch(`${API}/lab/clinic/${clinicId}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.tests)) {
-          await cacheLabTests(data.tests);
-          setTests(await listLocalLabTests());
-        }
-      } catch {
-        // Offline or unreachable - the tests saved on this device are shown.
-      }
+  // The server's list when the page opens and when the connection returns - not on every
+  // change here: saving it is a change, and the page used to ask again without end.
+  const refreshFromServer = async () => {
+    const clinicId = getCurrentClinicId();
+    if (!navigator.onLine || !clinicId) return;
+    try {
+      const res = await fetch(`${API}/lab/clinic/${clinicId}`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.tests)) await cacheLabTests(data.tests);
+    } catch {
+      // Offline or unreachable - the tests saved on this device are shown.
     }
   };
 
   useEffect(() => {
     loadData();
+    void refreshFromServer();
     const unsubscribe = subscribeToLocalChanges(loadData);
-    return () => unsubscribe();
+    const online = () => void refreshFromServer();
+    window.addEventListener('online', online);
+    return () => { unsubscribe(); window.removeEventListener('online', online); };
   }, []);
 
   const orderTest = async (e: React.FormEvent) => {

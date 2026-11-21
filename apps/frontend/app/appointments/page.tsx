@@ -75,7 +75,7 @@ export default function AppointmentsPage() {
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Could not accept request');
       setRespondingTo(null);
-      await Promise.all([loadRequests(), loadAppointments()]);
+      await Promise.all([loadRequests(), refreshFromServer()]);
     } catch (error: any) {
       alert(`Error accepting request: ${error.message}`);
     } finally {
@@ -110,22 +110,21 @@ export default function AppointmentsPage() {
     const localData = await listLocalAppointments(clinicId);
     setAppointments(localData);
     setLoading(false);
+  };
 
-    if (navigator.onLine) {
-      try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/appointments/${clinicId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.success && Array.isArray(data.appointments)) {
-          await cacheAppointments(data.appointments);
-          const updated = await listLocalAppointments(clinicId);
-          setAppointments(updated);
-        }
-      } catch (err) {
-        console.warn('Appointments fetch failed, using local records:', err);
-      }
+  // The server's list when the page opens and when the connection returns - not on every
+  // change here: saving it is a change, and the page used to ask again without end.
+  const refreshFromServer = async () => {
+    const clinicId = getCurrentClinicId();
+    if (!clinicId || !navigator.onLine) return;
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/appointments/${clinicId}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      const data = await res.json();
+      if (data.success && Array.isArray(data.appointments)) await cacheAppointments(data.appointments);
+    } catch (err) {
+      console.warn('Appointments fetch failed, using local records:', err);
     }
   };
 
@@ -143,9 +142,12 @@ export default function AppointmentsPage() {
 
   useEffect(() => {
     loadAppointments();
+    void refreshFromServer();
     loadRequests();
     const unsubscribe = subscribeToLocalChanges(loadAppointments);
-    return () => unsubscribe();
+    const online = () => void refreshFromServer();
+    window.addEventListener('online', online);
+    return () => { unsubscribe(); window.removeEventListener('online', online); };
   }, []);
 
   return (

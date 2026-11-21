@@ -359,7 +359,34 @@ export async function removeLocalPatient(id: string) {
   emitLocalChange();
 }
 
+/**
+ * The server's copies worth keeping: not one older than this device's synced
+ * copy. A list that left the server before a change made here (a price edited,
+ * a result entered) arrives after it, and used to put the old values back.
+ */
+async function newerThanHere<T extends { id: string; updatedAt?: string | null }>(storeName: string, items: T[]): Promise<T[]> {
+  if (!items.length) return items;
+  return notOlderThan(items, await getAllRecords<{ id: string; updatedAt?: string | null; syncStatus?: string }>(storeName));
+}
+
+/**
+ * The server copies not older than the device's synced copy of the same record.
+ * A record saved here and not sent yet (or refused) is still replaced: the server's is the truth then.
+ */
+export function notOlderThan<T extends { id: string; updatedAt?: string | null }>(
+  items: T[],
+  here: Array<{ id: string; updatedAt?: string | null; syncStatus?: string }>,
+): T[] {
+  const mine = new Map(here.map((r) => [r.id, r]));
+  return items.filter((item) => {
+    const local = mine.get(item.id);
+    if (!local || local.syncStatus !== "synced" || !local.updatedAt || !item.updatedAt) return true;
+    return Date.parse(String(item.updatedAt)) >= Date.parse(String(local.updatedAt));
+  });
+}
+
 export async function cachePatients(patients: Array<Omit<LocalPatient, "syncStatus">>) {
+  patients = await newerThanHere(PATIENT_STORE, patients);
   await Promise.all(
     patients.map((patient) =>
       putRecord<LocalPatient>(PATIENT_STORE, {
@@ -526,6 +553,7 @@ export async function listLocalAppointments(clinicId: string): Promise<LocalAppo
 }
 
 export async function cacheAppointments(appointments: Array<Omit<LocalAppointment, "syncStatus">>) {
+  appointments = await newerThanHere(APPOINTMENT_STORE, appointments);
   await Promise.all(
     appointments.map((appointment) =>
       putRecord<LocalAppointment>(APPOINTMENT_STORE, {
@@ -755,6 +783,7 @@ export async function listLocalLabTests(): Promise<LocalLabTest[]> {
 }
 
 export async function cacheLabTests(tests: Array<Omit<LocalLabTest, "syncStatus">>) {
+  tests = await newerThanHere(LAB_STORE, tests);
   await Promise.all(
     tests.map((t) =>
       putRecord<LocalLabTest>(LAB_STORE, {
@@ -872,6 +901,9 @@ export async function listLocalInventory(clinicId: string): Promise<LocalMedicin
 }
 
 export async function cacheInventory(items: Array<Omit<LocalMedicine, "syncStatus">>) {
+  // A discontinued item always leaves; otherwise an older copy does not replace this device's.
+  const fresh = await newerThanHere(INVENTORY_STORE, items.filter((item) => !item.deletedAt));
+  items = [...items.filter((item) => item.deletedAt), ...fresh];
   await Promise.all(
     items.map((item) =>
       // A discontinued item leaves this device's copy too.
