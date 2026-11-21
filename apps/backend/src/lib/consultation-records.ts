@@ -1,11 +1,13 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from './prisma';
-import type { PrescriptionInput } from './clinical';
+import type { PrescriptionInput, ProcedureInput } from './clinical';
 import { generateLabResultsPdf, generatePrescriptionPdf, PrescriptionPdfInput } from './pdf';
 import { eatDateKey, eatDayRange } from './invoices';
 import { facilityLogo } from './facility-logo';
 import { roleTitle, type Signer } from './document-signer';
 import { patientIdText } from './patient-text';
 import { MODALITIES } from './imaging';
+import { documentFileName } from './document-name';
 
 /**
  * Keeps a prescription's link to a stock item only when that item really is one
@@ -25,10 +27,29 @@ export async function linkStockItems(clinicId: string, prescriptions: Prescripti
   return prescriptions.map((p) => (p.medicineId && !ownedIds.has(p.medicineId) ? { ...p, medicineId: null } : p));
 }
 
+/**
+ * A visit's procedures, replaced by the list just saved. One already on the bill
+ * stays, so a charge never loses what it was for; listed again, it is not added twice.
+ */
+export async function replaceVisitProcedures(tx: Prisma.TransactionClient, consultationId: string, procedures: ProcedureInput[]) {
+  const billed = await tx.visitProcedure.findMany({ where: { consultationId, invoiceItem: { isNot: null } } });
+  await tx.visitProcedure.deleteMany({ where: { consultationId, invoiceItem: null } });
+  const key = (p: { name: string; notes: string | null }) => `${p.name.toLowerCase()}|${(p.notes ?? '').toLowerCase()}`;
+  const kept = billed.map(key);
+  const toCreate = procedures.filter((p) => {
+    const at = kept.indexOf(key(p));
+    if (at === -1) return true;
+    kept.splice(at, 1);
+    return false;
+  });
+  if (toCreate.length) await tx.visitProcedure.createMany({ data: toCreate.map((p) => ({ ...p, consultationId })) });
+}
+
 /** What a consultation's children look like when read back, in reading order. */
 export const consultationChildren = {
   diagnoses: { orderBy: [{ type: 'asc' as const }, { createdAt: 'asc' as const }] },
   prescriptions: { orderBy: { createdAt: 'asc' as const }, include: { dispensedBy: { select: { name: true } } } },
+  procedures: { orderBy: { createdAt: 'asc' as const } },
 };
 
 /** "34 years", "8 months", "12 days" - a child's dose depends on age, so a prescription states it. */
@@ -48,8 +69,8 @@ function exactAgeLabel(dateOfBirth: Date, at: Date): string | undefined {
   return `${years} year${years === 1 ? '' : 's'}`;
 }
 
-/** Everything the printed prescription needs, for a consultation the caller has already been cleared to read. */
-export async function buildPrescriptionPdf(consultationId: string, producedBy?: Signer | string | null): Promise<{ pdf: Buffer; clinicId: string } | null> {
+/** Everything the visit's printed medical form needs, for a consultation the caller has already been cleared to read. */
+export async function buildPrescriptionPdf(consultationId: string, producedBy?: Signer | string | null): Promise<{ pdf: Buffer; clinicId: string; fileName: string } | null> {
   const consultation = await prisma.consultation.findFirst({
     where: { id: consultationId, deletedAt: null },
     include: {
@@ -81,8 +102,13 @@ export async function buildPrescriptionPdf(consultationId: string, producedBy?: 
     presentingComplaint: consultation.symptoms,
     diagnoses: consultation.diagnoses,
     prescriptions: consultation.prescriptions,
+    procedures: consultation.procedures,
   };
-  return { pdf: await generatePrescriptionPdf(input), clinicId: consultation.appointment.clinicId };
+  return {
+    pdf: await generatePrescriptionPdf(input),
+    clinicId: consultation.appointment.clinicId,
+    fileName: documentFileName('Medical form', consultation.patient.name, consultation.createdAt),
+  };
 }
 
 /**
@@ -91,7 +117,7 @@ export async function buildPrescriptionPdf(consultationId: string, producedBy?: 
  * same visit), so someone who came for several tests gets them on one sheet.
  * Only tests with a result are printed. The caller has checked the clinic.
  */
-export async function buildLabResultsPdf(testId: string, options: { only?: boolean; producedBy?: Signer | string | null } = {}): Promise<{ pdf: Buffer; clinicId: string } | { error: string; status: number } | null> {
+export async function buildLabResultsPdf(testId: string, options: { only?: boolean; producedBy?: Signer | string | null } = {}): Promise<{ pdf: Buffer; clinicId: string; fileName: string } | { error: string; status: number } | null> {
   const test = await prisma.labTest.findFirst({ where: { id: testId, deletedAt: null }, select: { id: true, patientId: true, consultationId: true, createdAt: true } });
   if (!test) return null;
   const { start, end } = eatDayRange(eatDateKey(test.createdAt));
@@ -129,7 +155,8 @@ export async function buildLabResultsPdf(testId: string, options: { only?: boole
     })),
     producedBy: options.producedBy,
   });
-  return { pdf, clinicId: patient.clinicId };
+  const latest = printable.map((t) => t.createdAt).reduce((a, b) => (b > a ? b : a));
+  return { pdf, clinicId: patient.clinicId, fileName: documentFileName('Laboratory results', patient.name, latest) };
 }
 
 /**
@@ -140,7 +167,7 @@ export async function buildChosenResultsPdf(
   clinicId: string,
   chosen: { labIds: string[]; imagingIds: string[] },
   producedBy?: Signer | string | null,
-): Promise<{ pdf: Buffer; patientId: string } | { error: string; status: number }> {
+): Promise<{ pdf: Buffer; patientId: string; fileName: string } | { error: string; status: number }> {
   const [tests, reports] = await Promise.all([
     chosen.labIds.length
       ? prisma.labTest.findMany({
@@ -192,5 +219,7 @@ export async function buildChosenResultsPdf(
     }),
     producedBy,
   });
-  return { pdf, patientId };
+  const latest = [...printable.map((t) => t.createdAt), ...reports.map((r) => r.createdAt)].reduce((a, b) => (b > a ? b : a));
+  const kind = printable.length && reports.length ? 'Laboratory and imaging results' : reports.length ? 'Imaging results' : 'Laboratory results';
+  return { pdf, patientId, fileName: documentFileName(kind, patient.name, latest) };
 }

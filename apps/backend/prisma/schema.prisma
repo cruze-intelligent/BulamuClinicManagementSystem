@@ -779,6 +779,7 @@ model Consultation {
   awaitingResults Boolean @default(false)
   diagnoses     Diagnosis[]
   prescriptions Prescription[]
+  procedures    VisitProcedure[]
   invoice       Invoice?
   labTests LabTest[]
   imagingRequests ImagingRequest[]
@@ -860,6 +861,24 @@ model Prescription {
   @@index([dispensedAt])
 }
 
+// A procedure done or planned at an outpatient visit - incision and drainage,
+// ear syringing, circumcision, a wound dressing - part of the treatment plan
+// beside the prescription (it is not dispensed). Named as on the facility's
+// price list, so the bill finds its price.
+model VisitProcedure {
+  id             String       @id @default(uuid())
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  name           String
+  // Site, side or anything the person doing it should know ("right pre-auricular abscess").
+  notes          String?
+  // The bill line it was charged on, if any.
+  invoiceItem    InvoiceItem?
+  createdAt      DateTime     @default(now())
+
+  @@index([consultationId])
+}
+
 // A facility's bill to its patient - the facility charges and collects, Bulamu
 // keeps the record. Most bills belong to a visit; a bill without one covers a
 // walk-in (medicine bought over the counter, a lab test on its own).
@@ -910,6 +929,9 @@ model InvoiceItem {
   imagingRequest   ImagingRequest? @relation(fields: [imagingRequestId], references: [id], onDelete: SetNull)
   admissionNoteId  String?         @unique
   admissionNote    AdmissionNote?  @relation(fields: [admissionNoteId], references: [id], onDelete: SetNull)
+  // An outpatient procedure done at a visit (incision and drainage, ear syringing...).
+  visitProcedureId String?         @unique
+  visitProcedure   VisitProcedure? @relation(fields: [visitProcedureId], references: [id], onDelete: SetNull)
   // Medicine sold from stock without a prescription (over the counter): taken
   // off the shelf when the line is added, put back if the line is removed.
   // Prescribed medicine is taken off stock when dispensed, not here.

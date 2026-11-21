@@ -14,6 +14,7 @@ import { allergyText, patientIdText, sexAgeText } from '../lib/patient-text';
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer, roleTitle } from '../lib/document-signer';
 import { parseStructuredNote, structuredNoteLines, structuredNoteTitle, type StructuredNote } from '../lib/procedure-notes';
+import { documentFileName, inlineDisposition } from '../lib/document-name';
 
 /**
  * Inpatients: wards and beds, admission, notes and observations during the
@@ -396,7 +397,7 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     const pdf = await generateDischargeSummaryPdf({ ...dischargeSummaryInput(admission), clinicLogo: await facilityLogo(admission.clinicId), producedBy: await documentProducer(getAuthUser(request).userId) });
     return reply
       .header('Content-Type', 'application/pdf')
-      .header('Content-Disposition', `inline; filename="discharge-summary-${admission.id.slice(0, 8)}.pdf"`)
+      .header('Content-Disposition', inlineDisposition(documentFileName('Discharge summary', admission.patient.name, admission.dischargedAt)))
       .send(pdf);
   });
 }

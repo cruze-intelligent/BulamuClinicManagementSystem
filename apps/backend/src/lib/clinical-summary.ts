@@ -40,6 +40,7 @@ export async function buildClinicalSummary(patientId: string, clinicId: string) 
       include: {
         diagnoses: { orderBy: [{ type: 'asc' }, { createdAt: 'asc' }] },
         prescriptions: { orderBy: { createdAt: 'asc' } },
+        procedures: { orderBy: { createdAt: 'asc' } },
         labTests: { where: { deletedAt: null }, orderBy: { createdAt: 'asc' } },
         imagingRequests: { orderBy: { createdAt: 'asc' } },
         recordedBy: { select: { name: true } },
@@ -80,7 +81,7 @@ export async function buildClinicalSummary(patientId: string, clinicId: string) 
       treatment: c.prescriptions.map((rx) => {
         const line = formatPrescriptionLine(rx);
         return [line.order, line.instructions].filter(Boolean).join(' - ');
-      }),
+      }).concat(c.procedures.map((p) => `Procedure: ${p.name}${p.notes ? ` - ${p.notes}` : ''}`)),
       plan: c.clinicalNotes,
     })),
     stays: admissions.map((a) => ({

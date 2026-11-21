@@ -52,6 +52,29 @@ export function suggestedServices(kind: ChargeKind, wards: string[] = []): strin
   }
 }
 
+// How clinicians write some procedures for short.
+const PROCEDURE_SHORTHAND: Record<string, string> = {
+  'i&d': 'Incision and drainage', ngt: 'Nasogastric tube insertion', lp: 'Lumbar puncture', 'c/s': 'Caesarean section', svd: 'Normal delivery', tos: 'Removal of stitches',
+};
+
+/**
+ * Procedures to offer at a visit, matching what is typed: the facility's own priced
+ * procedures first (so the bill finds the price), then common ones.
+ */
+export function procedureChoices(prices: ServicePrice[], typed: string, limit = 8): Array<{ name: string; price: number | null }> {
+  const wanted = typed.trim().toLowerCase();
+  const priced = prices.filter((p) => p.kind === 'PROCEDURE').map((p) => ({ name: p.name, price: p.price as number | null }));
+  const seen = new Set(priced.map((p) => p.name.toLowerCase()));
+  const all = [...priced, ...COMMON_PROCEDURES.filter((n) => !seen.has(n.toLowerCase())).map((name) => ({ name, price: null }))];
+  if (!wanted) return all.slice(0, limit);
+  const words = wanted.split(/[^a-z0-9&]+/).filter(Boolean);
+  const meant = PROCEDURE_SHORTHAND[wanted.replace(/\s+/g, '')]?.toLowerCase();
+  return all.filter((p) => {
+    const name = p.name.toLowerCase();
+    return name === meant || name.includes(wanted) || words.every((w) => name.includes(w));
+  }).slice(0, limit);
+}
+
 /** The listed price for a charge of this kind and name (any letter case), if there is one. */
 export function listedPrice(prices: ServicePrice[], kind: ChargeKind, name: string): number | null {
   const wanted = name.trim().toLowerCase();

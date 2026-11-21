@@ -7,8 +7,8 @@ import { recordAudit } from '../lib/audit';
 import { inviteNewPatient, isValidEmail } from '../lib/portal-invite';
 import { STOCK_ROLES, createStockItem, discontinueStockItem, parseCount, parseExpiry, parseItemDetails } from '../lib/stock';
 import { notifyDoctorOfAppointment, notifyIfLowStock, notifyImagingRequested, notifyLabOrdered, notifyNewPrescription } from '../lib/notifications';
-import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
-import { consultationChildren, linkStockItems } from '../lib/consultation-records';
+import { normalizeAllergies, normalizeDiagnoses, normalizePrescriptions, normalizeProcedures, primaryDiagnosisText } from '../lib/clinical';
+import { consultationChildren, linkStockItems, replaceVisitProcedures } from '../lib/consultation-records';
 import { parseFee } from '../lib/invoices';
 import { sendRouteError } from '../lib/http-error';
 import { parseConsultationNotes } from '../lib/consultation-notes';
@@ -292,6 +292,12 @@ export async function syncRoutes(fastify: FastifyInstance) {
               continue;
             }
             const prescriptions = validPrescriptions?.ok ? await linkStockItems(appointment.clinicId, validPrescriptions.value) : null;
+            // Procedures likewise: absent leaves them, a list replaces them.
+            const validProcedures = Array.isArray(payload.procedures) ? normalizeProcedures(payload.procedures) : null;
+            if (validProcedures && !validProcedures.ok) {
+              reject(`Rejected consultation mutation ${mutationId}: ${validProcedures.error}`);
+              continue;
+            }
             let fee: number | null;
             try {
               fee = parseFee(payload.fee);
@@ -372,6 +378,7 @@ export async function syncRoutes(fastify: FastifyInstance) {
                 });
                 await tx.prescription.createMany({ data: toCreate.map((rx) => ({ ...rx, consultationId: saved.id })) });
               }
+              if (validProcedures?.ok) await replaceVisitProcedures(tx, saved.id, validProcedures.value);
               // A fee recorded with the consultation becomes the facility's
               // invoice to the patient - once: a re-sent or edited copy never
               // bills again or changes an invoice that already exists.

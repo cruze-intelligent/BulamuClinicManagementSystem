@@ -83,7 +83,7 @@ describe('every document Bulamu produces is branded the same way', () => {
   it('a long prescription runs onto a second page that still says whose it is', async () => {
     const pages = pdfPages(await prescription(16));
     expect(pages).toHaveLength(2);
-    expect(pages[1]).toContain('Prescription for Achieng Mary (continued)');
+    expect(pages[1]).toContain('Medical form for Achieng Mary (continued)');
   });
 
   it('writes every date in Kampala time, day month year - never the server\'s US format', async () => {

@@ -8,6 +8,7 @@ import { generateClinicalSummaryPdf } from '../lib/pdf';
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer } from '../lib/document-signer';
 import { sendRouteError } from '../lib/http-error';
+import { documentFileName, inlineDisposition } from '../lib/document-name';
 
 // A patient's clinical summary at the facility: what clinicians read before
 // seeing a patient again, or hand on. Clinical staff only; every look is logged.
@@ -40,7 +41,7 @@ export async function clinicalSummaryRoutes(fastify: FastifyInstance) {
       });
       await recordAudit({ entity: 'ClinicalSummary', recordId: id, clinicId: authUser.clinicId, action: 'VIEW', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { format: 'pdf' } });
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `inline; filename="clinical-summary-${summary.patient.patientId ?? id.slice(0, 8)}.pdf"`);
+      reply.header('Content-Disposition', inlineDisposition(documentFileName('Clinical summary', summary.patient.name, new Date())));
       return reply.send(pdf);
     } catch (error) {
       return sendRouteError(reply, error);

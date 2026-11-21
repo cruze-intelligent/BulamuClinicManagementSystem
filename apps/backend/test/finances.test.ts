@@ -273,7 +273,7 @@ describe('payments and receipts', () => {
     const f = await facility();
     const taken = (await pay(f.desk.token, f.invoice.id, { amount: 15000, method: 'MOBILE_MONEY', provider: 'Airtel Money', reference: 'MP-123' })).json().payment;
     const pdf = await app.inject({ method: 'GET', url: `/payments/${taken.id}/receipt/pdf`, headers: authHeader(f.desk.token) });
-    expect(pdf.headers['content-disposition']).toContain('receipt-000001.pdf');
+    expect(pdf.headers['content-disposition']).toMatch(/filename="Receipt 000001 - Achieng Mary - \d{4}-\d{2}-\d{2}\.pdf"/);
     const text = pdfText(pdf.rawPayload);
     for (const expected of ['Mbarara Family Clinic', 'No. 000001', 'Mobile money - Airtel Money', 'Transaction ID', 'MP-123', 'Sarah Nakato, Front Desk', 'Balance UGX 5,000', 'Achieng Mary']) {
       expect(text).toContain(expected);

@@ -154,6 +154,32 @@ export function normalizePrescriptions(raw: unknown): Validated<PrescriptionInpu
   return { ok: true, value: out };
 }
 
+const MAX_PROCEDURES = 15;
+export type ProcedureInput = { name: string; notes: string | null };
+
+/**
+ * Procedures in a visit's treatment plan (incision and drainage, ear syringing...).
+ * A blank row is dropped; the same procedure twice is kept once.
+ */
+export function normalizeProcedures(raw: unknown): Validated<ProcedureInput[]> {
+  if (raw === undefined || raw === null) return { ok: true, value: [] };
+  if (!Array.isArray(raw)) return fail('procedures must be a list');
+  if (raw.length > MAX_PROCEDURES) return fail(`A visit can have at most ${MAX_PROCEDURES} procedures`);
+  const out: ProcedureInput[] = [];
+  for (const [index, item] of raw.entries()) {
+    if (!item || typeof item !== 'object') return fail(`Procedure ${index + 1} is not valid`);
+    const p = item as Record<string, unknown>;
+    const name = text(p.name, 120);
+    const notes = text(p.notes, 300);
+    if (name.tooLong) return fail(`Procedure ${index + 1}: the name is too long (120 characters max)`);
+    if (notes.tooLong) return fail(`Procedure ${index + 1}: the note is too long (300 characters max)`);
+    if (!name.value) continue;
+    if (out.some((o) => o.name.toLowerCase() === name.value.toLowerCase() && (o.notes ?? '') === notes.value)) continue;
+    out.push({ name: name.value, notes: notes.value || null });
+  }
+  return { ok: true, value: out };
+}
+
 // ---------------------------------------------------------------------------
 // Allergies
 // ---------------------------------------------------------------------------

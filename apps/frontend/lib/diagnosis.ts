@@ -104,3 +104,20 @@ export function diagnosisHeadline(consultation: { diagnoses?: DiagnosisView[]; d
   const named = (d: DiagnosisView) => (d.icd10Code ? `${d.description} (${d.icd10Code})` : d.description);
   return list.map(named).join(' + ');
 }
+
+// Words that say little about what a code is for.
+const GENERIC_WORDS = new Set(['unspecified', 'specified', 'other', 'disease', 'diseases', 'disorder', 'disorders', 'acute', 'chronic', 'with', 'without', 'site', 'type', 'condition']);
+const meaningfulWords = (text: string) => text.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 4 && !GENERIC_WORDS.has(w));
+
+/**
+ * Whether a listed code plausibly belongs to the wording written: they share a
+ * word (or its stem - "malarial", "malaria"). "Pre-auricular sinus abscess"
+ * coded B54 (Malaria, unspecified) does not, and the form says so.
+ */
+export function codeFitsWording(entry: { name: string; keywords?: string }, description: string): boolean {
+  const written = meaningfulWords(description);
+  if (written.length === 0) return true;
+  const known = [...meaningfulWords(entry.name), ...meaningfulWords(entry.keywords ?? '')];
+  const stem = (w: string) => w.slice(0, 5);
+  return written.some((w) => known.some((k) => k === w || stem(k) === stem(w)));
+}

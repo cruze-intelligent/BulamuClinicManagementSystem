@@ -29,7 +29,7 @@ export type Bill = {
 };
 type Suggestion = {
   kind: ChargeKind; description: string; quantity: number; unitPrice: number | null;
-  labTestId?: string; prescriptionId?: string; admissionId?: string; medicineId?: string; imagingRequestId?: string; admissionNoteId?: string;
+  labTestId?: string; prescriptionId?: string; admissionId?: string; medicineId?: string; imagingRequestId?: string; admissionNoteId?: string; visitProcedureId?: string;
 };
 
 /** A line sold from stock (not a prescription, which comes off stock when dispensed). */
@@ -310,7 +310,7 @@ export function BillPanel({
                     <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Not on the bill yet</p>
                     <ul className="mt-2 space-y-2">
                       {suggestions.map((s, i) => (
-                        <li key={s.labTestId ?? s.prescriptionId ?? s.admissionId ?? s.imagingRequestId ?? s.admissionNoteId ?? `${s.kind}-${i}`} className="flex flex-wrap items-center gap-2 text-sm">
+                        <li key={s.labTestId ?? s.prescriptionId ?? s.admissionId ?? s.imagingRequestId ?? s.admissionNoteId ?? s.visitProcedureId ?? `${s.kind}-${i}`} className="flex flex-wrap items-center gap-2 text-sm">
                           <span className="min-w-0 flex-1">
                             {s.description}
                             <span className="text-slate-500 dark:text-slate-400"> · {kindLabel(s.kind)}{s.quantity > 1 ? ` × ${s.quantity}` : ''}</span>

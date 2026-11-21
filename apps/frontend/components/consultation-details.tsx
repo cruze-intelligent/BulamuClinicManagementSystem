@@ -14,6 +14,7 @@ export type ConsultationLike = {
   vitals?: Record<string, number> | null;
   clinicalNotes?: string | null;
   prescriptions?: Array<PrescriptionView & { id?: string }>;
+  procedures?: Array<{ id?: string; name: string; notes?: string | null }>;
 };
 
 const SECTION = 'text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400';
@@ -40,6 +41,7 @@ export function ConsultationDetails({
 }) {
   const diagnoses = diagnosesOf(consultation);
   const prescriptions = consultation.prescriptions ?? [];
+  const procedures = consultation.procedures ?? [];
 
   return (
     <div className="space-y-4">
@@ -110,17 +112,17 @@ export function ConsultationDetails({
         </div>
       )}
 
-      {prescriptions.length > 0 && (
+      {(prescriptions.length > 0 || procedures.length > 0) && (
         <div>
           <div className="flex items-center justify-between gap-2">
-            <p className={SECTION}>Prescriptions</p>
+            <p className={SECTION}>{prescriptions.length ? 'Prescriptions' : 'Procedures'}</p>
             {onPrintPrescription && (
               <Button
                 type="button" size="sm" variant="outline" onClick={onPrintPrescription}
                 disabled={!!printDisabledReason || printing} title={printDisabledReason}
               >
                 <Printer className="size-4" aria-hidden="true" />
-                {printing ? 'Preparing...' : 'Print prescription'}
+                {printing ? 'Preparing...' : 'Print medical form'}
               </Button>
             )}
           </div>
@@ -167,6 +169,19 @@ export function ConsultationDetails({
               );
             })}
           </ol>
+          {procedures.length > 0 && (
+            <>
+              {prescriptions.length > 0 && <p className={`${SECTION} mt-3`}>Procedures</p>}
+              <ol className="mt-1.5 space-y-2">
+                {procedures.map((p, i) => (
+                  <li key={p.id ?? `${p.name}-${i}`} className="rounded-md bg-slate-50 p-3 text-sm dark:bg-slate-800">
+                    <p className="font-semibold text-slate-900 dark:text-slate-50"><span className="mr-1.5 text-slate-400">{i + 1}.</span>{p.name}</p>
+                    {p.notes && <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{p.notes}</p>}
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
         </div>
       )}
     </div>

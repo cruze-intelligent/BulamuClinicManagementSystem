@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { SuggestionInput } from '@/components/suggestion-input';
-import { CERTAINTY_LABELS, MAX_DIAGNOSES, emptyDiagnosis, type Certainty, type DiagnosisDraft } from '@/lib/diagnosis';
+import { CERTAINTY_LABELS, MAX_DIAGNOSES, codeFitsWording, emptyDiagnosis, type Certainty, type DiagnosisDraft } from '@/lib/diagnosis';
 import { ICD10_PATTERN, findIcd10, searchIcd10 } from '@/lib/icd10';
 
 /**
@@ -43,7 +43,10 @@ export function DiagnosisPicker({
       {value.map((d, index) => {
         const code = d.icd10Code.trim().toUpperCase();
         const codeInvalid = code !== '' && !ICD10_PATTERN.test(code);
-        const inList = code !== '' && !!findIcd10(code);
+        const listed = code !== '' ? findIcd10(code) : undefined;
+        const inList = !!listed;
+        // A listed code whose name has nothing to do with the wording written: likely the wrong code.
+        const codeMismatch = !!listed && d.description.trim() !== '' && !codeFitsWording(listed, d.description);
         const suggestions = d.description.trim().length >= 2
           ? searchIcd10(d.description).map((e) => ({ key: e.code, label: e.name, detail: e.code }))
           : [];
@@ -130,6 +133,11 @@ export function DiagnosisPicker({
             {codeInvalid && (
               <p role="alert" className="mt-2 text-xs text-rose-600">
                 &quot;{d.icd10Code.trim()}&quot; is not a valid ICD-10 code. Codes look like B54 or J18.9.
+              </p>
+            )}
+            {codeMismatch && listed && (
+              <p role="status" className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                {listed.code} is &quot;{listed.name}&quot; - check it is the right code for {d.description.trim()}.
               </p>
             )}
             {code !== '' && !codeInvalid && !inList && (

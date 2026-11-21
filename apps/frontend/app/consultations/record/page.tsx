@@ -31,7 +31,10 @@ import {
   type LocalMedicine,
   type LocalPatient,
   type LocalPrescription,
+  type LocalProcedure,
 } from '@/lib/local-first';
+import { ProcedurePicker } from '@/components/procedure-picker';
+import { usePriceList } from '@/lib/price-list';
 import { Select } from '@/components/ui/select';
 import { openVisitToday } from '@/lib/queue';
 import { SuggestionInput } from '@/components/suggestion-input';
@@ -93,6 +96,9 @@ function RecordConsultationForm() {
   const [clinicalNotes, setClinicalNotes] = useState('');
   const [fee, setFee] = useState('');
   const [prescriptions, setPrescriptions] = useState<PrescriptionDraft[]>([emptyDraft()]);
+  // Procedures done or planned at the visit, apart from the drugs (they are not dispensed).
+  const [procedures, setProcedures] = useState<LocalProcedure[]>([]);
+  const { prices } = usePriceList();
   const [attempted, setAttempted] = useState(false);
   // Saving to finish later: no diagnosis is asked for yet.
   const [finishingLater, setFinishingLater] = useState(false);
@@ -159,6 +165,7 @@ function RecordConsultationForm() {
       const open = visit.prescriptions.filter((rx) => !rx.dispensedAt);
       setDispensed(given);
       setPrescriptions(open.length ? open.map((rx) => payloadToDraft(rx)) : [emptyDraft()]);
+      setProcedures((visit.procedures ?? []).map((p) => ({ name: p.name, notes: p.notes ?? '' })));
       getLocalAppointment(visit.appointmentId).then((a) => setVisitUnit(a?.departmentId ?? '')).catch(() => undefined);
     };
     void load();
@@ -249,6 +256,7 @@ function RecordConsultationForm() {
         clinicalNotes: clinicalNotes.trim(),
         // What was dispensed already is sent as it is, so it is never given out twice.
         prescriptions: [...dispensed, ...prescriptions.filter((d) => !isBlankDraft(d)).map(draftToPayload)],
+        procedures: procedures.filter((p) => p.name.trim()).map((p) => ({ name: p.name.trim(), notes: p.notes?.trim() || null })),
         fee: fee && !continuing ? Number(fee) : undefined,
         patientName: patient.name,
       });
@@ -519,8 +527,14 @@ function RecordConsultationForm() {
               <PrescriptionBuilder value={prescriptions} onChange={setPrescriptions} stock={stock} showProblems={attempted} allergies={patient} />
             </section>
 
+            <section>
+              <StepHeading n={10} title="Procedures" hint="Optional. Procedures done or to be done for the patient - incision and drainage, ear syringing, circumcision, a dressing. They print on the medical form and are offered on the patient's bill at the price-list price." />
+              <label htmlFor="procedure-search" className="sr-only">Add a procedure</label>
+              <ProcedurePicker value={procedures} onChange={setProcedures} prices={prices} />
+            </section>
+
             {!continuing && <section>
-              <StepHeading n={10} title="Consultation fee" hint="Optional. Opens the patient's bill under Bills & Payments, where lab tests, medicines and payments are added. Leave empty if there is no charge." />
+              <StepHeading n={11} title="Consultation fee" hint="Optional. Opens the patient's bill under Bills & Payments, where lab tests, medicines and payments are added. Leave empty if there is no charge." />
               <Label htmlFor="fee" className="sr-only">Consultation fee in UGX</Label>
               <div className="flex max-w-xs items-center gap-2">
                 <span className="text-sm text-slate-500 dark:text-slate-400">UGX</span>
@@ -538,7 +552,7 @@ function RecordConsultationForm() {
 
             {units.length > 1 && (
               <section>
-                <StepHeading n={11} title="Refer to another unit" hint="Optional. After this visit the patient joins that unit's waiting queue - from OPD to Dentistry, say - with your reason." />
+                <StepHeading n={12} title="Refer to another unit" hint="Optional. After this visit the patient joins that unit's waiting queue - from OPD to Dentistry, say - with your reason." />
                 <Label htmlFor="send-to" className="sr-only">Send the patient to another unit</Label>
                 <Select id="send-to" className="max-w-xs" value={sendTo} onChange={(e) => setSendTo(e.target.value)}>
                   <option value="">Not sent on - the visit ends here</option>

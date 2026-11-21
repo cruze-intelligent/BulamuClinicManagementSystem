@@ -3,13 +3,14 @@ import { prisma } from '../lib/prisma';
 import { authenticate, assertClinicMatch, getAuthUser } from '../middleware/auth.middleware';
 import { isValidServiceTag } from '../lib/hmis';
 import { notifyNewPrescription } from '../lib/notifications';
-import { normalizeDiagnoses, normalizePrescriptions, primaryDiagnosisText } from '../lib/clinical';
+import { normalizeDiagnoses, normalizePrescriptions, normalizeProcedures, primaryDiagnosisText } from '../lib/clinical';
 import { buildPrescriptionPdf, consultationChildren, linkStockItems } from '../lib/consultation-records';
 import { parseFee } from '../lib/invoices';
 import { documentProducer } from '../lib/document-signer';
 import { recordAudit } from '../lib/audit';
 import { sendRouteError } from '../lib/http-error';
 import { parseConsultationNotes } from '../lib/consultation-notes';
+import { inlineDisposition } from '../lib/document-name';
 
 const MAX_SYMPTOMS = 2000;
 const MAX_CLINICAL_NOTES = 4000;
@@ -21,7 +22,7 @@ export async function consultationRoutes(fastify: FastifyInstance) {
   // structured prescriptions. A plain `diagnosis` string is still accepted (older
   // clients) and becomes a single uncoded primary diagnosis.
   fastify.post('/consultations', { preHandler: [authenticate] }, async (request, reply) => {
-    const { appointmentId, patientId, diagnosis, diagnoses, symptoms, clinicalNotes, prescriptions, fee: feeInput, amount, serviceTags } = request.body as any;
+    const { appointmentId, patientId, diagnosis, diagnoses, symptoms, clinicalNotes, prescriptions, procedures, fee: feeInput, amount, serviceTags } = request.body as any;
 
     if (serviceTags && (!Array.isArray(serviceTags) || !serviceTags.every(isValidServiceTag))) {
       return reply.status(400).send({ error: 'Invalid serviceTags' });
@@ -39,6 +40,8 @@ export async function consultationRoutes(fastify: FastifyInstance) {
     if (!validDiagnoses.ok) return reply.status(400).send({ error: validDiagnoses.error });
     const validPrescriptions = normalizePrescriptions(prescriptions);
     if (!validPrescriptions.ok) return reply.status(400).send({ error: validPrescriptions.error });
+    const validProcedures = normalizeProcedures(procedures);
+    if (!validProcedures.ok) return reply.status(400).send({ error: validProcedures.error });
     // `amount` is the older name for the consultation fee.
     let fee: number | null;
     try {
@@ -73,6 +76,7 @@ export async function consultationRoutes(fastify: FastifyInstance) {
           serviceTags: serviceTags || [],
           diagnoses: { create: validDiagnoses.value },
           prescriptions: { create: rx },
+          procedures: { create: validProcedures.value },
           // The facility's invoice to the patient, filed under the facility
           // where the visit happened.
           invoice: fee ? {
@@ -145,19 +149,19 @@ export async function consultationRoutes(fastify: FastifyInstance) {
     try {
       const existing = await prisma.consultation.findFirst({
         where: { id, deletedAt: null },
-        select: { appointment: { select: { clinicId: true } }, _count: { select: { prescriptions: true } } },
+        select: { appointment: { select: { clinicId: true } }, _count: { select: { prescriptions: true, procedures: true } } },
       });
       if (!existing) return reply.status(404).send({ error: 'Consultation not found' });
       if (!assertClinicMatch(request, reply, existing.appointment.clinicId)) return;
-      if (existing._count.prescriptions === 0) {
-        return reply.status(400).send({ error: 'This consultation has no prescriptions to print' });
+      if (existing._count.prescriptions === 0 && existing._count.procedures === 0) {
+        return reply.status(400).send({ error: 'This visit has no prescription or procedure to print' });
       }
 
       const built = await buildPrescriptionPdf(id, await documentProducer(getAuthUser(request).userId));
       if (!built) return reply.status(404).send({ error: 'Consultation not found' });
 
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `inline; filename="prescription-${id}.pdf"`);
+      reply.header('Content-Disposition', inlineDisposition(built.fileName));
       return reply.send(built.pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);

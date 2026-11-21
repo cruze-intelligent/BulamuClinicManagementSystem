@@ -1,4 +1,5 @@
 import { requesterName } from '../lib/imaging';
+import { inlineDisposition } from '../lib/document-name';
 import { FastifyInstance } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { authenticate, assertClinicMatch, getAuthUser, resolveClinicScope, worksAs, type AuthUser } from '../middleware/auth.middleware';
@@ -93,7 +94,7 @@ export async function labRoutes(fastify: FastifyInstance) {
       if (!built) return reply.status(404).send({ error: 'Lab test not found' });
       if ('error' in built) return reply.status(built.status).send({ error: built.error });
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `inline; filename="lab-results-${id.slice(0, 8)}.pdf"`);
+      reply.header('Content-Disposition', inlineDisposition(built.fileName));
       return reply.send(built.pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);
@@ -128,7 +129,7 @@ export async function labRoutes(fastify: FastifyInstance) {
       const built = await buildChosenResultsPdf(authUser.clinicId, { labIds: ids(query.lab), imagingIds: ids(query.imaging) }, await documentProducer(authUser.userId));
       if ('error' in built) return reply.status(built.status).send({ error: built.error });
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `inline; filename="results-${built.patientId.slice(0, 8)}.pdf"`);
+      reply.header('Content-Disposition', inlineDisposition(built.fileName));
       return reply.send(built.pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);

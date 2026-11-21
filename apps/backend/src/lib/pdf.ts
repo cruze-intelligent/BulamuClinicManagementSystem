@@ -3,6 +3,7 @@ import fs from 'fs';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { formatPrescriptionLine } from './clinical';
+import { documentTitle } from './document-name';
 import { pesapalMerchantName } from '../services/pesapal.service';
 
 const BRAND_TEAL = '#0f766e';
@@ -287,7 +288,7 @@ export function billState(input: { amount: number; amountPaid: number; status: s
  * collects the money, and the invoice says so.
  */
 export async function generateInvoicePdf(input: InvoicePdfInput): Promise<Buffer> {
-  const { doc, done } = newDocument();
+  const { doc, done } = newDocument(documentTitle('Invoice', input.patientName, input.createdAt));
   const currency = input.currency ?? 'UGX';
   drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
 
@@ -400,7 +401,7 @@ export type PatientReceiptPdfInput = SampleOption & {
  * payment's receipt says VOID across every page.
  */
 export async function generatePatientReceiptPdf(input: PatientReceiptPdfInput): Promise<Buffer> {
-  const { doc, done } = newDocument();
+  const { doc, done } = newDocument(documentTitle('Receipt', input.patientName, input.receivedAt));
   const currency = input.currency ?? 'UGX';
   drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
 
@@ -497,21 +498,24 @@ export type PrescriptionPdfInput = SampleOption & {
     medication: string; strength: string | null; form: string | null; dosage: string; route: string | null;
     frequency: string; duration: string; quantity: number | null; instructions: string | null;
   }>;
+  /** Procedures in the treatment plan (incision and drainage, ear syringing...). */
+  procedures?: Array<{ name: string; notes: string | null }>;
 };
 
 /**
- * A prescription laid out the way a pharmacist expects to read one: who it is
- * for (with age and sex - doses depend on them), why, then each numbered item
- * with the drug on one line and its directions in plain words beneath, and
+ * The visit's medical form: who it is for (with age and sex - doses depend on
+ * them), the presenting complaint and diagnosis, then the treatment plan - each
+ * prescription item with the drug on one line and its directions in plain words
+ * beneath, as a pharmacist expects to read it, and any procedures - and
  * signature lines for the prescriber and the dispenser.
  */
 export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Promise<Buffer> {
-  const { doc, done } = newDocument();
+  const { doc, done } = newDocument(documentTitle('Medical form', input.patientName, input.date));
 
   drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
 
   doc.moveDown(1.5);
-  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('PRESCRIPTION');
+  doc.font('Helvetica-Bold').fontSize(18).fillColor(INK).text('MEDICAL FORM');
   doc.font('Helvetica').fontSize(9).fillColor(MUTED).text(`#${input.consultationId}`);
   doc.moveDown(1);
 
@@ -558,18 +562,20 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
     doc.font('Helvetica').fontSize(10).fillColor(INK).text(`${role}${d.description}${code}${status}`, labelX, doc.y, { width: 495 });
   }
 
-  rule();
-  doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text('Rx', labelX, doc.y);
-  doc.moveDown(0.4);
-
-  // A continuation page always says whose prescription it is - a loose page must
+  // A continuation page always says whose form it is - a loose page must
   // never be separable from its patient.
   const continuePage = () => {
     doc.addPage();
     doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED)
-      .text(`Prescription for ${input.patientName} (continued) - #${input.consultationId.slice(0, 8)}`, labelX, 50, { width: 495 });
+      .text(`Medical form for ${input.patientName} (continued) - #${input.consultationId.slice(0, 8)}`, labelX, 50, { width: 495 });
     doc.y = 80;
   };
+
+  if (input.prescriptions.length) {
+    rule();
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text('Rx', labelX, doc.y);
+    doc.moveDown(0.4);
+  }
 
   input.prescriptions.forEach((rx, index) => {
     const line = formatPrescriptionLine(rx);
@@ -582,6 +588,21 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
     if (extras) doc.font('Helvetica').fontSize(10).fillColor(MUTED).text(extras, labelX + 18, doc.y, { width: 477 });
     doc.moveDown(0.8);
   });
+
+  // Procedures: done here, not dispensed - so apart from the drugs, each with its note.
+  const procedures = input.procedures ?? [];
+  if (procedures.length) {
+    if (doc.y > doc.page.maxY() - 140) continuePage();
+    rule();
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(BRAND_TEAL_DARK).text('Procedures', labelX, doc.y);
+    doc.moveDown(0.4);
+    procedures.forEach((p, index) => {
+      if (doc.y > doc.page.maxY() - 120) continuePage();
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text(`${index + 1}.  ${p.name}`, labelX, doc.y, { width: 495 });
+      if (p.notes) doc.font('Helvetica').fontSize(10).fillColor(MUTED).text(p.notes, labelX + 18, doc.y, { width: 477 });
+      doc.moveDown(0.6);
+    });
+  }
 
   // Signature lines sit clear of the footer; add a page if the list ran long.
   if (doc.y > doc.page.maxY() - 150) continuePage();
@@ -597,6 +618,9 @@ export async function generatePrescriptionPdf(input: PrescriptionPdfInput): Prom
 
 /** A blood count's cell lines: white cells, red cells, platelets. */
 const isCellLine = (name: string) => /^(WBC|RBC|PLT)$/i.test(name.trim());
+
+/** What a page of results is called: lab, imaging, or both. */
+const resultsKind = (labs: number, imaging: number) => (imaging && labs ? 'Laboratory and imaging results' : imaging ? 'Imaging results' : 'Laboratory results');
 
 const labReference = (v: { low: number | null; high: number | null; normal: string | null }) =>
   v.low !== null && v.high !== null ? `(${v.low} - ${v.high})` : v.high !== null ? `(< ${v.high})` : v.low !== null ? `(> ${v.low})` : v.normal ?? '';
@@ -630,14 +654,15 @@ export type LabResultsPdfInput = SampleOption & {
  * preliminary, so a patient who came for tests alone can leave with them.
  */
 export async function generateLabResultsPdf(input: LabResultsPdfInput): Promise<Buffer> {
-  const { doc, done } = newDocument();
-  drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
   const imaging = input.imaging ?? [];
+  const lastAsked = [...input.tests.map((t) => t.requestedAt), ...imaging.map((r) => r.requestedAt)].sort((a, b) => b.getTime() - a.getTime())[0];
+  const { doc, done } = newDocument(documentTitle(resultsKind(input.tests.length, imaging.length), input.patientName, lastAsked));
+  drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
   const L = 50;
   const W = 495;
 
   doc.moveDown(0.8);
-  doc.font('Helvetica-Bold').fontSize(15).fillColor(INK).text(imaging.length && input.tests.length ? 'LABORATORY AND IMAGING RESULTS' : imaging.length ? 'IMAGING RESULTS' : 'LABORATORY RESULTS', L);
+  doc.font('Helvetica-Bold').fontSize(15).fillColor(INK).text(resultsKind(input.tests.length, imaging.length).toUpperCase(), L);
   doc.moveDown(0.5);
 
   // Who the patient is, in two columns to leave the page for the results.
@@ -823,8 +848,9 @@ export async function generateLabResultsPdf(input: LabResultsPdfInput): Promise<
 
 type LetterSection = { heading: string; body: string | null | undefined };
 
-function newDocument(): { doc: PDFKit.PDFDocument; done: Promise<Buffer> } {
-  const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
+/** A new A4 document, titled so a browser names its tab (and a saved copy) after it, not a random address. */
+function newDocument(title?: string): { doc: PDFKit.PDFDocument; done: Promise<Buffer> } {
+  const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true, displayTitle: !!title, info: { Title: title ?? 'Bulamu', Author: 'Bulamu', Creator: 'Bulamu - bulamu.site' } });
   const chunks: Buffer[] = [];
   doc.on('data', (chunk) => chunks.push(chunk));
   const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
@@ -847,7 +873,7 @@ async function drawClinicalLetter(input: SampleOption & {
   patientName: string;
   signatures: [{ label: string; signer?: Signer | null }, { label: string; signer?: Signer | null }];
 }): Promise<Buffer> {
-  const { doc, done } = newDocument();
+  const { doc, done } = newDocument(documentTitle(input.title.charAt(0) + input.title.slice(1).toLowerCase(), input.patientName));
   drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
 
   doc.moveDown(1.5);
@@ -1052,7 +1078,7 @@ export type ReceiptPdfInput = SampleOption & {
  * documents, the facility is the customer here.
  */
 export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer> {
-  const { doc, done } = newDocument();
+  const { doc, done } = newDocument(documentTitle(input.amount === 0 ? 'Free trial receipt' : 'Subscription receipt', input.clinicName, input.paidAt));
 
   // A zero-amount receipt is the free-trial receipt issued when a facility is
   // approved - same document, trial wording instead of payment wording.
@@ -1197,7 +1223,7 @@ function drawTable(doc: PDFKit.PDFDocument, columns: Column[], rows: Array<{ cel
  * logo) - the figures are the facility's own.
  */
 export async function generateFinanceReportPdf(input: FinanceReportPdfInput): Promise<Buffer> {
-  const { doc, done } = newDocument();
+  const { doc, done } = newDocument(documentTitle('Financial report', input.facilityName) + ` - ${input.from} to ${input.to}`);
   drawLetterhead(doc, facilityLetterhead({ name: input.facilityName, facilityCode: input.facilityCode, phone: input.facilityPhone, motto: input.facilityMotto, logo: input.facilityLogo }));
 
   doc.moveDown(1);
@@ -1305,7 +1331,7 @@ export type ClinicalSummaryPdfInput = SampleOption & {
  * or to hand on. Every page says whose summary it is.
  */
 export async function generateClinicalSummaryPdf(input: ClinicalSummaryPdfInput): Promise<Buffer> {
-  const { doc, done } = newDocument();
+  const { doc, done } = newDocument(documentTitle('Clinical summary', input.summary.patient.name));
   const { patient, visits, stays, otherLabs } = input.summary;
   const otherImaging = input.summary.otherImaging ?? [];
   drawLetterhead(doc, facilityLetterhead({ name: input.clinicName, facilityCode: input.facilityCode, phone: input.clinicPhone, motto: input.clinicMotto, logo: input.clinicLogo }));
@@ -1402,7 +1428,7 @@ export type TableReportPdfInput = SampleOption & {
  * the platform's usage report. Tables run over pages with their headers repeated.
  */
 export async function generateTableReportPdf(input: TableReportPdfInput): Promise<Buffer> {
-  const { doc, done } = newDocument();
+  const { doc, done } = newDocument(input.title);
   drawLetterhead(doc, input.letterhead);
   doc.moveDown(1.2);
   doc.font('Helvetica-Bold').fontSize(17).fillColor(INK).text(input.title, 50);

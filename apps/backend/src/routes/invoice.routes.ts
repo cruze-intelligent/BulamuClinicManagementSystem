@@ -16,6 +16,8 @@ import { sendMail, patientReceiptEmail } from '../lib/mailer';
 import { sendRouteError } from '../lib/http-error';
 import { patientIdText } from '../lib/patient-text';
 import { priceLookup } from '../lib/price-list';
+import { documentFileName } from '../lib/document-name';
+import { attachmentDisposition } from '../lib/document-format';
 
 const MAX_QUANTITY = 10_000;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -59,7 +61,7 @@ function billLines(invoice: FullInvoice): BillLine[] {
 type ChargeInput = {
   kind: ChargeKind; description: string; quantity: number; unitPrice: number;
   labTestId: string | null; prescriptionId: string | null; admissionId: string | null; medicineId?: string | null;
-  imagingRequestId?: string | null; admissionNoteId?: string | null;
+  imagingRequestId?: string | null; admissionNoteId?: string | null; visitProcedureId?: string | null;
 };
 
 const idField = (value: unknown) => (typeof value === 'string' && value ? value : null);
@@ -82,6 +84,7 @@ function parseCharge(body: any): ChargeInput {
     medicineId: typeof body?.medicineId === 'string' && body.medicineId ? body.medicineId : null,
     imagingRequestId: idField(body?.imagingRequestId),
     admissionNoteId: idField(body?.admissionNoteId),
+    visitProcedureId: idField(body?.visitProcedureId),
   };
 }
 
@@ -115,6 +118,11 @@ async function checkChargeLinks(charge: ChargeInput, patientId: string, clinicId
     const note = await prisma.admissionNote.findFirst({ where: { id: charge.admissionNoteId, kind: { in: ['PROCEDURE', 'OPERATION_NOTE'] }, admission: { patientId, clinicId } }, select: { id: true } });
     if (!note) return "That procedure isn't this patient's";
   }
+  if (charge.visitProcedureId) {
+    if (charge.kind !== 'PROCEDURE') return 'A procedure is charged as a procedure';
+    const done = await prisma.visitProcedure.findFirst({ where: { id: charge.visitProcedureId, consultation: { patientId, appointment: { clinicId } } }, select: { id: true } });
+    if (!done) return "That procedure isn't this patient's";
+  }
   return null;
 }
 
@@ -130,6 +138,7 @@ const chargeData = (charge: ChargeInput, userId: string) => ({
   medicineId: charge.medicineId ?? null,
   imagingRequestId: charge.imagingRequestId ?? null,
   admissionNoteId: charge.admissionNoteId ?? null,
+  visitProcedureId: charge.visitProcedureId ?? null,
   addedByUserId: userId,
 });
 
@@ -148,7 +157,7 @@ async function loadInvoice(id: string) {
 /**
  * What could still go on this bill, so every stage of the patient's care is
  * charged for: the consultation fee for the visit, the visit's lab tests,
- * imaging and prescribed medicines, the patient's lab tests and imaging asked
+ * imaging, prescribed medicines and procedures, the patient's lab tests and imaging asked
  * for outside a visit in the last month, procedures and operations done on the
  * ward, and the nights of any ward stay in the last two months not yet charged.
  * Each comes with a suggested price: the stock price for a medicine, otherwise
@@ -162,7 +171,7 @@ async function chargeSuggestions(invoice: FullInvoice) {
     ...(invoice.consultationId ? [{ consultationId: invoice.consultationId }] : []),
     { consultationId: null, createdAt: { gte: since } },
   ];
-  const [labTests, imaging, prescriptions, stays, procedures, visit] = await Promise.all([
+  const [labTests, imaging, prescriptions, stays, procedures, visit, visitProcedures] = await Promise.all([
     prisma.labTest.findMany({
       where: { patientId: invoice.patientId, deletedAt: null, status: { not: 'CANCELLED' }, invoiceItem: null, OR: visitOrRecent },
       select: { id: true, testName: true },
@@ -193,6 +202,10 @@ async function chargeSuggestions(invoice: FullInvoice) {
     invoice.consultationId
       ? prisma.consultation.findUnique({ where: { id: invoice.consultationId }, select: { appointment: { select: { department: { select: { name: true } } } } } })
       : Promise.resolve(null),
+    // Procedures done at the visit (incision and drainage, ear syringing...).
+    invoice.consultationId
+      ? prisma.visitProcedure.findMany({ where: { consultationId: invoice.consultationId, invoiceItem: null }, select: { id: true, name: true }, orderBy: { createdAt: 'asc' } })
+      : Promise.resolve([]),
   ]);
 
   // Nights in the ward so far (a stay that started today counts as one), less any already charged.
@@ -225,6 +238,7 @@ async function chargeSuggestions(invoice: FullInvoice) {
     ...labTests.map((t) => ({ kind: 'LAB' as const, description: t.testName })),
     ...imaging.map((r) => ({ kind: 'IMAGING' as const, description: r.examination })),
     ...procedures.map((n) => ({ kind: 'PROCEDURE' as const, description: procedureName(n) })),
+    ...visitProcedures.map((p) => ({ kind: 'PROCEDURE' as const, description: p.name })),
     ...unbilledStays.map((s) => ({ kind: 'ADMISSION' as const, description: describeStay(s.stay.ward.name) })),
     ...(consultationPrice === null ? [{ kind: 'CONSULTATION' as const, description: 'Consultation' }] : []),
   ];
@@ -245,6 +259,7 @@ async function chargeSuggestions(invoice: FullInvoice) {
       unitPrice: rx.medicine?.price ? Math.round(rx.medicine.price) : null,
       prescriptionId: rx.id,
     })),
+    ...visitProcedures.map((p) => ({ kind: 'PROCEDURE' as const, description: p.name, quantity: 1, unitPrice: priceOf('PROCEDURE', p.name), visitProcedureId: p.id })),
     ...procedures.map((n) => ({ kind: 'PROCEDURE' as const, description: procedureName(n), quantity: 1, unitPrice: priceOf('PROCEDURE', procedureName(n)), admissionNoteId: n.id })),
     ...unbilledStays.map(({ stay, nights }) => ({
       kind: 'ADMISSION' as const,
@@ -675,7 +690,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       const receipt = await receiptFor(request, reply, id);
       if (!receipt) return;
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `attachment; filename="receipt-${formatReceiptNumber(receipt.payment.receiptNumber)}.pdf"`);
+      reply.header('Content-Disposition', attachmentDisposition(documentFileName(`Receipt ${formatReceiptNumber(receipt.payment.receiptNumber)}`, receipt.invoice.patient.name, receipt.payment.receivedAt)));
       return reply.send(receipt.pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);
@@ -751,7 +766,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       });
 
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `attachment; filename="invoice-${invoice.id.slice(0, 8)}.pdf"`);
+      reply.header('Content-Disposition', attachmentDisposition(documentFileName('Invoice', invoice.patient.name, invoice.createdAt)));
       return reply.send(pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);

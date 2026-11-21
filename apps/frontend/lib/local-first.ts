@@ -83,6 +83,8 @@ export type LocalDiagnosis = {
   notes?: string | null;
 };
 
+export type LocalProcedure = { name: string; notes?: string | null };
+
 export type LocalConsultation = {
   id: string;
   appointmentId: string;
@@ -101,6 +103,8 @@ export type LocalConsultation = {
   clinicalNotes?: string | null;
   serviceTags?: string[];
   prescriptions: LocalPrescription[];
+  /** Procedures in the treatment plan (incision and drainage, ear syringing...): done, not dispensed. */
+  procedures?: LocalProcedure[];
   /** Saved with tests or imaging sent; the diagnosis and prescription come when the results are in. */
   awaitingResults?: boolean;
   patient?: { name: string; phone: string };
@@ -701,6 +705,7 @@ export async function createConsultationOffline(input: {
   clinicalNotes?: string;
   serviceTags?: string[];
   prescriptions: LocalPrescription[];
+  procedures?: LocalProcedure[];
   /** Consultation fee in UGX - becomes the facility's invoice to the patient. */
   fee?: number;
   patientName?: string;
@@ -726,6 +731,7 @@ export async function createConsultationOffline(input: {
     clinicalNotes: input.clinicalNotes || null,
     serviceTags: input.serviceTags,
     prescriptions: input.prescriptions,
+    procedures: input.procedures ?? [],
     awaitingResults: input.awaitingResults === true,
     patient: input.patientName ? { name: input.patientName, phone: "" } : undefined,
     createdAt: input.createdAt ?? now,
@@ -752,6 +758,7 @@ export async function createConsultationOffline(input: {
       clinicalNotes: consultation.clinicalNotes,
       serviceTags: consultation.serviceTags || [],
       prescriptions: consultation.prescriptions,
+      procedures: consultation.procedures,
       awaitingResults: consultation.awaitingResults,
       ...(input.fee ? { fee: input.fee } : {}),
       createdAt: consultation.createdAt,

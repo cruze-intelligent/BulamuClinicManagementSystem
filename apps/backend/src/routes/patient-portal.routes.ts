@@ -15,6 +15,7 @@ import { sendRouteError } from '../lib/http-error';
 import { buildReceipt } from './invoice.routes';
 import { CHARGE_KINDS, formatReceiptNumber, paymentMethodText } from '../lib/invoices';
 import { formatEmailDate } from '../lib/mailer';
+import { documentFileName, inlineDisposition } from '../lib/document-name';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
@@ -223,18 +224,18 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
 
     const consultation = await prisma.consultation.findFirst({
       where: { id, deletedAt: null },
-      select: { patientId: true, _count: { select: { prescriptions: true } } },
+      select: { patientId: true, _count: { select: { prescriptions: true, procedures: true } } },
     });
     if (!consultation) return reply.status(404).send({ error: 'Prescription not found' });
     const record = await findOwnRecord(authUser.patientAccountId, consultation.patientId);
     if (!record) return reply.status(404).send({ error: 'Prescription not found' });
-    if (consultation._count.prescriptions === 0) return reply.status(404).send({ error: 'Prescription not found' });
+    if (consultation._count.prescriptions === 0 && consultation._count.procedures === 0) return reply.status(404).send({ error: 'Prescription not found' });
 
     const built = await buildPrescriptionPdf(id, 'downloaded by the patient from the Bulamu Patient Portal');
     if (!built) return reply.status(404).send({ error: 'Prescription not found' });
 
     reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `inline; filename="prescription-${id}.pdf"`);
+    reply.header('Content-Disposition', inlineDisposition(built.fileName));
     return reply.send(built.pdf);
   });
 
@@ -250,7 +251,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
       const built = await buildReceipt(id, 'downloaded by the patient from the Bulamu Patient Portal');
       if (!built) return reply.status(404).send({ error: 'Receipt not found' });
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `inline; filename="receipt-${formatReceiptNumber(payment.receiptNumber)}.pdf"`);
+      reply.header('Content-Disposition', inlineDisposition(documentFileName(`Receipt ${formatReceiptNumber(payment.receiptNumber)}`, built.invoice.patient.name, built.payment.receivedAt)));
       return reply.send(built.pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);
@@ -270,7 +271,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     }
     const pdf = await generateReferralLetterPdf({ ...referralLetterInput(referral), fromClinicLogo: await facilityLogo(referral.fromClinicId), producedBy: 'downloaded by the patient from the Bulamu Patient Portal' });
     reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `inline; filename="referral-${id.slice(0, 8)}.pdf"`);
+    reply.header('Content-Disposition', inlineDisposition(documentFileName('Referral letter', referral.patient.name, referral.createdAt)));
     return reply.send(pdf);
   });
 
@@ -291,7 +292,7 @@ export async function patientPortalRoutes(fastify: FastifyInstance) {
     }
     const pdf = await generateDischargeSummaryPdf({ ...dischargeSummaryInput(admission), clinicLogo: await facilityLogo(admission.clinicId), producedBy: 'downloaded by the patient from the Bulamu Patient Portal' });
     reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `inline; filename="discharge-summary-${id.slice(0, 8)}.pdf"`);
+    reply.header('Content-Disposition', inlineDisposition(documentFileName('Discharge summary', admission.patient.name, admission.dischargedAt)));
     return reply.send(pdf);
   });
 

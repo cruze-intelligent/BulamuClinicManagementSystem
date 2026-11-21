@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { diagnosesOf, diagnosesToPayload, diagnosisHeadline, diagnosisProblems, diagnosisToDraft, emptyDiagnosis, type DiagnosisDraft } from './diagnosis';
+import { codeFitsWording, diagnosesOf, diagnosesToPayload, diagnosisHeadline, diagnosisProblems, diagnosisToDraft, emptyDiagnosis, type DiagnosisDraft } from './diagnosis';
 
 const draft = (patch: Partial<DiagnosisDraft>): DiagnosisDraft => ({ ...emptyDiagnosis(), ...patch });
 
@@ -56,5 +56,16 @@ describe('going on with a visit that waited for results', () => {
       { description: 'Malaria, uncomplicated', icd10Code: 'B54', type: 'PRIMARY', certainty: 'PROVISIONAL', notes: 'RDT pending' },
       { description: 'Anaemia', type: 'SECONDARY', certainty: 'CONFIRMED' },
     ]);
+  });
+});
+
+describe('a code that does not fit the diagnosis written', () => {
+  it('is noticed - B54 on a pre-auricular sinus abscess - while a code that fits, or no wording, passes', () => {
+    const malaria = { name: 'Malaria, unspecified', keywords: 'malaria clinical' };
+    expect(codeFitsWording(malaria, 'PRE-AURICULAR SINUS ABSCESS')).toBe(false);
+    expect(codeFitsWording(malaria, 'Severe malaria')).toBe(true);
+    expect(codeFitsWording(malaria, 'Malarial fever')).toBe(true);
+    expect(codeFitsWording({ name: 'Cutaneous abscess, furuncle and carbuncle, unspecified', keywords: 'boil abscess' }, 'Pre-auricular sinus abscess')).toBe(true);
+    expect(codeFitsWording(malaria, '')).toBe(true);
   });
 });

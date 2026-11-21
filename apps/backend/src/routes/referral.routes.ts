@@ -8,6 +8,7 @@ import { addressText, allergyText, nextOfKinText, patientIdText, sexAgeText } fr
 import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer, roleTitle } from '../lib/document-signer';
 import { sendRouteError } from '../lib/http-error';
+import { documentFileName, inlineDisposition } from '../lib/document-name';
 
 function fail(reply: FastifyReply, error: any) {
   if (error instanceof ReferralError) return reply.status(error.status).send({ error: error.message });
@@ -123,7 +124,7 @@ export async function referralRoutes(fastify: FastifyInstance) {
       const pdf = await generateReferralLetterPdf({ ...referralLetterInput(referral), fromClinicLogo: await facilityLogo(referral.fromClinicId), producedBy: await documentProducer(authUser.userId) });
       return reply
         .header('Content-Type', 'application/pdf')
-        .header('Content-Disposition', `inline; filename="referral-${referral.id.slice(0, 8)}.pdf"`)
+        .header('Content-Disposition', inlineDisposition(documentFileName('Referral letter', referral.patient.name, referral.createdAt)))
         .send(pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);
