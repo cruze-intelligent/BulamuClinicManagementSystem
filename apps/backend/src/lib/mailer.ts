@@ -353,6 +353,33 @@ export function chatroomMessageEmail(input: { recipientName: string; senderName:
   `, { eyebrow: 'Bulamu Chatroom', preheader: 'A new secure message is waiting in your Chatroom inbox.', footnote: 'You received this because a sender requested an email notice. Message content is available only after you sign in to Bulamu.' });
 }
 
+/** A friendly re-engagement check-in for facilities that have not used Bulamu recently. */
+export function facilitySetupCheckInEmail(input: { recipientName: string; facilityName: string }): string {
+  const recipientName = escapeHtml(input.recipientName);
+  const facilityName = escapeHtml(input.facilityName);
+  const questions = [
+    'Would help setting up staff accounts, roles, or your facility profile be useful?',
+    'Did you get stuck while adding services, schedules, fees, or your first patients?',
+    'Are you running into sign-in, syncing, forms, or printing issues?',
+    'Would you like a short guided walkthrough, or do you have another question for us?',
+  ];
+  return emailShell(`
+    ${heading('Can we help your team get started?')}
+    ${para(`Hello ${recipientName},`)}
+    ${para(`We noticed that ${facilityName} has not been active on Bulamu recently, so we wanted to check in. If your team has been busy or paused using the system, that is completely fine. We are here if a hand getting set up would help.`)}
+    ${para('<strong>Would any of these be useful?</strong>')}
+    <ul style="margin:0 0 22px;padding-left:22px;font-size:15px;line-height:1.8;color:${TEXT}">${questions.map((question) => `<li style="margin:0 0 6px">${question}</li>`).join('')}</ul>
+    ${para('Reply to this email and tell us what you need, or suggest a convenient time for a short walkthrough. We will be happy to help.')}
+    ${callout('Please do not include patient information in email. We can help with patient records securely inside Bulamu.')}
+    ${action('mailto:admin@bulamu.site?subject=Bulamu%20setup%20assistance', 'Reply to the Bulamu team')}
+    ${SIGN_OFF}
+  `, {
+    eyebrow: 'A check-in from Bulamu',
+    preheader: 'Would your facility like help with setup, training, or questions?',
+    footnote: 'A courtesy check-in from the Bulamu team. If you have already resumed using Bulamu, no action is needed.',
+  });
+}
+
 // "23 October 2026" - unambiguous, unlike 10/23/2026 vs 23/10/2026.
 export function formatEmailDate(date: Date): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' });
