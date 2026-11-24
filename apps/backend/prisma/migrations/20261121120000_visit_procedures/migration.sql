@@ -3,7 +3,6 @@ CREATE TABLE "VisitProcedure" (
     "id" TEXT NOT NULL,
     "consultationId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "position" INTEGER NOT NULL DEFAULT 0,
     "notes" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
