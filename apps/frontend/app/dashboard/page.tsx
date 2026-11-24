@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/useAuth';
 import { Stat } from '@/components/report-parts';
 import { ALWAYS_SHOWN, menuFor } from '@/lib/nav-items';
 import { useRouter } from 'next/navigation';
+import { DraftsList } from '@/components/drafts-list';
 
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
@@ -64,6 +65,7 @@ export default function Dashboard() {
     <div className="min-h-screen p-4 sm:p-8 bg-slate-50 dark:bg-slate-950">
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Dashboard</h1>
+        <DraftsList className="mb-6" />
         
         {/* Search */}
         <div className="mb-6">

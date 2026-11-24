@@ -20,7 +20,7 @@ type Payment = {
   id: string; facility: { id: string; name: string; facilityCode: string }; amount: number; currency: string;
   status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'REVERSED'; startedAt: string; paidAt: string | null;
   periodStart: string | null; periodEnd: string | null; reference: string | null; hasReceipt: boolean;
-  method?: 'PESAPAL' | 'CASH'; paidBy?: string | null; reason?: string | null;
+  method?: string; methodWords?: string; paidBy?: string | null; reason?: string | null;
 };
 type Bucket = { amount: number; payments: number };
 type Finances = {
@@ -241,7 +241,7 @@ export default function SuperAdminFinancesPage() {
                       <td className="p-3 whitespace-nowrap">{paymentStatusLabel(p.status)}{p.paidAt && p.status === 'COMPLETED' && <div className="text-xs text-muted-foreground">on {shortDate(p.paidAt)}</div>}{p.reason && <div className="mt-0.5 max-w-xs whitespace-normal text-xs text-rose-700 dark:text-rose-400">{p.reason}</div>}</td>
                       <td className="p-3 whitespace-nowrap text-xs">{periodText(p.periodStart, p.periodEnd)}</td>
                       <td className="p-3 text-xs">
-                        {p.method === 'CASH' ? `Cash${p.paidBy ? ` from ${p.paidBy}` : ''}` : 'Pesapal'}
+                        {p.methodWords ?? (p.method === 'CASH' ? 'Cash' : 'Pesapal')}{p.paidBy && p.method !== 'PESAPAL' ? ` from ${p.paidBy}` : ''}
                         {p.reference && <span className="block font-mono text-muted-foreground">{p.reference}</span>}
                       </td>
                       <td className="p-3 text-right">

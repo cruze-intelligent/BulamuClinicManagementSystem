@@ -41,6 +41,7 @@ export async function startEmbeddedPostgres(opts?: { port?: number; databaseName
     password: 'bulamu_test',
     port,
     persistent: false,
+    postgresFlags: ['-c', 'fsync=off', '-c', 'synchronous_commit=off'],
   });
 
   await pg.initialise();

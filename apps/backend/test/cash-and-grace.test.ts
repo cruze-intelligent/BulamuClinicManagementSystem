@@ -12,6 +12,17 @@ vi.mock('../src/lib/mailer', async (importOriginal) => {
   return { ...actual, sendMail: sendMailMock };
 });
 
+// Pesapal itself, for a confirmation that arrives after a payment was confirmed by hand.
+const pesapal = vi.hoisted(() => ({ status: { statusCode: 1, amount: 100000, currency: 'UGX' } as Record<string, unknown> }));
+vi.mock('../src/services/pesapal.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/services/pesapal.service')>();
+  return {
+    ...actual,
+    getAccessToken: async () => ({ success: true, token: 'test-token' }),
+    getTransactionStatus: async () => ({ success: true, status: pesapal.status }),
+  };
+});
+
 vi.setConfig({ testTimeout: 60_000 });
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -291,5 +302,98 @@ describe('grace days for a paid facility whose subscription ran out', () => {
     expect(paidPeriodEnd(afterGrace, now).getTime()).toBe(now.getTime() - 7 * DAY + MONTH);
     // Without grace, a lapsed facility's month starts the day it pays.
     expect(paidPeriodEnd({ ...afterGrace, graceDays: 0, graceFrom: null }, now).getTime()).toBe(now.getTime() + MONTH);
+  });
+});
+
+describe('payments recorded by hand: mobile money, a bank transfer, a Pesapal payment that is late', () => {
+  const manual = (token: string, clinicId: string, payload: object) =>
+    app.inject({ method: 'POST', url: `/billing/manual/${clinicId}`, headers: authHeader(token), payload });
+
+  it('records mobile money with its network and transaction ID, on the receipt and in the finances', async () => {
+    const bulamu = await operator();
+    const f = await facility({ status: 'ACTIVE', currentPeriodEnd: days(2), lastPaymentAt: days(-28) });
+    const base = { method: 'MOBILE_MONEY', amount: 100000, paidBy: 'Okello Isaac, 0772 340 349' };
+    expect((await manual(bulamu.token, f.clinic.id, { ...base, reference: 'MP231123.1045.A1' })).json().error).toMatch(/network/);
+    expect((await manual(bulamu.token, f.clinic.id, { ...base, provider: 'MTN Mobile Money' })).json().error).toMatch(/transaction ID/);
+    expect((await manual(bulamu.token, f.clinic.id, { ...base, provider: 'Bitcoin', reference: 'x' })).statusCode).toBe(400);
+    expect(await prisma.payment.count()).toBe(0);
+
+    const res = await manual(bulamu.token, f.clinic.id, { ...base, provider: 'MTN Mobile Money', reference: 'MP231123.1045.A1' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().payment).toMatchObject({ status: 'COMPLETED', method: 'MOBILE_MONEY', provider: 'MTN Mobile Money', reference: 'MP231123.1045.A1', recordedBy: bulamu.id });
+    expect((await subscriptionOf(f)).currentPeriodEnd!.getTime()).toBeGreaterThan(days(30).getTime());
+
+    const receipt = pdfText((await app.inject({ method: 'GET', url: res.json().receiptPath, headers: authHeader(f.admin.token) })).rawPayload);
+    for (const line of ['Mobile money - MTN Mobile Money', 'Transaction ID', 'MP231123.1045.A1', 'Edwin Kubo, for Bulamu']) expect(receipt, line).toContain(line);
+    const finances = (await app.inject({ method: 'GET', url: '/super-admin/finances', headers: authHeader(bulamu.token) })).json().finances;
+    expect(finances.payments[0]).toMatchObject({ method: 'MOBILE_MONEY', methodWords: 'MTN Mobile Money', reference: 'MP231123.1045.A1' });
+    const csv = await app.inject({ method: 'GET', url: '/super-admin/finances/payments.csv', headers: authHeader(bulamu.token) });
+    expect(csv.body).toContain('MTN Mobile Money,"Okello Isaac, 0772 340 349",MP231123.1045.A1');
+
+    // A bank transfer needs its reference too.
+    expect((await manual(bulamu.token, f.clinic.id, { method: 'BANK_TRANSFER', amount: 100000, paidBy: 'Okello Isaac' })).json().error).toMatch(/bank reference/);
+    const bank = await manual(bulamu.token, f.clinic.id, { method: 'BANK_TRANSFER', provider: 'Stanbic Bank', reference: 'FT2611230099', amount: 100000, paidBy: 'Okello Isaac' });
+    expect(bank.json().payment).toMatchObject({ method: 'BANK_TRANSFER', provider: 'Stanbic Bank', reference: 'FT2611230099' });
+  });
+
+  it('confirms a late Pesapal payment on its own record, so Pesapal confirming it afterwards adds nothing', async () => {
+    const bulamu = await operator();
+    const f = await facility({ status: 'PAST_DUE', currentPeriodEnd: days(-2), lastPaymentAt: days(-32) });
+    const sub = await subscriptionOf(f);
+    const waiting = await prisma.payment.create({
+      data: { clinicId: f.clinic.id, subscriptionId: sub.id, amount: 100000, currency: 'UGX', status: 'PENDING', method: 'PESAPAL', pesapalOrderTrackingId: 'TRK-LATE-1', pesapalMerchantReference: 'BUL-LATE-1' },
+    });
+    const listed = (await app.inject({ method: 'GET', url: '/billing/pesapal/pending', headers: authHeader(bulamu.token) })).json().payments;
+    expect(listed.map((p: any) => p.id)).toEqual([waiting.id]);
+    expect((await app.inject({ method: 'GET', url: '/billing/pesapal/pending', headers: authHeader(f.admin.token) })).statusCode).toBe(403);
+
+    expect((await manual(bulamu.token, f.clinic.id, { method: 'PESAPAL', pesapalPaymentId: waiting.id, amount: 50000, paidBy: 'Okello Isaac' })).statusCode).toBe(400);
+    const confirmed = await manual(bulamu.token, f.clinic.id, { method: 'PESAPAL', pesapalPaymentId: waiting.id, amount: 100000, paidBy: 'Okello Isaac', reference: 'PSP-998877' });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json().payment).toMatchObject({ id: waiting.id, status: 'COMPLETED', method: 'PESAPAL', recordedBy: bulamu.id, reference: 'PSP-998877' });
+    expect(await prisma.payment.count()).toBe(1);
+    const paidUntil = (await subscriptionOf(f)).currentPeriodEnd!;
+    expect((await subscriptionOf(f)).status).toBe('ACTIVE');
+    expect(await canSave(f)).toBe(true);
+    const receipt = pdfText((await app.inject({ method: 'GET', url: confirmed.json().receiptPath, headers: authHeader(f.admin.token) })).rawPayload);
+    for (const line of ['Pesapal (confirmed by Bulamu)', 'Pesapal confirmation code', 'PSP-998877', 'TRK-LATE-1']) expect(receipt, line).toContain(line);
+
+    // Confirming it again - by hand, or when the notice from Pesapal finally arrives - adds nothing.
+    expect((await manual(bulamu.token, f.clinic.id, { method: 'PESAPAL', pesapalPaymentId: waiting.id, amount: 100000, paidBy: 'Okello Isaac' })).statusCode).toBe(409);
+    process.env.PESAPAL_CONSUMER_KEY = 'k';
+    process.env.PESAPAL_CONSUMER_SECRET = 's';
+    try {
+      const asked = await app.inject({ method: 'POST', url: `/billing/pesapal/${waiting.id}/check`, headers: authHeader(bulamu.token) });
+      expect(asked.json()).toMatchObject({ outcome: 'already-applied' });
+      await app.inject({ method: 'GET', url: '/billing/pesapal/ipn?OrderTrackingId=TRK-LATE-1&OrderMerchantReference=BUL-LATE-1&OrderNotificationType=IPNCHANGE' });
+    } finally {
+      delete process.env.PESAPAL_CONSUMER_KEY;
+      delete process.env.PESAPAL_CONSUMER_SECRET;
+    }
+    expect((await subscriptionOf(f)).currentPeriodEnd!.getTime()).toBe(paidUntil.getTime());
+    expect((await app.inject({ method: 'GET', url: '/billing/pesapal/pending', headers: authHeader(bulamu.token) })).json().payments).toEqual([]);
+  });
+
+  it('asks Pesapal again about a payment it has not confirmed, and applies the answer', async () => {
+    const bulamu = await operator();
+    const f = await facility({ status: 'PAST_DUE', currentPeriodEnd: days(-2), lastPaymentAt: days(-32) });
+    const sub = await subscriptionOf(f);
+    const waiting = await prisma.payment.create({
+      data: { clinicId: f.clinic.id, subscriptionId: sub.id, amount: 100000, currency: 'UGX', status: 'PENDING', method: 'PESAPAL', pesapalOrderTrackingId: 'TRK-LOST-2' },
+    });
+    process.env.PESAPAL_CONSUMER_KEY = 'k';
+    process.env.PESAPAL_CONSUMER_SECRET = 's';
+    try {
+      pesapal.status = { statusCode: 0, amount: 100000, currency: 'UGX' };
+      expect((await app.inject({ method: 'POST', url: `/billing/pesapal/${waiting.id}/check`, headers: authHeader(bulamu.token) })).json()).toMatchObject({ outcome: 'pending' });
+      pesapal.status = { statusCode: 1, amount: 100000, currency: 'UGX' };
+      const asked = (await app.inject({ method: 'POST', url: `/billing/pesapal/${waiting.id}/check`, headers: authHeader(bulamu.token) })).json();
+      expect(asked).toMatchObject({ outcome: 'activated' });
+      expect(asked.message).toMatch(/the facility is paid/);
+    } finally {
+      delete process.env.PESAPAL_CONSUMER_KEY;
+      delete process.env.PESAPAL_CONSUMER_SECRET;
+    }
+    expect((await subscriptionOf(f)).status).toBe('ACTIVE');
   });
 });

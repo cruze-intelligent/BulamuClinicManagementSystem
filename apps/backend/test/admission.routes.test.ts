@@ -202,4 +202,36 @@ describe('wards and admissions', () => {
     const pharmacist = await staff(patient.clinicId, 'PHARMACIST');
     expect((await app.inject({ method: 'GET', url: '/admissions', headers: authHeader(pharmacist.token) })).statusCode).toBe(403);
   });
+
+  it('keeps the working diagnosis up to date on ward rounds, each change written in the chart', async () => {
+    const { doctor, nurse, ward, patient } = await setup();
+    const id = (await admit(nurse.token, { patientId: patient.id, wardId: ward.id, reason: 'Fever and vomiting' })).json().admission.id;
+    const update = (token: string, diagnoses: unknown) => app.inject({ method: 'PUT', url: `/admissions/${id}/diagnoses`, headers: authHeader(token), payload: { diagnoses } });
+
+    expect((await update(nurse.token, [{ description: 'Malaria' }])).statusCode).toBe(403);
+    expect((await update(doctor.token, [])).statusCode).toBe(400);
+    expect((await update(doctor.token, [{ description: 'Malaria', icd10Code: 'not a code' }])).statusCode).toBe(400);
+
+    const first = await update(doctor.token, [{ description: 'Suspected severe malaria', icd10Code: 'B54', type: 'PRIMARY', certainty: 'PROVISIONAL' }]);
+    expect(first.statusCode).toBe(200);
+    expect(first.json().admission.diagnoses).toMatchObject([{ description: 'Suspected severe malaria', icd10Code: 'B54', type: 'PRIMARY', certainty: 'PROVISIONAL' }]);
+
+    // Next round: confirmed, with a second diagnosis.
+    const second = await update(doctor.token, [
+      { description: 'Severe P. falciparum malaria', icd10Code: 'B50.8', type: 'PRIMARY', certainty: 'CONFIRMED' },
+      { description: 'Anaemia', icd10Code: 'D64.9', type: 'SECONDARY' },
+    ]);
+    expect(second.json().admission.diagnoses.map((d: any) => d.description)).toEqual(['Severe P. falciparum malaria', 'Anaemia']);
+
+    const chart = (await app.inject({ method: 'GET', url: `/admissions/${id}`, headers: authHeader(nurse.token) })).json().admission;
+    const rounds = chart.notes.filter((n: any) => n.kind === 'WARD_ROUND').map((n: any) => [n.note, n.authorName]);
+    expect(rounds).toEqual([
+      ['Diagnosis updated. Primary: Severe P. falciparum malaria (B50.8). Also: Anaemia (D64.9).', 'Dr Namata'],
+      ['Diagnosis updated. Primary: Suspected severe malaria (B54) - suspected.', 'Dr Namata'],
+    ]);
+    expect(chart.diagnoses).toHaveLength(2);
+
+    await app.inject({ method: 'POST', url: `/admissions/${id}/discharge`, headers: authHeader(doctor.token), payload: { outcome: 'RECOVERED', dischargeDiagnosis: 'Severe P. falciparum malaria', dischargeSummary: 'Recovered.' } });
+    expect((await update(doctor.token, [{ description: 'Late change' }])).statusCode).toBe(409);
+  });
 });

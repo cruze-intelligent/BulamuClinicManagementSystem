@@ -15,6 +15,8 @@ process.env.FRONTEND_URL = 'http://localhost:3000';
 // limit, which made sendMail() throw and took down unrelated routes that
 // happened to send a notification email). Force mailer.ts's
 // getTransporter() down the "not configured" path in every test run.
-delete process.env.SMTP_HOST;
-delete process.env.SMTP_USER;
-delete process.env.SMTP_PASSWORD;
+// Prisma may load the backend .env file while initializing the client. Empty
+// strings keep those local credentials from being restored after this setup.
+process.env.SMTP_HOST = '';
+process.env.SMTP_USER = '';
+process.env.SMTP_PASSWORD = '';

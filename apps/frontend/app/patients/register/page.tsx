@@ -12,6 +12,8 @@ import { formatTime, serverNow } from '@/lib/time';
 import { LinkExistingPatient } from '@/components/link-existing-patient';
 import { Select } from '@/components/ui/select';
 import { BirthDateInput, birthDatePayload, emptyBirthDate, type BirthDateValue } from '@/components/birth-date-input';
+import { DraftNote } from '@/components/draft-note';
+import { useDraft } from '@/lib/drafts';
 
 export default function RegisterPatient() {
   const [mode, setMode] = useState<'new' | 'link'>('new');
@@ -65,6 +67,21 @@ function NewPatientForm() {
     setUnit(defaultDepartmentId(active));
   }, []);
 
+  // A registration being typed is kept as a draft on this device until it is saved (lib/drafts).
+  const draft = useDraft({
+    form: 'new-patient',
+    id: 'new',
+    value: { name, phone, email, sex, birth, village, parish, subCounty, district },
+    isEmpty: (v) => ![v.name, v.phone, v.email, v.sex, v.village, v.parish, v.subCounty, v.district].some((x) => String(x ?? '').trim())
+      && JSON.stringify(v.birth) === JSON.stringify(emptyBirthDate()),
+    label: 'New patient registration',
+    path: '/patients/register',
+    onRestore: (v) => {
+      setName(v.name); setPhone(v.phone); setEmail(v.email); setSex(v.sex); setBirth(v.birth);
+      setVillage(v.village); setParish(v.parish); setSubCounty(v.subCounty); setDistrict(v.district);
+    },
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (queueNow && units.length > 0 && !unit) {
@@ -109,6 +126,7 @@ function NewPatientForm() {
       setParish('');
       setSubCounty('');
       setDistrict('');
+      draft.discard();
       router.push(queueNow ? '/appointments' : '/patients');
     } catch (error: any) {
       alert(`Error saving patient: ${error.message}`);
@@ -123,6 +141,7 @@ function NewPatientForm() {
       <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Works without internet - saved on this device and sent when you're back online</p>
 
       <Card className="p-6">
+        <DraftNote className="mb-3" savedAt={draft.savedAt} restoredAt={draft.restoredAt} onDiscard={() => { draft.discard(); window.location.reload(); }} />
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <Label htmlFor="name">Patient Full Name</Label>

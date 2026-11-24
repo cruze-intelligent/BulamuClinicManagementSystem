@@ -13,6 +13,7 @@ import { CHARGE_KINDS, parseShillings, shortDate, ugx, type ChargeKind } from '@
 import { ListedServices, PriceListPanel } from '@/components/price-list-panel';
 import { listedPrice, usePriceList } from '@/lib/price-list';
 import { StockPicker, sellable, useStockList } from '@/components/stock-picker';
+import { matchesPatient } from '@/lib/search';
 
 const FILTERS = [
   { value: 'OPEN', label: 'Still owed' },
@@ -137,7 +138,7 @@ export default function BillsPage() {
           </div>
           <div className="relative ml-auto w-full sm:w-64">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-slate-400" aria-hidden="true" />
-            <Input aria-label="Find a patient's bills" placeholder="Patient name" className="pl-8" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <Input aria-label="Find a patient's bills" placeholder="Patient name, phone or ID" className="pl-8" value={query} onChange={(e) => setQuery(e.target.value)} />
           </div>
         </div>
 
@@ -217,9 +218,8 @@ function NewBill({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
   }, [onClose]);
 
   const matches = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return patients.filter((p) => p.name.toLowerCase().includes(q) || p.phone.replace(/\s/g, '').includes(q.replace(/\s/g, ''))).slice(0, 6);
+    if (!search.trim()) return [];
+    return patients.filter((p) => matchesPatient(p, search)).slice(0, 6);
   }, [patients, search]);
 
   const total = lines.reduce((sum, l) => sum + (parseShillings(l.unitPrice) ?? 0) * (Number(l.quantity) || 0), 0);
@@ -277,7 +277,7 @@ function NewBill({ onClose, onCreated }: { onClose: () => void; onCreated: (id: 
               </div>
             ) : (
               <>
-                <Input id="bill-patient" autoFocus placeholder="Type a name or phone number" value={search} onChange={(e) => setSearch(e.target.value)} autoComplete="off" />
+                <Input id="bill-patient" autoFocus placeholder="Type a name, phone number or Patient ID" value={search} onChange={(e) => setSearch(e.target.value)} autoComplete="off" />
                 {matches.length > 0 && (
                   <ul className="mt-1 divide-y divide-slate-100 rounded-md border border-slate-200 dark:divide-slate-800 dark:border-slate-700" aria-label="Matching patients">
                     {matches.map((p) => (

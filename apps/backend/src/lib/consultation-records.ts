@@ -35,13 +35,17 @@ export async function replaceVisitProcedures(tx: Prisma.TransactionClient, consu
   const billed = await tx.visitProcedure.findMany({ where: { consultationId, invoiceItem: { isNot: null } } });
   await tx.visitProcedure.deleteMany({ where: { consultationId, invoiceItem: null } });
   const key = (p: { name: string; notes: string | null }) => `${p.name.toLowerCase()}|${(p.notes ?? '').toLowerCase()}`;
-  const kept = billed.map(key);
-  const toCreate = procedures.filter((p) => {
-    const at = kept.indexOf(key(p));
-    if (at === -1) return true;
-    kept.splice(at, 1);
-    return false;
-  });
+  const remaining = [...billed];
+  const toCreate: Array<ProcedureInput & { position: number }> = [];
+  for (const [position, procedure] of procedures.entries()) {
+    const at = remaining.findIndex((existing) => key(existing) === key(procedure));
+    if (at < 0) {
+      toCreate.push({ ...procedure, position });
+      continue;
+    }
+    const [existing] = remaining.splice(at, 1);
+    await tx.visitProcedure.update({ where: { id: existing.id }, data: { position } });
+  }
   if (toCreate.length) await tx.visitProcedure.createMany({ data: toCreate.map((p) => ({ ...p, consultationId })) });
 }
 
@@ -49,7 +53,7 @@ export async function replaceVisitProcedures(tx: Prisma.TransactionClient, consu
 export const consultationChildren = {
   diagnoses: { orderBy: [{ type: 'asc' as const }, { createdAt: 'asc' as const }] },
   prescriptions: { orderBy: { createdAt: 'asc' as const }, include: { dispensedBy: { select: { name: true } } } },
-  procedures: { orderBy: { createdAt: 'asc' as const } },
+  procedures: { orderBy: [{ position: 'asc' as const }, { createdAt: 'asc' as const }] },
 };
 
 /** "34 years", "8 months", "12 days" - a child's dose depends on age, so a prescription states it. */

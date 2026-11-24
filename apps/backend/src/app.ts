@@ -42,6 +42,7 @@ import { patientPortalRoutes } from './routes/patient-portal.routes';
 import { patientAccessRoutes } from './routes/patient-access.routes';
 import { notificationRoutes } from './routes/notification.routes';
 import { patientAccountClosureRoutes } from './routes/patient-account-closure.routes';
+import { chatRoutes } from './routes/chat.routes';
 import { SERVER_ERROR_MESSAGE } from './lib/http-error';
 import { allowedOrigins, clientIp, clientIpSource, release } from './lib/connection';
 import { prisma } from './lib/prisma';
@@ -222,6 +223,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(patientAccessRoutes);
   await server.register(notificationRoutes);
   await server.register(patientAccountClosureRoutes);
+  await server.register(chatRoutes);
 
   return server;
 }

@@ -7,7 +7,7 @@ import { recordAudit } from '../lib/audit';
 import { notifyPatient, notifyStaff } from '../lib/notifications';
 import { createReferral } from '../lib/referrals';
 import { HttpError } from '../lib/http-error';
-import { ICD10_PATTERN } from '../lib/clinical';
+import { ICD10_PATTERN, normalizeDiagnoses } from '../lib/clinical';
 import { normalizeVitals } from '../lib/vitals';
 import { generateDischargeSummaryPdf } from '../lib/pdf';
 import { allergyText, patientIdText, sexAgeText } from '../lib/patient-text';
@@ -269,6 +269,32 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     });
     const { author, ...rest } = created;
     return { success: true, note: { ...rest, authorName: author.name } };
+  });
+
+  // The working diagnoses, added to or changed on a ward round (doctors and
+  // administrators). The list replaces the one before, and the change is
+  // written in the chart as a ward round entry - who changed it, and when.
+  fastify.put('/admissions/:id/diagnoses', { preHandler: [requireRole('DOCTOR', 'ADMIN')] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const { id } = request.params as any;
+    const admission = await prisma.admission.findUnique({ where: { id }, select: { clinicId: true, status: true } });
+    if (!admission || admission.clinicId !== authUser.clinicId) return reply.status(404).send({ error: 'Admission not found' });
+    if (admission.status !== 'ADMITTED') return reply.status(409).send({ error: 'This patient has been discharged - the final diagnosis is on the discharge summary' });
+    const valid = normalizeDiagnoses((request.body as any)?.diagnoses);
+    if (!valid.ok) return reply.status(400).send({ error: valid.error });
+    const diagnoses = valid.value;
+    const line = (d: (typeof diagnoses)[number]) => `${d.description}${d.icd10Code ? ` (${d.icd10Code})` : ''}${d.certainty === 'PROVISIONAL' ? ' - suspected' : ''}`;
+    const primary = diagnoses.filter((d) => d.type === 'PRIMARY');
+    const others = diagnoses.filter((d) => d.type !== 'PRIMARY');
+    const note = ['Diagnosis updated.', primary.length ? `Primary: ${primary.map(line).join('; ')}.` : '', others.length ? `Also: ${others.map(line).join('; ')}.` : '']
+      .filter(Boolean).join(' ');
+
+    const [updated] = await prisma.$transaction([
+      prisma.admission.update({ where: { id }, data: { diagnoses: diagnoses as any }, include: admissionInclude }),
+      prisma.admissionNote.create({ data: { admissionId: id, authorUserId: authUser.userId, authorRole: authUser.role as any, kind: 'WARD_ROUND', note } }),
+    ]);
+    await recordAudit({ entity: 'Admission', recordId: id, clinicId: admission.clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { diagnoses: diagnoses.length } });
+    return { success: true, admission: present(updated) };
   });
 
   // Move the patient to another ward or bed.

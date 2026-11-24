@@ -13,6 +13,8 @@ import { facilityTypeLabel } from '@/lib/facility-types';
 import { useAuth } from '@/lib/useAuth';
 import { openPdfWithAuth } from '@/lib/download';
 import { formatDateTime } from '@/lib/time';
+import { DraftNote } from '@/components/draft-note';
+import { useDraft } from '@/lib/drafts';
 
 type Referral = {
   id: string;
@@ -97,6 +99,18 @@ function Referrals() {
     load();
   }, [load]);
 
+  // A referral being written is kept as a draft on this device until it is sent (lib/drafts).
+  const blankReferral = { patientId: presetPatient, toClinicId: '', reason: '', urgency: 'ROUTINE', clinicalSummary: '', consentConfirmed: false };
+  const draft = useDraft({
+    form: 'referral',
+    id: presetPatient || 'new',
+    value: form,
+    isEmpty: (v) => !v.toClinicId && !v.reason.trim() && !v.clinicalSummary.trim(),
+    label: 'Referral',
+    path: presetPatient ? `/referrals?patientId=${presetPatient}` : '/referrals',
+    onRestore: (v) => { setForm(v); setShowForm(true); },
+  });
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.consentConfirmed) return alert('Confirm that the patient agreed to the referral and to their details being shared.');
@@ -109,6 +123,7 @@ function Referrals() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Could not create the referral');
+      draft.discard();
       setShowForm(false);
       setForm({ patientId: '', toClinicId: '', reason: '', urgency: 'ROUTINE', clinicalSummary: '', consentConfirmed: false });
       setTab('SENT');
@@ -230,6 +245,7 @@ function Referrals() {
                 <span>The patient (or their caregiver) agreed to be referred, and to their details and this summary being shared with the receiving facility.</span>
               </label>
               <Button type="submit" disabled={saving || !form.consentConfirmed} className="w-full">{saving ? 'Sending...' : 'Send referral'}</Button>
+              <DraftNote savedAt={draft.savedAt} restoredAt={draft.restoredAt} onDiscard={() => { draft.discard(); setForm(blankReferral); }} />
             </form>
           </Card>
         )}

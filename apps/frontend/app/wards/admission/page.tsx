@@ -17,6 +17,15 @@ import {
   ANAESTHESIA_TYPES, DISCHARGE_OUTCOMES, KIND_LABEL, NOTE_KINDS, VITAL_FIELDS, abnormalVitals, structuredFields, structuredProblem, structuredTitle, vitalsText,
 } from '@/lib/wards';
 import { formatDayTime } from '@/lib/time';
+import { DraftNote } from '@/components/draft-note';
+import { useDraft } from '@/lib/drafts';
+import { DiagnosisPicker } from '@/components/diagnosis-picker';
+import { diagnosesToPayload, diagnosisProblems, diagnosisToDraft, emptyDiagnosis, type DiagnosisDraft, type DiagnosisView } from '@/lib/diagnosis';
+
+const EMPTY_DISCHARGE = {
+  outcome: 'RECOVERED', dischargeDiagnosis: '', dischargeIcd10Code: '', dischargeSummary: '', followUpInstructions: '',
+  toClinicId: '', urgency: 'URGENT', consentConfirmed: false,
+};
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -44,11 +53,12 @@ function AdmissionChart() {
   const [noteProblem, setNoteProblem] = useState('');
   const [panel, setPanel] = useState<'none' | 'transfer' | 'discharge'>('none');
   const [transfer, setTransfer] = useState({ wardId: '', bed: '', note: '' });
-  const [discharge, setDischarge] = useState({
-    outcome: 'RECOVERED', dischargeDiagnosis: '', dischargeIcd10Code: '', dischargeSummary: '', followUpInstructions: '',
-    toClinicId: '', urgency: 'URGENT', consentConfirmed: false,
-  });
+  const [discharge, setDischarge] = useState(EMPTY_DISCHARGE);
   const [busy, setBusy] = useState(false);
+  // The working diagnosis, changed on a ward round.
+  const [dxOpen, setDxOpen] = useState(false);
+  const [dx, setDx] = useState<DiagnosisDraft[]>([emptyDiagnosis()]);
+  const [dxTried, setDxTried] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -95,17 +105,53 @@ function AdmissionChart() {
       setNoteProblem(problem ?? '');
       if (problem) return;
       const ok = await send(`/admissions/${id}/notes`, { kind: note.kind, details: note.details });
-      if (ok) setNote({ kind: note.kind, note: '', vitals: {}, details: {} });
+      if (ok) { noteDraft.discard(); setNote({ kind: note.kind, note: '', vitals: {}, details: {} }); }
       return;
     }
     const vitals = Object.fromEntries(Object.entries(note.vitals).filter(([, v]) => v !== ''));
     const ok = await send(`/admissions/${id}/notes`, { kind: note.kind, note: note.note || undefined, vitals: Object.keys(vitals).length ? vitals : undefined });
-    if (ok) setNote({ kind: note.kind, note: '', vitals: {}, details: {} });
+    if (ok) { noteDraft.discard(); setNote({ kind: note.kind, note: '', vitals: {}, details: {} }); }
   };
 
   const doTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (await send(`/admissions/${id}/transfer`, { ...transfer, bed: transfer.bed || undefined })) setPanel('none');
+  };
+
+  /** The diagnoses on the chart now: the working ones, or what the patient was admitted with. */
+  const currentDiagnoses = (): DiagnosisView[] =>
+    Array.isArray(admission?.diagnoses) && admission.diagnoses.length
+      ? admission.diagnoses
+      : admission ? [{ description: admission.reason, icd10Code: admission.admissionIcd10Code ?? null, type: 'PRIMARY', certainty: 'PROVISIONAL' }] : [];
+
+  const openDiagnosis = () => {
+    setDx(currentDiagnoses().map(diagnosisToDraft));
+    setDxTried(false);
+    setDxOpen(true);
+  };
+
+  const saveDiagnosis = async () => {
+    setDxTried(true);
+    if (diagnosisProblems(dx).length) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API}/admissions/${id}/diagnoses`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...authHeaders() }, body: JSON.stringify({ diagnoses: diagnosesToPayload(dx) }) });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'The diagnosis could not be saved');
+      setDxOpen(false);
+      await load();
+    } catch (e: any) {
+      alert(navigator.onLine ? e.message : 'You are offline - the diagnosis is saved when the connection returns. Keep this page open.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openDischarge = () => {
+    // The final diagnosis starts from the working one; the clinician confirms or changes it.
+    const primary = currentDiagnoses().find((d) => d.type === 'PRIMARY');
+    if (primary) setDischarge((d) => (d.dischargeDiagnosis ? d : { ...d, dischargeDiagnosis: primary.description, dischargeIcd10Code: primary.icd10Code ?? '' }));
+    setPanel(panel === 'discharge' ? 'none' : 'discharge');
   };
 
   const doDischarge = async (e: React.FormEvent) => {
@@ -121,8 +167,33 @@ function AdmissionChart() {
       followUpInstructions: discharge.followUpInstructions || undefined,
       referral: referred ? { toClinicId: discharge.toClinicId, urgency: discharge.urgency, consentConfirmed: discharge.consentConfirmed } : undefined,
     });
-    if (ok) setPanel('none');
+    if (ok) {
+      dischargeDraft.discard();
+      setPanel('none');
+    }
   };
+
+  // The discharge summary and a chart entry being written are kept as drafts on this device
+  // as they are typed (lib/drafts): a refresh, a closed tab or a dropped connection loses nothing.
+  const canDraft = !!admission && admission.status === 'ADMITTED';
+  const dischargeDraft = useDraft({
+    form: 'discharge',
+    id: canDraft && canDischarge ? id : null,
+    value: discharge,
+    isEmpty: (v) => JSON.stringify(v) === JSON.stringify(EMPTY_DISCHARGE),
+    label: `Discharge - ${admission?.patient?.name ?? 'patient'}`,
+    path: `/wards/admission?id=${id}`,
+    onRestore: (v) => { setDischarge(v); setPanel('discharge'); },
+  });
+  const noteDraft = useDraft({
+    form: 'ward-note',
+    id: canDraft ? id : null,
+    value: note,
+    isEmpty: (v) => !v.note.trim() && !Object.values(v.vitals).some(Boolean) && !Object.values(v.details).some((x) => String(x ?? '').trim()),
+    label: `Ward chart entry - ${admission?.patient?.name ?? 'patient'}`,
+    path: `/wards/admission?id=${id}`,
+    onRestore: (v) => setNote(v),
+  });
 
   if (error) return <div className="p-8"><p className="text-rose-700">{error}</p><Link href="/wards" className="text-sm underline">Back to wards</Link></div>;
   if (!admission) return <div className="p-8">Loading...</div>;
@@ -156,10 +227,42 @@ function AdmissionChart() {
           </div>
           <p className="mt-3 text-sm"><span className="text-xs font-medium uppercase text-slate-500">Reason for admission</span><br />{admission.reason}{admission.admissionIcd10Code ? ` (${admission.admissionIcd10Code})` : ''}</p>
 
+          <div className="mt-3 rounded-md border border-slate-200 p-3 dark:border-slate-800" data-testid="working-diagnosis">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-medium uppercase text-slate-500">{admitted ? 'Diagnosis' : 'Diagnosis during the stay'}</span>
+              {admitted && canDischarge && !dxOpen && (
+                <Button size="sm" variant="outline" onClick={openDiagnosis}>{Array.isArray(admission.diagnoses) && admission.diagnoses.length ? 'Update diagnosis' : 'Add diagnosis'}</Button>
+              )}
+            </div>
+            {Array.isArray(admission.diagnoses) && admission.diagnoses.length ? (
+              <ul className="mt-1 space-y-0.5 text-sm">
+                {admission.diagnoses.map((d: DiagnosisView, i: number) => (
+                  <li key={i}>
+                    <span className={d.type === 'PRIMARY' ? 'font-semibold' : ''}>{d.type === 'PRIMARY' ? 'Primary: ' : 'Also: '}{d.description}</span>
+                    {d.icd10Code ? <span className="ml-1 font-mono text-xs text-slate-500">{d.icd10Code}</span> : null}
+                    {d.certainty === 'PROVISIONAL' ? <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200">Suspected</span> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">No diagnosis recorded on a ward round yet{admitted && canDischarge ? ' - add one as it is made, and update it as it changes.' : '.'}</p>
+            )}
+            {dxOpen && (
+              <div className="mt-3 space-y-3">
+                <DiagnosisPicker value={dx} onChange={setDx} problems={dxTried ? diagnosisProblems(dx) : []} />
+                <p className="text-xs text-slate-500 dark:text-slate-400">Saved in the chart as a ward round entry, with your name and the time.</p>
+                <div className="flex gap-2">
+                  <Button size="sm" disabled={busy} onClick={() => void saveDiagnosis()}>{busy ? 'Saving...' : 'Save diagnosis'}</Button>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => setDxOpen(false)}>Cancel</Button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {admitted ? (
             <div className="mt-4 flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={() => setPanel(panel === 'transfer' ? 'none' : 'transfer')}>Move ward / bed</Button>
-              {canDischarge && <Button size="sm" onClick={() => setPanel(panel === 'discharge' ? 'none' : 'discharge')}>Discharge</Button>}
+              {canDischarge && <Button size="sm" onClick={openDischarge}>Discharge</Button>}
             </div>
           ) : (
             <div className="mt-4 space-y-2 rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800">
@@ -248,6 +351,7 @@ function AdmissionChart() {
                 </div>
               )}
               <Button type="submit" disabled={busy}>{busy ? 'Saving...' : 'Discharge patient'}</Button>
+              <DraftNote savedAt={dischargeDraft.savedAt} restoredAt={dischargeDraft.restoredAt} onDiscard={() => { dischargeDraft.discard(); setDischarge(EMPTY_DISCHARGE); }} />
             </form>
           </Card>
         )}

@@ -35,7 +35,7 @@ export async function superAdminFinanceRoutes(fastify: FastifyInstance) {
           ['Status', (r) => r.status],
           ['Period from', (r) => day(r.periodStart)],
           ['Period to', (r) => day(r.periodEnd)],
-          ['Method', (r) => (r.method === 'CASH' ? 'Cash' : 'Pesapal')],
+          ['Method', (r) => r.methodWords],
           ['Paid by', (r) => r.paidBy],
           ['Reference', (r) => r.reference],
           ['Payment ID', (r) => r.id],

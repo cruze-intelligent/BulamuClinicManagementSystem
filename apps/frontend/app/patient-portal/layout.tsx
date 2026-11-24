@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bell, FileHeart, LogOut, Users } from 'lucide-react';
+import { Bell, FileHeart, LogOut, MessageSquare, Users } from 'lucide-react';
 import { BrandMark } from '@/components/brand';
 import { clearPatientSession } from '@/lib/usePatientAuth';
 import { tokenExpiry } from '@/lib/staff-session';
@@ -16,6 +16,7 @@ const FULL_SCREEN_PAGES = ['/patient-portal/login'];
 const NAV = [
   { href: '/patient-portal/dashboard', label: 'My records', icon: FileHeart },
   { href: '/patient-portal/notifications', label: 'Notifications', icon: Bell },
+  { href: '/patient-portal/messages', label: 'Messages', icon: MessageSquare },
   { href: '/patient-portal/access', label: 'Sharing', icon: Users, title: 'Who can see your records' },
 ];
 
@@ -51,6 +52,8 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
     !isPublicPage && authChecked
   );
 
+  const unreadMessages = useUnreadNotifications('/patient-portal/chat/unread-count', 'patientToken', !isPublicPage && authChecked);
+
   const handleLogout = () => {
     clearPatientSession();
     router.replace('/patient-portal/login');
@@ -85,12 +88,12 @@ export default function PatientPortalLayout({ children }: { children: React.Reac
                   <Link key={item.href} href={item.href} title={item.title ?? item.label} aria-current={active ? 'page' : undefined} className={navClass(active)}>
                     <item.icon className="size-4" aria-hidden="true" />
                     <span>{item.label}</span>
-                    {item.href.endsWith('/notifications') && unreadNotifications > 0 && (
+                    {(item.href.endsWith('/notifications') ? unreadNotifications : item.href.endsWith('/messages') ? unreadMessages : 0) > 0 && (
                       <span
-                        aria-label={`${unreadNotifications} unread`}
+                        aria-label={`${item.href.endsWith('/messages') ? unreadMessages : unreadNotifications} unread`}
                         className="absolute -top-0.5 right-0.5 rounded-full bg-emerald-600 px-1.5 text-[10px] font-semibold leading-4 text-white sm:static sm:text-[11px] sm:leading-5"
                       >
-                        {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                        {(item.href.endsWith('/messages') ? unreadMessages : unreadNotifications) > 99 ? '99+' : (item.href.endsWith('/messages') ? unreadMessages : unreadNotifications)}
                       </span>
                     )}
                   </Link>

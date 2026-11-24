@@ -15,6 +15,8 @@ import { MODALITIES, emptyImagingDraft, imagingDraftProblem, modalityLabel, type
 import { activeDepartments, myDepartmentIds, type Department } from '@/lib/departments';
 import { formatDayTime } from '@/lib/time';
 import { patientIdText } from '@/lib/patient-id';
+import { DraftNote } from '@/components/draft-note';
+import { useDraft } from '@/lib/drafts';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -153,12 +155,23 @@ function RequestCard({ request: r, canReport, onDone }: { request: ImagingReques
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // A report being written is kept as a draft on this device: a refresh brings it back, open.
+  const draft = useDraft({
+    form: 'imaging-report',
+    id: canReport ? r.id : null,
+    value: { findings, impression },
+    isEmpty: (v) => v.findings === (r.findings ?? '') && v.impression === (r.impression ?? ''),
+    label: `${r.examination} report - ${r.patient.name}`,
+    path: '/imaging',
+    onRestore: (v) => { setFindings(v.findings); setImpression(v.impression); setPanel('report'); },
+  });
 
   const run = async (work: () => Promise<unknown>, message: string) => {
     setBusy(true);
     setError('');
     try {
       await work();
+      draft.discard();
       setPanel(null);
       onDone(message);
     } catch (e: any) {
@@ -223,6 +236,7 @@ function RequestCard({ request: r, canReport, onDone }: { request: ImagingReques
             <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving...' : 'Save report'}</Button>
             <Button type="button" size="sm" variant="outline" onClick={() => setPanel(null)}>Close</Button>
           </div>
+          <DraftNote savedAt={draft.savedAt} restoredAt={draft.restoredAt} onDiscard={() => { draft.discard(); setFindings(r.findings ?? ''); setImpression(r.impression ?? ''); }} />
         </form>
       )}
 
