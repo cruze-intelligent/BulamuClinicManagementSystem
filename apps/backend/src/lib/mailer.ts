@@ -343,6 +343,16 @@ export function passwordResetEmail(resetUrl: string): string {
   `, { eyebrow: 'Your account', preheader: 'Choose a new password for your Bulamu account. The link works for one hour.' });
 }
 
+/** A privacy-safe Chatroom notice. The actual message and any patient details stay behind sign-in. */
+export function chatroomMessageEmail(input: { recipientName: string; senderName: string; facilityName: string; inboxUrl: string }): string {
+  return emailShell(`
+    ${heading('You have a new secure message')}
+    ${para(`Hello ${escapeHtml(input.recipientName)}, ${escapeHtml(input.senderName)} sent a message in Bulamu Chatroom${input.facilityName ? ` for ${escapeHtml(input.facilityName)}` : ''}.`)}
+    ${action(escapeHtml(input.inboxUrl), 'Sign in to view the message')}
+    ${callout('The message is not included in this email. Sign in to your Bulamu account to read and reply.')}
+  `, { eyebrow: 'Bulamu Chatroom', preheader: 'A new secure message is waiting in your Chatroom inbox.', footnote: 'You received this because a sender requested an email notice. Message content is available only after you sign in to Bulamu.' });
+}
+
 // "23 October 2026" - unambiguous, unlike 10/23/2026 vs 23/10/2026.
 export function formatEmailDate(date: Date): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' });

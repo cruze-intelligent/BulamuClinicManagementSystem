@@ -27,6 +27,9 @@ model User {
   chatThreadsAsA   ChatThread[]  @relation("ThreadUserA")
   chatThreadsAsB   ChatThread[]  @relation("ThreadUserB")
   chatMessages     ChatMessage[] @relation("ChatMessageAuthor")
+  chatGroupMemberships ChatThreadMember[]
+  chatThreadPins ChatThreadPin[]
+  chatThreadReads ChatThreadRead[]
   // Notification types this user has switched email off for (in-app
   // notifications are always kept - only the email copy is optional).
   emailOptOuts NotificationType[] @default([])
@@ -1488,8 +1491,15 @@ model PatientAccessOtp {
 
 enum ChatThreadKind {
   STAFF_STAFF
+  STAFF_GROUP
   PATIENT_STAFF
   ADMIN_SUPER
+}
+
+enum ChatGroupType {
+  FACILITY
+  ROLE
+  CUSTOM
 }
 
 // What the notification is about. Which roles receive each type, and whether
@@ -1567,6 +1577,12 @@ model ChatThread {
   // Set for PATIENT_STAFF threads.
   patientAccountId String?
   patientAccount   PatientAccount? @relation(fields: [patientAccountId], references: [id], onDelete: Restrict)
+  groupType        ChatGroupType?
+  groupName        String?
+  groupRole        Role?
+  members          ChatThreadMember[]
+  pins             ChatThreadPin[]
+  reads            ChatThreadRead[]
   messages         ChatMessage[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
@@ -1575,6 +1591,45 @@ model ChatThread {
   @@index([clinicId])
   @@index([patientAccountId])
   @@unique([patientAccountId, clinicId, kind])
+  @@unique([clinicId, groupName])
+}
+
+// Membership is explicit for custom facility groups. Facility and role rooms
+// additionally grant access dynamically to active users in their facility.
+model ChatThreadMember {
+  threadId String
+  thread   ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime   @default(now())
+
+  @@id([threadId, userId])
+  @@index([userId, threadId])
+}
+
+// A pin belongs to one staff user's inbox, never to the shared conversation.
+model ChatThreadPin {
+  threadId String
+  thread   ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pinnedAt DateTime   @default(now())
+
+  @@id([threadId, userId])
+  @@index([userId, pinnedAt])
+}
+
+// Last read position for group chats. A message's single readAt timestamp is
+// sufficient for a two-party conversation, but cannot represent group reads.
+model ChatThreadRead {
+  threadId   String
+  thread     ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt DateTime
+
+  @@id([threadId, userId])
+  @@index([userId, threadId])
 }
 
 // One message in a chat thread.

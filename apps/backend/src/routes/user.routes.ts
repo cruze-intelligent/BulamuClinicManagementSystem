@@ -248,8 +248,11 @@ export async function userRoutes(fastify: FastifyInstance) {
 
     try {
       const work = await recordedWork(id);
-      const chatThreadCount = await prisma.chatThread.count({ where: { OR: [{ userAId: id }, { userBId: id }] } });
-      if (chatThreadCount > 0) {
+      const [chatThreadCount, chatMessageCount] = await Promise.all([
+        prisma.chatThread.count({ where: { OR: [{ userAId: id }, { userBId: id }] } }),
+        prisma.chatMessage.count({ where: { authorUserId: id } }),
+      ]);
+      if (chatThreadCount > 0 || chatMessageCount > 0) {
         return reply.status(409).send({ reason: 'HAS_CHAT_HISTORY', error: target.name + ' has in-app chat history, so the account cannot be deleted without removing conversations. Deactivate it instead.' });
       }
       if (work.length > 0) {
