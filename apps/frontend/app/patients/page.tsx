@@ -12,10 +12,10 @@ import {
   LocalPatient,
 } from '@/lib/local-first';
 import { Input } from '@/components/ui/input';
-import { patientIdQuery, patientIdText } from '@/lib/patient-id';
+import { patientIdText } from '@/lib/patient-id';
+import { matchesPatient } from '@/lib/search';
 
 // "0772 123 456" and "0772123456" are the same number.
-const digitsOf = (text: string) => text.split('').filter((c) => c >= '0' && c <= '9').join('');
 
 export default function PatientsPage() {
   const [patients, setPatients] = useState<LocalPatient[]>([]);
@@ -53,12 +53,9 @@ export default function PatientsPage() {
     return () => { unsubscribe(); window.removeEventListener('online', online); };
   }, []);
 
-  // By name, phone or Patient ID ("42" or "00042"), on this device - so it works offline too.
-  const q = query.trim().toLowerCase();
-  const idQuery = patientIdQuery(query);
-  const shown = !q
-    ? patients
-    : patients.filter((p) => p.name.toLowerCase().includes(q) || digitsOf(p.phone).includes(digitsOf(q) || '-') || (idQuery !== null && p.patientNumber === idQuery));
+  // By name (any order), phone, Patient ID ("42", "00042", "ID 00042"), email or village - on
+  // this device, so it works offline too (lib/search).
+  const shown = query.trim() ? patients.filter((p) => matchesPatient(p, query)) : patients;
 
   return (
     <div className="min-h-screen p-8 bg-slate-50 dark:bg-slate-950">
@@ -88,7 +85,7 @@ export default function PatientsPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {q && shown.length === 0 && (
+            {query.trim() && shown.length === 0 && (
               <Card className="p-6 text-center text-sm text-slate-500 dark:text-slate-400">No patient matches "{query.trim()}".</Card>
             )}
             {shown.map((patient) => (

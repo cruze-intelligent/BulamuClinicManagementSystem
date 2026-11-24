@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -34,6 +34,8 @@ import {
   type LocalProcedure,
 } from '@/lib/local-first';
 import { ProcedurePicker } from '@/components/procedure-picker';
+import { DraftNote } from '@/components/draft-note';
+import { useDraft } from '@/lib/drafts';
 import { usePriceList } from '@/lib/price-list';
 import { Select } from '@/components/ui/select';
 import { openVisitToday } from '@/lib/queue';
@@ -113,6 +115,8 @@ function RecordConsultationForm() {
   const [imaging, setImaging] = useState<ImagingDraft[]>([]);
   const [imagingDraft, setImagingDraft] = useState<ImagingDraft>(emptyImagingDraft);
   const [imagingProblem, setImagingProblem] = useState('');
+  // A visit being gone on with is ready for its draft once its saved notes are in the form.
+  const [visitFilled, setVisitFilled] = useState(false);
 
   useEffect(() => {
     const clinicId = getCurrentClinicId();
@@ -166,6 +170,7 @@ function RecordConsultationForm() {
       setDispensed(given);
       setPrescriptions(open.length ? open.map((rx) => payloadToDraft(rx)) : [emptyDraft()]);
       setProcedures((visit.procedures ?? []).map((p) => ({ name: p.name, notes: p.notes ?? '' })));
+      setVisitFilled(true);
       getLocalAppointment(visit.appointmentId).then((a) => setVisitUnit(a?.departmentId ?? '')).catch(() => undefined);
     };
     void load();
@@ -281,12 +286,47 @@ function RecordConsultationForm() {
         });
       }
 
+      draft.discard();
       router.push(later ? '/consultations?waiting=1' : '/consultations');
     } catch (error: any) {
       alert(`Error recording consultation: ${error.message}`);
     } finally {
       setLoading(false);
     }
+  };
+
+  // What has been typed, kept as a draft on this device as it is typed (lib/drafts): a refresh, a
+  // closed tab or a session that ran out brings it back. Saved, the draft is dropped.
+  const draftValue = {
+    symptoms, history, examination, vitals, labRequests, requestedBy, diagnoses, clinicalNotes, fee,
+    prescriptions, procedures, imaging, sendTo, sendReason,
+  };
+  type VisitDraft = typeof draftValue;
+  const draftId = continueId ? `continue-${continueId}` : patient ? `${patient.id}-${queryAppointmentId || 'walk-in'}` : null;
+  const draftReady = continueId ? visitFilled : !!patient;
+  // The form as it opened: a draft is only what changed from it.
+  const opened = useRef<{ id: string; value: string } | null>(null);
+  if (draftId && draftReady && opened.current?.id !== draftId) opened.current = { id: draftId, value: JSON.stringify(draftValue) };
+  const draft = useDraft<VisitDraft>({
+    form: 'visit',
+    id: draftId,
+    ready: draftReady,
+    value: draftValue,
+    isEmpty: (v) => JSON.stringify(v) === opened.current?.value,
+    label: patient ? `Visit - ${patient.name}` : 'Visit',
+    path: continueId
+      ? `/consultations/record?consultationId=${continueId}${patient ? `&patientId=${patient.id}` : ''}`
+      : patient ? `/consultations/record?patientId=${patient.id}${queryAppointmentId ? `&appointmentId=${queryAppointmentId}` : ''}` : undefined,
+    onRestore: (v) => {
+      setSymptoms(v.symptoms); setHistory(v.history); setExamination(v.examination); setVitals(v.vitals);
+      setLabRequests(v.labRequests); setRequestedBy(v.requestedBy); setDiagnoses(v.diagnoses); setClinicalNotes(v.clinicalNotes);
+      setFee(v.fee); setPrescriptions(v.prescriptions); setProcedures(v.procedures); setImaging(v.imaging);
+      setSendTo(v.sendTo); setSendReason(v.sendReason);
+    },
+  });
+  const saveDraftForLater = () => {
+    if (!draft.saveNow()) return alert('Choose the patient first - the draft is kept under their name.');
+    router.push('/consultations?drafts=1');
   };
 
   const patientLine = patient
@@ -314,6 +354,7 @@ function RecordConsultationForm() {
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
           {patientLine ? `Patient: ${patientLine}` : 'Record a visit'}
         </p>
+        <DraftNote className="mb-4" savedAt={draft.savedAt} restoredAt={draft.restoredAt} onDiscard={() => { draft.discard(); window.location.reload(); }} />
         {continueId && continueMissing && !continuing && (
           <p role="status" className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
             This visit has not reached this device yet. It appears here once Bulamu has synced - keep the page open, or come back from the Consultations page.
@@ -580,6 +621,9 @@ function RecordConsultationForm() {
                   <p className="text-center text-xs text-slate-500 dark:text-slate-400">The diagnosis and prescription can wait. See other patients meanwhile: you are told as each result comes in, and the visit waits under Consultations.</p>
                 </>
               )}
+              <Button type="button" variant="ghost" disabled={loading || !patient} className="w-full" onClick={saveDraftForLater}>
+                Save as a draft - finish it later
+              </Button>
             </div>
           </form>
         </Card>

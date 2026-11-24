@@ -147,6 +147,14 @@ type PaymentWithFacility = Payment & {
   clinic: { id: string; name: string; facilityCode: string };
 };
 
+/** How a payment was made, in words: "Cash", "MTN Mobile Money", "Pesapal (confirmed by hand)". */
+export function paymentMethodWords(p: { method: string; provider?: string | null; recordedBy?: string | null }): string {
+  if (p.method === 'CASH') return 'Cash';
+  if (p.method === 'MOBILE_MONEY') return p.provider ?? 'Mobile money';
+  if (p.method === 'BANK_TRANSFER') return p.provider ? `Bank transfer - ${p.provider}` : 'Bank transfer';
+  return p.recordedBy ? 'Pesapal (confirmed by hand)' : 'Pesapal';
+}
+
 export function paymentRow(p: PaymentWithFacility) {
   return {
     id: p.id,
@@ -160,9 +168,10 @@ export function paymentRow(p: PaymentWithFacility) {
     periodStart: p.periodStart,
     periodEnd: p.periodEnd,
     method: p.method,
+    methodWords: paymentMethodWords(p),
     paidBy: p.paidBy,
-    // Pesapal's reference, or the receipt-book number for cash.
-    reference: p.pesapalOrderTrackingId ?? p.reference,
+    // The reference recorded by hand (transaction ID, receipt-book number), else Pesapal's.
+    reference: p.reference ?? p.pesapalOrderTrackingId,
     hasReceipt: p.status === 'COMPLETED',
     // Why it failed or was reversed.
     reason: paymentReason(p),

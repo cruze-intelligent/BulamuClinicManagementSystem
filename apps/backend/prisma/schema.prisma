@@ -24,6 +24,9 @@ model User {
   resolvedAppointmentRequests AppointmentRequest[]
   dispensedPrescriptions Prescription[] @relation("PrescriptionDispensedBy")
   notifications Notification[]
+  chatThreadsAsA   ChatThread[]  @relation("ThreadUserA")
+  chatThreadsAsB   ChatThread[]  @relation("ThreadUserB")
+  chatMessages     ChatMessage[] @relation("ChatMessageAuthor")
   // Notification types this user has switched email off for (in-app
   // notifications are always kept - only the email copy is optional).
   emailOptOuts NotificationType[] @default([])
@@ -273,11 +276,15 @@ model Payment {
   pesapalOrderTrackingId   String?  @unique
   pesapalMerchantReference String?  @unique
   rawCallback              Json?
-  // Through Pesapal, or cash handed to a Bulamu administrator on a visit.
+  // Through Pesapal, or recorded by a Bulamu administrator: cash handed over on
+  // a visit, mobile money or a bank transfer sent straight to Bulamu, or a
+  // Pesapal payment whose confirmation was late.
   method                   SubscriptionPaymentMethod @default(PESAPAL)
-  // Cash only: the Bulamu administrator who recorded it, who handed it over,
-  // any receipt-book number, and the key the form sent, so a double click
-  // records one payment, not two.
+  // Mobile money: the network (MTN Mobile Money, Airtel Money); a transfer: the bank.
+  provider                 String?
+  // Recorded by hand: the Bulamu administrator who recorded it, who paid,
+  // the transaction ID or receipt-book number, and the key the form sent, so
+  // a double click records one payment, not two.
   recordedBy               String?
   paidBy                   String?
   reference                String?
@@ -298,6 +305,8 @@ model Payment {
 enum SubscriptionPaymentMethod {
   PESAPAL
   CASH
+  MOBILE_MONEY
+  BANK_TRANSFER
 }
 
 enum PaymentStatus {
@@ -578,6 +587,10 @@ model Admission {
   // Why the patient was admitted / the admitting (provisional) diagnosis.
   reason             String
   admissionIcd10Code String?
+  // The working diagnoses, kept up to date on ward rounds: [{ description,
+  // icd10Code, type (PRIMARY/SECONDARY), certainty, notes }], primary first.
+  // Each change is also written in the chart, by whom and when.
+  diagnoses          Json?
   attendingDoctorId  String?
   attendingDoctor    User?            @relation("AdmissionAttendingDoctor", fields: [attendingDoctorId], references: [id], onDelete: SetNull)
   admittedByUserId   String
@@ -870,6 +883,7 @@ model VisitProcedure {
   consultationId String
   consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
   name           String
+  position       Int          @default(0)
   // Site, side or anything the person doing it should know ("right pre-auricular abscess").
   notes          String?
   // The bill line it was charged on, if any.
@@ -1313,6 +1327,8 @@ model PatientAccount {
   appointmentRequests AppointmentRequest[]
   accessOtps        PatientAccessOtp[]
   notifications     Notification[]
+  chatThreads   ChatThread[]
+  chatMessages  ChatMessage[] @relation("ChatMessagePatientAuthor")
   historyShares     HistoryShare[]
   emailOptOuts      NotificationType[]          @default([])
   // Set when the patient closes their account: the row is kept as an
@@ -1464,6 +1480,12 @@ model PatientAccessOtp {
   @@index([patientAccountId, clinicId])
 }
 
+enum ChatThreadKind {
+  STAFF_STAFF
+  PATIENT_STAFF
+  ADMIN_SUPER
+}
+
 // What the notification is about. Which roles receive each type, and whether
 // they also get an email, is defined in one place: NOTIFICATION_RULES in
 // src/lib/notifications.ts.
@@ -1521,4 +1543,48 @@ model Notification {
   @@index([userId, createdAt])
   @@index([patientAccountId, createdAt])
   @@index([clinicId, dedupeKey])
+}
+
+
+// A conversation between two staff members, a patient and clinic staff,
+// or a facility admin and the Bulamu platform support team.
+model ChatThread {
+  id               String          @id @default(uuid())
+  clinicId         String?
+  kind             ChatThreadKind
+  // The staff user who opened the thread (or the first to respond for patient threads).
+  userAId          String
+  userA            User            @relation("ThreadUserA", fields: [userAId], references: [id])
+  // The other staff participant (null for PATIENT_STAFF and ADMIN_SUPER).
+  userBId          String?
+  userB            User?           @relation("ThreadUserB", fields: [userBId], references: [id], onDelete: Restrict)
+  // Set for PATIENT_STAFF threads.
+  patientAccountId String?
+  patientAccount   PatientAccount? @relation(fields: [patientAccountId], references: [id], onDelete: Restrict)
+  messages         ChatMessage[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([clinicId, userAId, userBId])
+  @@index([clinicId])
+  @@index([patientAccountId])
+  @@unique([patientAccountId, clinicId, kind])
+}
+
+// One message in a chat thread.
+model ChatMessage {
+  id                      String      @id @default(uuid())
+  threadId                String
+  thread                  ChatThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  // Exactly one of these is set.
+  authorUserId            String?
+  authorUser              User?       @relation("ChatMessageAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  authorPatientAccountId  String?
+  authorPatientAccount    PatientAccount? @relation("ChatMessagePatientAuthor", fields: [authorPatientAccountId], references: [id], onDelete: Restrict)
+  body                    String      @db.Text
+  // Set when the other side first reads it.
+  readAt                  DateTime?
+  createdAt               DateTime    @default(now())
+
+  @@index([threadId, createdAt])
 }

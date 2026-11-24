@@ -1066,8 +1066,12 @@ export type ReceiptPdfInput = SampleOption & {
   periodStart?: Date | null;
   periodEnd: Date;
   pesapalReference?: string | null;
-  /** Cash handed to a Bulamu administrator: who paid, who received it, any receipt-book number. */
-  cash?: { paidBy: string; receivedBy: string; reference?: string | null } | null;
+  /**
+   * Recorded by a Bulamu administrator (cash, mobile money, a bank transfer, a
+   * late Pesapal payment): how it was paid, who paid, who recorded it, and its
+   * reference under that method's own name. Plain cash when method is left out.
+   */
+  cash?: { paidBy: string; receivedBy: string; reference?: string | null; method?: string; referenceLabel?: string } | null;
   /** Months the payment covers, when more than one. */
   months?: number;
 };
@@ -1108,12 +1112,13 @@ export async function generateReceiptPdf(input: ReceiptPdfInput): Promise<Buffer
           ['Period covered', period],
           ...(input.cash
             ? ([
-                // Cash is recorded the moment it is handed over, so the receipt shows the time too.
+                // Recorded the moment it is received, so the receipt shows the time too.
                 ['Paid on', documentDateTime(input.paidAt)],
-                ['Payment method', 'Cash'],
+                ['Payment method', input.cash.method ?? 'Cash'],
                 ['Paid by', input.cash.paidBy],
                 ['Received by', `${input.cash.receivedBy}, for Bulamu`],
-                ['Receipt book number', input.cash.reference],
+                [input.cash.referenceLabel ?? 'Receipt book number', input.cash.reference],
+                ...(input.pesapalReference ? ([['Pesapal reference', input.pesapalReference]] as Array<[string, string]>) : []),
               ] as Array<[string, string | null | undefined]>)
             : ([
                 ['Paid on', documentDate(input.paidAt)],

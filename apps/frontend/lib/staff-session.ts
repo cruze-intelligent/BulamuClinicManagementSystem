@@ -18,11 +18,13 @@ export function tokenExpiry(token: string | null): number | null {
   }
 }
 
-// Kept when signing out: the email the person asked to be remembered, and how
+// Kept when signing out: the email the person asked to be remembered, how
 // far each facility's records on this device are synced (the records stay on
 // the device, so the next sign-in only downloads what changed instead of the
-// whole facility again).
-const keepOnSignOut = (key: string) => key === REMEMBERED_EMAIL_KEY || key.startsWith('lastSyncedAt_');
+// whole facility again), and each person's unsaved drafts - a session that ran
+// out in the middle of a visit must not lose it (they are offered back only to
+// whoever wrote them; lib/drafts).
+const keepOnSignOut = (key: string) => key === REMEMBERED_EMAIL_KEY || key.startsWith('lastSyncedAt_') || key.startsWith('bulamu:draft:');
 
 /** The signed-in user, if this device has a session that hasn't run out. */
 export function liveSessionUser(): { role?: string } | null {

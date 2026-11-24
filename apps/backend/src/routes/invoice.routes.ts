@@ -204,7 +204,7 @@ async function chargeSuggestions(invoice: FullInvoice) {
       : Promise.resolve(null),
     // Procedures done at the visit (incision and drainage, ear syringing...).
     invoice.consultationId
-      ? prisma.visitProcedure.findMany({ where: { consultationId: invoice.consultationId, invoiceItem: null }, select: { id: true, name: true }, orderBy: { createdAt: 'asc' } })
+      ? prisma.visitProcedure.findMany({ where: { consultationId: invoice.consultationId, invoiceItem: null }, select: { id: true, name: true }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] })
       : Promise.resolve([]),
   ]);
 

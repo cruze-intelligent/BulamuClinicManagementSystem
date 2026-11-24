@@ -14,6 +14,7 @@ import {
 } from '@/lib/prescription';
 import type { LocalMedicine } from '@/lib/local-first';
 import { describeConflict, findAllergyConflicts, type AllergyRecord } from '@/lib/allergy';
+import { hasAllWords } from '@/lib/search';
 
 const MAX_ITEMS = 30;
 
@@ -65,7 +66,7 @@ export function PrescriptionBuilder({
     const q = text.trim().toLowerCase();
     if (q.length < 2) return [];
     const inStock = stock
-      .filter((m) => m.name.toLowerCase().includes(q))
+      .filter((m) => hasAllWords(m.name, text))
       .slice(0, 5)
       .map((m) => ({ key: `stock:${m.id}`, label: m.name, tag: `In stock: ${m.quantity} ${m.unit}` }));
     const inStockNames = new Set(inStock.map((s) => s.label.toLowerCase()));

@@ -1,6 +1,6 @@
 import {
   ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FileCheck2, FileText, FlaskConical, HelpCircle,
-  History, Home, MapPinned, Package, Pill, Receipt, ScanLine, Stethoscope, Users, Wallet, type LucideIcon,
+  History, Home, MapPinned, MessageSquare, Package, Pill, Receipt, ScanLine, Stethoscope, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 // The sidebar menu: what each role sees. The guided walkthrough points at these
@@ -12,7 +12,9 @@ export const NAV_ITEMS: NavItem[] = [
   { name: 'Analytics', path: '/super-admin/analytics', icon: BarChart3, roles: ['SUPER_ADMIN'] },
   { name: 'Finances', path: '/super-admin/finances', icon: Wallet, roles: ['SUPER_ADMIN'] },
   { name: 'Demos', path: '/super-admin/demos', icon: FlaskConical, roles: ['SUPER_ADMIN'] },
+  { name: 'Support messages', path: '/super-admin/messages', icon: MessageSquare, roles: ['SUPER_ADMIN'] },
   { name: 'Dashboard', path: '/dashboard', icon: Home, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
+  { name: 'Messages', path: '/messages', icon: MessageSquare, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
   { name: 'Patients', path: '/patients', icon: Users, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
   { name: 'Appointments', path: '/appointments', icon: CalendarDays, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
   { name: 'Consultations', path: '/consultations', icon: Stethoscope, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST'] },

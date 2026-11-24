@@ -14,6 +14,7 @@ import {
 import { FlaskConical } from 'lucide-react';
 import { ConsultationDetails } from '@/components/consultation-details';
 import { WaitingRoom } from '@/components/waiting-room';
+import { DraftsList } from '@/components/drafts-list';
 import { openDocumentPreview } from '@/lib/document-preview';
 import { formatDateTime } from '@/lib/time';
 
@@ -62,6 +63,8 @@ export default function ConsultationsPage() {
             <Button>+ Record visit</Button>
           </Link>
         </div>
+
+        <DraftsList className="mb-6" title="Visits saved as drafts" />
 
         <WaitingRoom />
 

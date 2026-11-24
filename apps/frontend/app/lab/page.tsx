@@ -26,6 +26,8 @@ import { formatDayTime } from '@/lib/time';
 import { openPdfWithAuth } from '@/lib/download';
 import { blankValues, labPanelFor, type LabValue } from '@/lib/lab-panels';
 import { LabValuesForm, LabValuesTable } from '@/components/lab-values';
+import { DraftNote } from '@/components/draft-note';
+import { useDraft } from '@/lib/drafts';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -236,6 +238,17 @@ function LabTestCard({
   const [values, setValues] = useState<LabValue[]>(startValues);
   const [comment, setComment] = useState(test.comment ?? '');
   const byValue = !!panel;
+  // A result being typed is kept as a draft on this device: a refresh brings it back, with its form open.
+  type ResultDraft = { mode: 'view' | 'enter' | 'amend'; results: string; values: LabValue[]; comment: string; reason: string };
+  const draft = useDraft<ResultDraft>({
+    form: 'lab-result',
+    id: canEnter ? test.id : null,
+    value: { mode, results, values, comment, reason },
+    isEmpty: (v) => v.mode === 'view' || (v.results === (test.results || '') && JSON.stringify(v.values) === JSON.stringify(startValues()) && v.comment === (test.comment ?? '') && !v.reason.trim()),
+    label: `Lab result - ${test.testName}${test.patient?.name ? ` for ${test.patient.name}` : ''}`,
+    path: '/lab',
+    onRestore: (v) => { setMode(v.mode); setResults(v.results); setValues(v.values); setComment(v.comment); setReason(v.reason); },
+  });
   const filled = values.filter((v) => v.value.trim());
   const verified = !!test.verifiedAt;
   const status = test.status === 'CANCELLED' ? 'Cancelled' : test.status === 'PENDING' ? 'Waiting for result' : verified ? 'Verified' : 'Awaiting verification';
@@ -254,6 +267,7 @@ function LabTestCard({
     setError('');
     try {
       const { test: saved } = await action();
+      draft.discard();
       onChanged({ ...test, ...saved, patient: test.patient ?? saved.patient }, message);
       setMode('view');
       setReason('');
@@ -380,8 +394,9 @@ function LabTestCard({
           )}
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={busy}>{busy ? 'Saving...' : mode === 'amend' ? 'Save amendment' : 'Save result'}</Button>
-            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { setMode('view'); setResults(test.results || ''); setValues(startValues()); setComment(test.comment ?? ''); setError(''); }}>Cancel</Button>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { draft.discard(); setMode('view'); setResults(test.results || ''); setValues(startValues()); setComment(test.comment ?? ''); setReason(''); setError(''); }}>Cancel</Button>
           </div>
+          <DraftNote savedAt={draft.savedAt} restoredAt={draft.restoredAt} onDiscard={() => { draft.discard(); setMode('view'); setResults(test.results || ''); setValues(startValues()); setComment(test.comment ?? ''); setReason(''); }} />
         </form>
       )}
       {error && <p role="alert" className="mt-2 text-sm text-red-700 dark:text-red-400">{error}</p>}

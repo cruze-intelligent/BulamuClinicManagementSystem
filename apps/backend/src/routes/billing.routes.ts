@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Payment } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { prisma } from '../lib/prisma';
@@ -12,7 +12,9 @@ import { getAccessToken, registerIpnUrl, submitOrderRequest, describePesapalErro
 import { REAL_FACILITY } from '../lib/facility';
 import { recordAudit } from '../lib/audit';
 import { formatEmailDate, graceGrantedEmail, sendMail, subscriptionReceiptEmail, trialExtendedEmail } from '../lib/mailer';
-import { giveGraceDays, recordCashPayment, SubscriptionAdminError } from '../lib/subscription-admin';
+import { giveGraceDays, METHOD_WORDS, pendingPesapalPayments, recordManualPayment, SubscriptionAdminError, type ManualMethod } from '../lib/subscription-admin';
+import { documentFileName } from '../lib/document-name';
+import { attachmentDisposition } from '../lib/document-format';
 import { notifyStaff } from '../lib/notifications';
 import { frontendUrl } from '../lib/operator-alerts';
 import { sendRouteError } from '../lib/http-error';
@@ -28,14 +30,27 @@ function pesapalCredentials() {
 }
 
 /** For a cash payment's receipt: who handed it over, and which Bulamu administrator received it. */
-async function cashDetails(payment: Pick<Payment, 'method' | 'paidBy' | 'recordedBy' | 'reference'>) {
-  if (payment.method !== 'CASH') return null;
+/** How a payment was made, for its receipt - when a Bulamu administrator recorded it by hand. */
+async function manualDetails(payment: Pick<Payment, 'method' | 'paidBy' | 'recordedBy' | 'reference' | 'provider'>) {
+  // Through Pesapal and confirmed by Pesapal itself: the receipt shows Pesapal's own details.
+  if (payment.method === 'PESAPAL' && !payment.recordedBy) return null;
   const recorder = payment.recordedBy ? await prisma.user.findUnique({ where: { id: payment.recordedBy }, select: { name: true } }) : null;
-  return { paidBy: payment.paidBy ?? 'The facility', receivedBy: recorder?.name ?? 'A Bulamu administrator', reference: payment.reference };
+  const words = METHOD_WORDS[payment.method as ManualMethod];
+  const method = payment.method === 'PESAPAL' ? 'Pesapal (confirmed by Bulamu)' : payment.provider ? `${words.label} - ${payment.provider}` : words.label;
+  return { paidBy: payment.paidBy ?? 'The facility', receivedBy: recorder?.name ?? 'A Bulamu administrator', reference: payment.reference, method, referenceLabel: words.reference };
 }
 
-/** Emails the facility's administrator the receipt for cash just recorded, and tells its staff. */
-async function sendCashReceipt(payment: Payment) {
+/** "UGX 100,000 in cash", "UGX 100,000 by MTN Mobile Money" - for the facility's notice. */
+function howPaid(payment: Pick<Payment, 'method' | 'provider' | 'amount' | 'currency'>) {
+  const amount = `${payment.currency} ${payment.amount.toLocaleString()}`;
+  if (payment.method === 'CASH') return `${amount} in cash`;
+  if (payment.method === 'MOBILE_MONEY') return `${amount} by ${payment.provider ?? 'mobile money'}`;
+  if (payment.method === 'BANK_TRANSFER') return `${amount} by bank transfer`;
+  return `${amount} through Pesapal`;
+}
+
+/** Emails the facility's administrator the receipt for a payment just recorded by hand, and tells its staff. */
+async function sendManualReceipt(payment: Payment) {
   const [clinic, admin] = await Promise.all([
     prisma.clinic.findUnique({ where: { id: payment.clinicId } }),
     prisma.user.findFirst({ where: { clinicId: payment.clinicId, role: 'ADMIN', isActive: true }, orderBy: { createdAt: 'asc' } }),
@@ -45,14 +60,15 @@ async function sendCashReceipt(payment: Payment) {
     type: 'PAYMENT_RECEIVED',
     clinicId: payment.clinicId,
     title: 'Subscription payment received',
-    body: `${payment.currency} ${payment.amount.toLocaleString()} in cash was received. Your subscription is active through ${formatEmailDate(payment.periodEnd)}. The receipt has been emailed and is on the Billing page.`,
+    body: `${howPaid(payment)} was received. Your subscription is active through ${formatEmailDate(payment.periodEnd)}. The receipt has been emailed and is on the Billing page.`,
     link: '/billing',
     emailSummary: 'A subscription payment was received.',
   });
   if (!admin) return;
   const pdf = await generateReceiptPdf({
     paymentId: payment.id, clinicName: clinic.name, facilityCode: clinic.facilityCode, amount: payment.amount, currency: payment.currency,
-    paidAt: payment.createdAt, periodStart: payment.periodStart, periodEnd: payment.periodEnd, cash: await cashDetails(payment), months: payment.months,
+    paidAt: payment.createdAt, periodStart: payment.periodStart, periodEnd: payment.periodEnd, cash: await manualDetails(payment), months: payment.months,
+    pesapalReference: payment.pesapalOrderTrackingId,
   });
   await sendMail({
     to: admin.email,
@@ -246,12 +262,12 @@ export async function billingRoutes(fastify: FastifyInstance) {
         periodStart: payment.periodStart,
         periodEnd: payment.periodEnd ?? (payment.amount === 0 ? subscription.trialEndsAt : subscription.currentPeriodEnd || payment.updatedAt),
         pesapalReference: payment.pesapalOrderTrackingId,
-        cash: await cashDetails(payment),
+        cash: await manualDetails(payment),
         months: payment.months,
       });
 
       reply.header('Content-Type', 'application/pdf');
-      reply.header('Content-Disposition', `attachment; filename="bulamu-receipt-${payment.id.slice(0, 8)}.pdf"`);
+      reply.header('Content-Disposition', attachmentDisposition(documentFileName(payment.amount === 0 ? 'Free trial receipt' : 'Subscription receipt', clinic.name, payment.updatedAt)));
       return reply.send(pdf);
     } catch (error: any) {
       return sendRouteError(reply, error);
@@ -352,20 +368,24 @@ export async function billingRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // Cash a facility handed to a Bulamu administrator on a visit (SUPER_ADMIN
-  // only). The date and time are recorded now, for the receipt; the facility
-  // is paid through the new period and its administrator emailed the receipt.
-  fastify.post('/billing/cash/:clinicId', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+  // A subscription payment recorded by a Bulamu administrator (SUPER_ADMIN
+  // only): cash handed over on a visit, mobile money or a bank transfer sent
+  // straight to Bulamu, or a Pesapal payment whose confirmation is late. The
+  // date and time are recorded now, for the receipt; the facility is paid
+  // through the new period and its administrator emailed the receipt.
+  // (/billing/cash/ is the older name, from when only cash could be recorded:
+  // without a method, what it records is cash.)
+  const recordByHand = async (request: FastifyRequest, reply: FastifyReply) => {
     const { clinicId } = request.params as { clinicId: string };
     const authUser = getAuthUser(request);
     try {
-      const { payment, repeated } = await recordCashPayment({ clinicId, recordedBy: authUser.userId, body: request.body });
+      const { payment, repeated } = await recordManualPayment({ clinicId, recordedBy: authUser.userId, body: request.body });
       if (!repeated) {
         await recordAudit({
-          entity: 'Payment', recordId: payment.id, clinicId, action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role,
-          metadata: { method: 'CASH', amount: payment.amount, months: payment.months, periodEnd: payment.periodEnd?.toISOString() },
+          entity: 'Payment', recordId: payment.id, clinicId, action: payment.method === 'PESAPAL' ? 'UPDATE' : 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role,
+          metadata: { method: payment.method, provider: payment.provider, amount: payment.amount, months: payment.months, periodEnd: payment.periodEnd?.toISOString(), ...(payment.method === 'PESAPAL' ? { confirmedByHand: true } : {}) },
         });
-        void sendCashReceipt(payment).catch((error) => fastify.log.error(error, 'Cash receipt email failed'));
+        void sendManualReceipt(payment).catch((error) => fastify.log.error(error, 'Payment receipt email failed'));
       }
       return {
         success: true, repeated, payment,
@@ -375,6 +395,42 @@ export async function billingRoutes(fastify: FastifyInstance) {
     } catch (error) {
       if (error instanceof SubscriptionAdminError) return reply.status(error.statusCode).send({ error: error.message });
       return sendRouteError(reply, error, 400);
+    }
+  };
+  fastify.post('/billing/manual/:clinicId', { preHandler: [requireRole('SUPER_ADMIN')] }, recordByHand);
+  fastify.post('/billing/cash/:clinicId', { preHandler: [requireRole('SUPER_ADMIN')] }, recordByHand);
+
+  // Pesapal payments still waiting for Pesapal's confirmation (SUPER_ADMIN only).
+  fastify.get('/billing/pesapal/pending', { preHandler: [requireRole('SUPER_ADMIN')] }, async (_request, reply) => {
+    try {
+      return { success: true, payments: await pendingPesapalPayments() };
+    } catch (error) {
+      return sendRouteError(reply, error);
+    }
+  });
+
+  // Ask Pesapal again about a payment it has not confirmed (SUPER_ADMIN only) -
+  // its notification may have been lost. Applied exactly as the notification would be.
+  fastify.post('/billing/pesapal/:paymentId/check', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const { paymentId } = request.params as { paymentId: string };
+    try {
+      const payment = await prisma.payment.findUnique({ where: { id: paymentId }, select: { pesapalOrderTrackingId: true, status: true } });
+      if (!payment) return reply.status(404).send({ error: 'Payment not found' });
+      if (!payment.pesapalOrderTrackingId) return reply.status(409).send({ error: 'Pesapal never started this payment, so there is nothing to ask it about. Record the payment the way the money came.' });
+      const outcome = await applyPesapalStatus(payment.pesapalOrderTrackingId, (message) => fastify.log.warn(message));
+      const said: Record<string, string> = {
+        activated: 'Pesapal confirmed it - the facility is paid and has been sent its receipt.',
+        'already-applied': 'This payment was already confirmed - the facility is paid.',
+        pending: 'Pesapal still has it as waiting. If the facility shows you it paid, confirm it here by hand.',
+        failed: 'Pesapal says this payment failed. If the facility did pay another way, record that payment.',
+        'amount-mismatch': 'Pesapal reports a different amount, so it was not applied - check the transaction in Pesapal.',
+        reversed: 'Pesapal reports this payment was reversed.',
+        unknown: 'Pesapal did not recognise this payment.',
+        unavailable: 'Pesapal could not be reached just now - try again in a few minutes.',
+      };
+      return { success: true, outcome, message: said[outcome] ?? outcome };
+    } catch (error) {
+      return sendRouteError(reply, error);
     }
   });
 

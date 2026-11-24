@@ -4,6 +4,7 @@
 
 /** Who may change stock. Everyone else sees it read-only. */
 export const STOCK_ROLES = ['ADMIN', 'PHARMACIST'];
+import { hasAllWords } from './search';
 
 export const REMOVAL_REASONS = [
   { value: 'EXPIRED', label: 'Expired' },
@@ -38,8 +39,8 @@ export function stockState(item: Item, now: Date = new Date()): StockState {
 export type StockFilter = 'all' | 'low' | 'expiring' | 'expired';
 
 export function matchesFilter(item: Item & { name: string }, filter: StockFilter, search: string, now: Date = new Date()): boolean {
-  const q = search.trim().toLowerCase();
-  if (q && !item.name.toLowerCase().includes(q)) return false;
+  // The words typed, in any order: "artesunate inj" finds Artesunate 60 mg injection.
+  if (search.trim() && !hasAllWords([item.name, (item as { unit?: string }).unit], search)) return false;
   const state = stockState(item, now);
   if (filter === 'low') return state.out || state.low;
   if (filter === 'expiring') return state.expiringSoon;

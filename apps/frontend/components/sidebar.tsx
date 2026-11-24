@@ -110,7 +110,8 @@ export function Sidebar() {
     'token',
     Boolean(user) && user?.role !== 'SUPER_ADMIN'
   );
-  const badges = { '/notifications': unreadNotifications };
+  const unreadMessages = useUnreadNotifications(user?.role === 'SUPER_ADMIN' ? '/chat/super-admin/unread-count' : '/chat/unread-count', 'token', Boolean(user));
+  const badges = { '/notifications': unreadNotifications, '/messages': unreadMessages, '/super-admin/messages': unreadMessages };
 
   if (!mounted || !user) return null;
 

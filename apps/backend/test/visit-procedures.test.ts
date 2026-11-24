@@ -83,7 +83,7 @@ describe('procedures in a visit\'s treatment plan', () => {
 
     // Saved again with a changed plan: what is listed replaces the rest, but the charged one stays with its charge.
     await push(f.token, visit(f, id, { procedures: [{ name: 'Wound dressing' }] }), new Date(Date.now() + 1000));
-    const now = await prisma.visitProcedure.findMany({ where: { consultationId: id }, include: { invoiceItem: true }, orderBy: { createdAt: 'asc' } });
+    const now = await prisma.visitProcedure.findMany({ where: { consultationId: id }, include: { invoiceItem: true }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] });
     expect(now.map((p) => [p.name, !!p.invoiceItem])).toEqual([['Incision and drainage', true], ['Wound dressing', false]]);
   });
 
