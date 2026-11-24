@@ -94,7 +94,7 @@ async function sendSupportEmail(input: { threadId: string; clinicId: string; sen
 
   if (input.fromSuperAdmin) {
     const admins = await prisma.user.findMany({
-      where: { clinicId: input.clinicId, role: 'ADMIN', isActive: true },
+      where: { clinicId: input.clinicId, isActive: true, OR: [{ role: 'ADMIN' }, { extraRoles: { has: 'ADMIN' } }] },
       select: { email: true, name: true },
     });
     if (!admins.length) return { sent: false, reason: 'No active facility administrators are available' };
@@ -497,6 +497,54 @@ export async function chatRoutes(fastify: FastifyInstance) {
   });
 
   // ─── Super-admin: support inbox ────────────────────────────────────────
+  fastify.get('/chat/super-admin/clinics', { preHandler: [requireRole('SUPER_ADMIN')] }, async () => {
+    const clinics = await prisma.clinic.findMany({
+      where: {
+        isActive: true,
+        deletedAt: null,
+        users: { some: { isActive: true, OR: [{ role: 'ADMIN' }, { extraRoles: { has: 'ADMIN' } }] } },
+      },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    return { success: true, clinics };
+  });
+
+  fastify.post('/chat/super-admin/threads', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const { clinicId } = request.body as any;
+    if (typeof clinicId !== 'string' || !clinicId) return reply.status(400).send({ error: 'Choose a facility' });
+    const clinic = await prisma.clinic.findFirst({
+      where: {
+        id: clinicId,
+        isActive: true,
+        deletedAt: null,
+        users: { some: { isActive: true, OR: [{ role: 'ADMIN' }, { extraRoles: { has: 'ADMIN' } }] } },
+      },
+      select: { id: true },
+    });
+    if (!clinic) return reply.status(404).send({ error: 'Facility or active administrator not found' });
+
+    const include = {
+      userA: { select: { id: true, name: true, role: true } },
+      pins: { where: { userId: authUser.userId } },
+      reads: { where: { userId: authUser.userId }, select: { lastReadAt: true } },
+      messages: { orderBy: { createdAt: 'desc' as const }, take: 1 },
+    };
+    const existing = await prisma.chatThread.findFirst({ where: { kind: 'ADMIN_SUPER', clinicId }, include });
+    if (existing) return { success: true, thread: { ...presentThread(existing, authUser.userId), unreadCount: await unreadSupportCount(existing.id, false, existing.reads[0]?.lastReadAt) } };
+
+    try {
+      const thread = await prisma.chatThread.create({ data: { kind: 'ADMIN_SUPER', clinicId, userAId: authUser.userId }, include });
+      return { success: true, thread: { ...presentThread(thread, authUser.userId), unreadCount: 0 } };
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+      const thread = await prisma.chatThread.findFirst({ where: { kind: 'ADMIN_SUPER', clinicId }, include });
+      if (!thread) throw error;
+      return { success: true, thread: { ...presentThread(thread, authUser.userId), unreadCount: await unreadSupportCount(thread.id, false, thread.reads[0]?.lastReadAt) } };
+    }
+  });
+
   fastify.get('/chat/super-admin/threads', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request) => {
     const authUser = getAuthUser(request);
     const threads = await prisma.chatThread.findMany({

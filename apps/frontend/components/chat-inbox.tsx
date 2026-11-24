@@ -78,6 +78,9 @@ export function ChatInbox({ mode }: { mode: Mode }) {
         } else if (mode === 'patient') {
           const data = await request('/patient-portal/chat/clinics');
           if (live) setClinics(data.clinics ?? []);
+        } else if (mode === 'super') {
+          const data = await request('/chat/super-admin/clinics');
+          if (live) setClinics(data.clinics ?? []);
         }
       } catch (e) { if (live) setError(e instanceof Error ? e.message : 'Could not load Chatroom'); }
       finally { if (live) setLoading(false); }
@@ -169,6 +172,15 @@ export function ChatInbox({ mode }: { mode: Mode }) {
     catch (e) { setError(e instanceof Error ? e.message : 'Could not open support chat'); }
   };
 
+  const startSuperSupport = async () => {
+    if (!selectedClinic) return;
+    try {
+      const data = await request('/chat/super-admin/threads', { method: 'POST', body: JSON.stringify({ clinicId: selectedClinic }) });
+      setSelected(data.thread);
+      await listThreads();
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not start facility chat'); }
+  };
+
   const startPatient = async () => {
     if (!selectedClinic) return;
     try { const data = await request('/patient-portal/chat/threads', { method: 'POST', body: JSON.stringify({ clinicId: selectedClinic }) }); setSelected(data.thread); await listThreads(); }
@@ -187,7 +199,8 @@ export function ChatInbox({ mode }: { mode: Mode }) {
   };
 
   const identityValue = mode === 'patient' ? {} : identity();
-  const canOpenSupport = mode === 'staff' && identityValue.role === 'ADMIN';
+  const identityRoles = [identityValue.role, ...(Array.isArray(identityValue.extraRoles) ? identityValue.extraRoles : [])];
+  const canOpenSupport = mode === 'staff' && identityRoles.includes('ADMIN');
   const showPatientGroup = mode === 'staff' && ['DOCTOR', 'NURSE', 'ADMIN'].some((role) => [identityValue.role, ...(identityValue.extraRoles || [])].includes(role));
 
   return <section className="mx-auto max-w-7xl space-y-4">
@@ -195,6 +208,7 @@ export function ChatInbox({ mode }: { mode: Mode }) {
       <div><p className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400"><MessageCircle className="size-4" /> In-app conversations</p><h1 className="text-2xl font-bold text-slate-950 dark:text-slate-50">Chatroom</h1><p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Private conversations for the people you work with.</p></div>
       {mode === 'staff' && <div className="flex flex-wrap gap-2">{canOpenSupport && <button onClick={() => void startSupport()} className="inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"><ShieldCheck className="size-4" /> Bulamu Support</button>}<button onClick={() => setShowStart((value) => !value)} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white hover:bg-emerald-800"><Plus className="size-4" /> Start chat <ChevronDown className="size-4" /></button></div>}
       {mode === 'patient' && <div className="flex gap-2"><select aria-label="Choose a clinic" className="h-10 rounded-md border bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900" value={selectedClinic} onChange={(e) => setSelectedClinic(e.target.value)}><option value="">Choose a clinic...</option>{clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select><button onClick={() => void startPatient()} disabled={!selectedClinic} className="rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50">Message clinic</button></div>}
+      {mode === 'super' && <div className="flex flex-wrap gap-2"><label className="sr-only" htmlFor="support-facility">Choose a facility</label><select id="support-facility" aria-label="Choose a facility" className="h-10 max-w-64 rounded-md border bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900" value={selectedClinic} onChange={(e) => setSelectedClinic(e.target.value)}><option value="">Choose a facility...</option>{clinics.map((clinic) => <option key={clinic.id} value={clinic.id}>{clinic.name}</option>)}</select><button onClick={() => void startSuperSupport()} disabled={!selectedClinic} className="inline-flex min-h-10 items-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white disabled:opacity-50"><Plus className="size-4" /> Start facility chat</button></div>}
     </header>
 
     {showStart && mode === 'staff' && <section className="rounded-xl border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900 dark:bg-slate-900" aria-label="Start a chat">

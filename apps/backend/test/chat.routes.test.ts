@@ -3,6 +3,7 @@ import { FastifyInstance } from 'fastify';
 import { authHeader, buildTestApp, loginAs, seedClinic, seedUser } from './helpers';
 import { resetDb } from './db';
 import { ADMIN_NOTIFY_EMAIL } from '../src/lib/mailer';
+import { prisma } from '../src/lib/prisma';
 
 const sendMailMock = vi.hoisted(() => vi.fn());
 vi.mock('../src/lib/mailer', async (importOriginal) => {
@@ -82,10 +83,51 @@ vi.mock('../src/lib/mailer', async (importOriginal) => {
     expect((await app.inject({ method: 'GET', url: '/chat/unread-count', headers: authHeader(adminBToken) })).json().count).toBe(1);
   });
 
+  it('lets only Super Admin start facility support chats and includes admins assigned through extra roles', async () => {
+    const clinic = await seedClinic({ name: 'Eligible Facility' });
+    const noAdminClinic = await seedClinic({ name: 'No Admin Facility' });
+    const inactiveClinic = await seedClinic({ name: 'Inactive Facility', isActive: false });
+    const { user: actingAdmin, password: actingAdminPassword } = await seedUser({ clinicId: clinic.id, role: 'DOCTOR' });
+    await prisma.user.update({ where: { id: actingAdmin.id }, data: { extraRoles: ['ADMIN'] } });
+    const { user: superAdmin, password: superAdminPassword } = await seedUser({ clinicId: clinic.id, role: 'SUPER_ADMIN' });
+    const superToken = (await loginAs(app, superAdmin.email, superAdminPassword)).token;
+    const actingAdminToken = (await loginAs(app, actingAdmin.email, actingAdminPassword)).token;
+
+    const eligible = await app.inject({ method: 'GET', url: '/chat/super-admin/clinics', headers: authHeader(superToken) });
+    expect(eligible.statusCode).toBe(200);
+    expect(eligible.json().clinics).toEqual([{ id: clinic.id, name: 'Eligible Facility' }]);
+    const started = await app.inject({ method: 'POST', url: '/chat/super-admin/threads', headers: authHeader(superToken), payload: { clinicId: clinic.id } });
+    expect(started.statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/chat/super-admin/threads', headers: authHeader(superToken) })).json().threads.map((thread: { id: string }) => thread.id)).toContain(started.json().thread.id);
+    expect((await app.inject({ method: 'GET', url: '/chat/threads', headers: authHeader(actingAdminToken) })).json().threads.map((thread: { id: string }) => thread.id)).toContain(started.json().thread.id);
+
+    const facilityRoles = ['ADMIN', 'DOCTOR', 'NURSE', 'PHARMACIST', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] as const;
+    for (const role of facilityRoles) {
+      const { user, password } = await seedUser({ clinicId: clinic.id, role });
+      const token = (await loginAs(app, user.email, password)).token;
+      expect((await app.inject({ method: 'GET', url: '/chat/super-admin/clinics', headers: authHeader(token) })).statusCode).toBe(403);
+      expect((await app.inject({ method: 'POST', url: '/chat/super-admin/threads', headers: authHeader(token), payload: { clinicId: clinic.id } })).statusCode).toBe(403);
+      expect((await app.inject({ method: 'POST', url: '/chat/admin-support', headers: authHeader(token) })).statusCode).toBe(role === 'ADMIN' ? 200 : 403);
+      expect((await app.inject({ method: 'GET', url: '/chat/threads', headers: authHeader(token) })).statusCode).toBe(200);
+      expect((await app.inject({ method: 'POST', url: '/chat/threads', headers: authHeader(token), payload: { toUserId: actingAdmin.id } })).statusCode).toBe(200);
+      expect((await app.inject({ method: 'POST', url: '/chat/groups', headers: authHeader(token), payload: { groupType: 'FACILITY' } })).statusCode).toBe(200);
+      expect((await app.inject({ method: 'GET', url: '/chat/patient-threads', headers: authHeader(token) })).statusCode).toBe(['ADMIN', 'DOCTOR', 'NURSE'].includes(role) ? 200 : 403);
+    }
+
+    const reused = await app.inject({ method: 'POST', url: '/chat/super-admin/threads', headers: authHeader(superToken), payload: { clinicId: clinic.id } });
+    expect(reused.json().thread.id).toBe(started.json().thread.id);
+    expect((await app.inject({ method: 'POST', url: '/chat/admin-support', headers: authHeader(actingAdminToken) })).json().thread.id).toBe(started.json().thread.id);
+    expect((await app.inject({ method: 'POST', url: '/chat/super-admin/threads', headers: authHeader(superToken), payload: { clinicId: noAdminClinic.id } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: '/chat/super-admin/threads', headers: authHeader(superToken), payload: { clinicId: inactiveClinic.id } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: '/chat/threads', headers: authHeader(superToken), payload: { toUserId: actingAdmin.id } })).statusCode).toBe(403);
+  });
+
   it('emails only a generic secure notice for admin and super-admin support messages', async () => {
     const clinic = await seedClinic();
     const { user: adminA, password: passwordA } = await seedUser({ clinicId: clinic.id, role: 'ADMIN', email: 'admin-a@facility.ug' });
     const { user: adminB, password: passwordB } = await seedUser({ clinicId: clinic.id, role: 'ADMIN', email: 'admin-b@facility.ug' });
+    const { user: adminExtraRole } = await seedUser({ clinicId: clinic.id, role: 'DOCTOR', email: 'admin-extra-role@facility.ug' });
+    await prisma.user.update({ where: { id: adminExtraRole.id }, data: { extraRoles: ['ADMIN'] } });
     const { user: superAdmin, password: superPassword } = await seedUser({ clinicId: clinic.id, role: 'SUPER_ADMIN' });
     const adminToken = (await loginAs(app, adminA.email, passwordA)).token;
     const superToken = (await loginAs(app, superAdmin.email, superPassword)).token;
@@ -101,7 +143,7 @@ vi.mock('../src/lib/mailer', async (importOriginal) => {
     sendMailMock.mockClear();
     const sentBySuper = await app.inject({ method: 'POST', url: `/chat/super-admin/threads/${thread.id}/messages`, headers: authHeader(superToken), payload: { body: privateBody, sendEmail: true } });
     expect(sentBySuper.statusCode).toBe(200);
-    expect(sendMailMock.mock.calls.map(([mail]) => (mail as { to: string }).to).sort()).toEqual([adminA.email, adminB.email].sort());
+    expect(sendMailMock.mock.calls.map(([mail]) => (mail as { to: string }).to).sort()).toEqual([adminA.email, adminB.email, adminExtraRole.email].sort());
     for (const [mail] of sendMailMock.mock.calls) expect((mail as { html: string }).html).not.toContain(privateBody);
   });
 
