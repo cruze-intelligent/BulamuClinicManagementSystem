@@ -9,7 +9,10 @@ type Alert = { id: string; type: string; title: string; body: string; link: stri
 
 /** What pops up: results coming back to whoever asked, and new requests reaching the lab and imaging. */
 export const POPPED_TYPES = new Set(['LAB_RESULT_AVAILABLE', 'LAB_RESULT_READY', 'IMAGING_REPORTED', 'LAB_TEST_ORDERED', 'IMAGING_REQUESTED']);
-const CHECK_EVERY_MS = 45_000;
+// This is mounted across the staff app; avoid a notifications-list query from
+// every open tab every 45 seconds. Focus checks still make returning to the
+// app feel current.
+const CHECK_EVERY_MS = 2 * 60_000;
 /** Older than this when the page opens, it is left to the notifications list. */
 const FRESH_MS = 15 * 60 * 1000;
 const SHOWN_KEY = 'bulamu:popped-notifications';

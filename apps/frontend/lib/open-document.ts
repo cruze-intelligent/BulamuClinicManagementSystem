@@ -65,6 +65,7 @@ function showInTab(tab: Window, blob: Blob, fileName: string, isPdf: boolean) {
   main { position: absolute; inset: 46px 0 0 0; display: flex; justify-content: center; overflow: auto; }
   iframe { width: 100%; height: 100%; border: 0; background: #fff; }
   img { max-width: 100%; margin: 16px auto; box-shadow: 0 1px 6px rgba(0,0,0,.2); background: #fff; }
+  @media print { html, body { height: auto; background: #fff; } header { display: none; } main { position: static; inset: auto; display: block; overflow: visible; height: 100%; } img { max-width: 100%; margin: 0; box-shadow: none; } }
 </style></head><body><header><h1></h1><button type="button" id="print">Print</button><a id="download">Download</a></header><main></main></body></html>`);
   doc.close();
   // A copy of the document that belongs to this tab: it lasts as long as the tab is open.
@@ -80,7 +81,14 @@ function showInTab(tab: Window, blob: Blob, fileName: string, isPdf: boolean) {
     frame.title = title;
     frame.src = url;
     main.appendChild(frame);
-    doc.getElementById('print')!.addEventListener('click', () => {
+    const printButton = doc.getElementById('print') as HTMLButtonElement;
+    printButton.disabled = true;
+    printButton.textContent = 'Loading PDF…';
+    frame.addEventListener('load', () => {
+      printButton.disabled = false;
+      printButton.textContent = 'Print';
+    }, { once: true });
+    printButton.addEventListener('click', () => {
       try {
         frame.contentWindow?.focus();
         frame.contentWindow?.print();

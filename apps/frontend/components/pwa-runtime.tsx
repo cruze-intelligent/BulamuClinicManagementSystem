@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, CircleAlert, Download, RefreshCw, TriangleAlert, Wifi, WifiOff } from 'lucide-react';
 import {
@@ -26,7 +26,9 @@ function isPlatformAdmin() {
 }
 
 /** How often an open page sends what is waiting and fetches what changed. */
-const BACKGROUND_SYNC_MS = 45_000;
+// The pull fans out to eight facility-wide queries. Keep foreground changes
+// fresh without making every open device hit those queries every 45 seconds.
+const BACKGROUND_SYNC_MS = 2 * 60_000;
 
 export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
   const [online, setOnline] = useState(true);
@@ -37,6 +39,7 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
   const [installPrompt, setInstallPromptState] = useState<BeforeInstallPromptEvent | null>(null);
   // The facility's subscription has ended: queued saves can't go up until it renews.
   const [lapsed, setLapsed] = useState(false);
+  const syncInFlight = useRef(false);
 
   const refreshPending = useCallback(() => {
     countPendingMutations().then(setPending).catch(console.error);
@@ -44,7 +47,8 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
   }, []);
 
   const syncData = useCallback(async (quiet = false) => {
-    if (isPlatformAdmin()) return;
+    if (isPlatformAdmin() || syncInFlight.current) return;
+    syncInFlight.current = true;
     if (!quiet) setSyncing(true);
     try {
       await flushSyncQueue();
@@ -53,6 +57,7 @@ export function PwaRuntime({ showWidget = true }: { showWidget?: boolean }) {
     } catch (error) {
       console.error('Manual sync failed:', error);
     } finally {
+      syncInFlight.current = false;
       setSyncing(false);
       refreshPending();
     }

@@ -399,6 +399,7 @@ model Patient {
 
   @@unique([clinicId, patientNumber])
   @@index([clinicId])
+  @@index([clinicId, updatedAt])
   @@index([patientAccountId])
 }
 
@@ -692,6 +693,7 @@ model ReproductiveHealthRecord {
   updatedAt               DateTime @updatedAt
 
   @@index([patientId])
+  @@index([patientId, updatedAt])
 }
 
 enum FamilyPlanningMethod {
@@ -752,6 +754,7 @@ model Appointment {
   updatedAt   DateTime @updatedAt
 
   @@index([clinicId, date])
+  @@index([clinicId, updatedAt])
   @@index([clinicId, checkedInAt])
   @@index([clinicId, departmentId])
   @@index([patientId])
@@ -801,6 +804,7 @@ model Consultation {
   updatedAt     DateTime @updatedAt
 
   @@index([patientId])
+  @@index([patientId, updatedAt])
 }
 
 // One diagnosis made at a consultation. A consultation has one PRIMARY
@@ -1088,6 +1092,7 @@ model Medicine {
   updatedAt   DateTime @updatedAt
 
   @@index([clinicId])
+  @@index([clinicId, updatedAt])
 }
 
 // One delivery of a medicine, with its own expiry date. Dispensing and sales
@@ -1187,6 +1192,7 @@ model LabTest {
   updatedAt       DateTime @updatedAt
 
   @@index([patientId])
+  @@index([patientId, updatedAt])
   @@index([consultationId])
 }
 

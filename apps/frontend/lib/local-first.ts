@@ -1179,6 +1179,7 @@ async function flushOnce() {
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify({ operations }),
+    signal: AbortSignal.timeout(60_000),
   });
 
   // Saved on this device before the subscription ended (or before this device
@@ -1263,6 +1264,7 @@ export async function pullSyncUpdates(clinicId: string) {
     const pulledAt = Date.now();
     const response = await fetch(`${apiUrl}/sync/pull?clinicId=${clinicId}&lastSyncedAt=${encodeURIComponent(lastSyncedAt)}`, {
       headers: getAuthHeaders(),
+      signal: AbortSignal.timeout(60_000),
     });
     const data = await response.json();
     // The server's time, so this device stamps records by the server's clock.
