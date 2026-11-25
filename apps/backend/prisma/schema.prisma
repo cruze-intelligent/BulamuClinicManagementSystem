@@ -23,6 +23,8 @@ model User {
   comments  Comment[]
   resolvedAppointmentRequests AppointmentRequest[]
   dispensedPrescriptions Prescription[] @relation("PrescriptionDispensedBy")
+  inpatientMedicationOrders InpatientMedicationOrder[] @relation("InpatientMedicationPrescribedBy")
+  medicationAdministrations MedicationAdministration[] @relation("MedicationAdministrationGivenBy")
   notifications Notification[]
   chatThreadsAsA   ChatThread[]  @relation("ThreadUserA")
   chatThreadsAsB   ChatThread[]  @relation("ThreadUserB")
@@ -613,6 +615,7 @@ model Admission {
   referralId           String?        @unique
   referral             Referral?      @relation(fields: [referralId], references: [id])
   notes                AdmissionNote[]
+  medicationOrders     InpatientMedicationOrder[]
   // Bill lines charging for the stay (a long stay may be billed in parts).
   invoiceItems         InvoiceItem[]
   createdAt            DateTime       @default(now())
@@ -660,6 +663,63 @@ model AdmissionNote {
   createdAt    DateTime          @default(now())
 
   @@index([admissionId, createdAt])
+}
+
+// A ward medication order belongs to one inpatient stay. It is separate from
+// an outpatient Prescription: recording a dose here never removes pharmacy stock.
+model InpatientMedicationOrder {
+  id                    String   @id @default(uuid())
+  admissionId           String
+  admission             Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  prescribedByUserId    String
+  prescribedBy          User     @relation("InpatientMedicationPrescribedBy", fields: [prescribedByUserId], references: [id])
+  medication            String
+  strength              String?
+  dose                  String
+  route                 String?
+  frequency             String
+  duration              String?
+  instructions          String?
+  startAt               DateTime @default(now())
+  status                InpatientMedicationOrderStatus @default(ACTIVE)
+  stoppedAt             DateTime?
+  stopReason            String?
+  administrations       MedicationAdministration[]
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([admissionId, status, startAt])
+}
+
+enum InpatientMedicationOrderStatus {
+  ACTIVE
+  STOPPED
+}
+
+// Append-only treatment record. Corrections are made with a follow-up note so
+// the clinical chart preserves who gave (or withheld) each dose and when.
+model MedicationAdministration {
+  id                    String   @id @default(uuid())
+  orderId               String
+  order                 InpatientMedicationOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  givenByUserId         String
+  givenBy               User     @relation("MedicationAdministrationGivenBy", fields: [givenByUserId], references: [id])
+  status                MedicationAdministrationStatus
+  doseGiven             String?
+  routeGiven            String?
+  administeredAt        DateTime
+  note                  String?
+  createdAt             DateTime @default(now())
+
+  @@index([orderId, administeredAt])
+  @@index([givenByUserId, administeredAt])
+}
+
+enum MedicationAdministrationStatus {
+  GIVEN
+  REFUSED
+  WITHHELD
+  NOT_AVAILABLE
 }
 
 enum AdmissionNoteKind {
@@ -1509,6 +1569,7 @@ enum NotificationType {
   LAB_RESULT_READY
   LOW_STOCK
   NEW_PRESCRIPTION
+  NEW_INPATIENT_MEDICATION_ORDER
   APPOINTMENT_REQUESTED
   APPOINTMENT_CONFIRMED
   APPOINTMENT_DECLINED

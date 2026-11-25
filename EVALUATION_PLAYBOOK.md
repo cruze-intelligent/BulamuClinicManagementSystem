@@ -41,17 +41,18 @@ Track each evaluation facility here - never record passwords in this document:
 7. Register a patient (include sex, date of birth, geography, and consent).
 8. Book an appointment.
 9. Record a consultation and prescription.
-10. Add a lab test and inventory item.
-11. For a female patient, record a reproductive-health observation and confirm it appears in the patient's timeline.
-12. Create a referral to another facility, then sign in as that facility's admin/doctor to accept it.
-13. Sign in as Nurse/Front Desk Staff at a Community Outreach or Mobile Unit facility and log a household visit via "Household Visit" - check a danger sign and confirm the referral prompt appears.
-14. Generate facility reports (Overview and HMIS 105 - confirm all 7 sections render, including the new family planning, maternal health, services, and referral sections).
-15. As Admin, open Reports and use "Push to DHIS2" (requires DHIS2 integration configured first, or confirm it correctly reports "not configured yet").
-16. Export FHIR patients and confirm the bundle includes Encounter and Observation resources, not just Patient.
-17. Open "Sync Activity" as Admin and confirm the audit log shows the patient registration and reproductive-health entries.
-18. Switch the browser offline and show local-first behavior (register a patient, log a household visit).
-19. Return online and trigger manual sync.
-20. As a Front Desk Staff account, use "Forgot your password?" from the login page and confirm the reset flow completes.
+10. Admit a patient to a ward, add a medication order during the ward round, then open Nursing and record a given dose and a withheld/refused dose; confirm both appear in the admission chart and do not change pharmacy stock.
+11. Add a lab test and inventory item.
+12. For a female patient, record a reproductive-health observation and confirm it appears in the patient's timeline.
+13. Create a referral to another facility, then sign in as that facility's admin/doctor to accept it.
+14. Sign in as Nurse/Front Desk Staff at a Community Outreach or Mobile Unit facility and log a household visit via "Household Visit" - check a danger sign and confirm the referral prompt appears.
+15. Generate facility reports (Overview and HMIS 105 - confirm all 7 sections render, including the new family planning, maternal health, services, and referral sections).
+16. As Admin, open Reports and use "Push to DHIS2" (requires DHIS2 integration configured first, or confirm it correctly reports "not configured yet").
+17. Export FHIR patients and confirm the bundle includes Encounter and Observation resources, not just Patient.
+18. Open "Sync Activity" as Admin and confirm the audit log shows the patient registration and reproductive-health entries.
+19. Switch the browser offline and show local-first behavior (register a patient, log a household visit).
+20. Return online and trigger manual sync.
+21. As a Front Desk Staff account, use "Forgot your password?" from the login page and confirm the reset flow completes.
 
 Before step 3, verify that PostgreSQL is reachable, migrations have been applied, and seeded access accounts exist.
 

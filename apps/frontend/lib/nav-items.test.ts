@@ -8,6 +8,7 @@ describe("each person's menu", () => {
     expect(paths(['LAB_TECH'])).not.toContain('/inventory');
     // A lab technician who also nurses gets the wards too.
     expect(paths(['LAB_TECH', 'NURSE'])).toContain('/wards');
+    expect(paths(['NURSE'])).toContain('/nursing');
     const trimmed = paths(['NURSE'], ['/wards', '/referrals', '/dashboard', '/help']);
     expect(trimmed).not.toContain('/wards');
     expect(trimmed).not.toContain('/referrals');

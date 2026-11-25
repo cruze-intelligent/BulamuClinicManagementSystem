@@ -46,6 +46,12 @@ export const NOTIFICATION_RULES: Record<NotificationType, NotificationRule> = {
     label: 'New prescriptions',
     description: 'When a consultation includes prescriptions to dispense. In-app only.',
   },
+  NEW_INPATIENT_MEDICATION_ORDER: {
+    audience: 'STAFF', roles: ['NURSE'], emailRoles: [],
+    emailSubject: 'New inpatient medication order',
+    label: 'Ward medication orders',
+    description: 'When a clinician adds a medication to an inpatient ward chart. In-app only.',
+  },
   LOW_STOCK: {
     audience: 'STAFF', roles: ['PHARMACIST', 'ADMIN'], emailRoles: ['PHARMACIST', 'ADMIN'],
     emailSubject: 'Restock needed',

@@ -26,6 +26,7 @@ const EMPTY_DISCHARGE = {
   outcome: 'RECOVERED', dischargeDiagnosis: '', dischargeIcd10Code: '', dischargeSummary: '', followUpInstructions: '',
   toClinicId: '', urgency: 'URGENT', consentConfirmed: false,
 };
+const EMPTY_MEDICATION = { medication: '', strength: '', dose: '', route: '', frequency: '', duration: '', instructions: '' };
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -44,6 +45,7 @@ function AdmissionChart() {
   const { user } = useAuth();
   const role = user?.role as string | undefined;
   const canDischarge = role === 'DOCTOR' || role === 'ADMIN';
+  const canPrescribe = role === 'DOCTOR' || role === 'ADMIN';
 
   const [admission, setAdmission] = useState<any>(null);
   const [wards, setWards] = useState<any[]>([]);
@@ -59,6 +61,8 @@ function AdmissionChart() {
   const [dxOpen, setDxOpen] = useState(false);
   const [dx, setDx] = useState<DiagnosisDraft[]>([emptyDiagnosis()]);
   const [dxTried, setDxTried] = useState(false);
+  const [showMedication, setShowMedication] = useState(false);
+  const [medication, setMedication] = useState(EMPTY_MEDICATION);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -145,6 +149,20 @@ function AdmissionChart() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const addMedicationOrder = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (await send(`/admissions/${id}/medication-orders`, medication)) {
+      setMedication(EMPTY_MEDICATION);
+      setShowMedication(false);
+    }
+  };
+
+  const stopMedicationOrder = async (order: any) => {
+    const reason = window.prompt(`Stop ${order.medication}? Optional reason for the chart:`);
+    if (reason === null) return;
+    await send(`/admissions/${id}/medication-orders/${order.id}/stop`, { reason: reason || undefined });
   };
 
   const openDischarge = () => {
@@ -282,6 +300,35 @@ function AdmissionChart() {
               </div>
             </div>
           )}
+        </Card>
+
+        <Card className="p-5" data-testid="inpatient-medication-chart">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div><h2 className="font-semibold">Ward medication chart</h2><p className="text-xs text-slate-500 dark:text-slate-400">Orders are written and stopped by a doctor or facility admin. Nurses record each treatment in Nursing.</p></div>
+            {admitted && canPrescribe && <Button size="sm" onClick={() => setShowMedication((open) => !open)}>{showMedication ? 'Cancel' : 'Add medication order'}</Button>}
+          </div>
+          {showMedication && admitted && canPrescribe && <form onSubmit={addMedicationOrder} className="mt-4 grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 dark:border-slate-800">
+            <div><Label htmlFor="med-order-name">Medicine</Label><Input id="med-order-name" required maxLength={120} value={medication.medication} onChange={(e) => setMedication((m) => ({ ...m, medication: e.target.value }))} placeholder="e.g. Ceftriaxone" /></div>
+            <div><Label htmlFor="med-order-strength">Strength (optional)</Label><Input id="med-order-strength" value={medication.strength} onChange={(e) => setMedication((m) => ({ ...m, strength: e.target.value }))} placeholder="e.g. 1 g vial" /></div>
+            <div><Label htmlFor="med-order-dose">Dose</Label><Input id="med-order-dose" required value={medication.dose} onChange={(e) => setMedication((m) => ({ ...m, dose: e.target.value }))} placeholder="e.g. 1 g" /></div>
+            <div><Label htmlFor="med-order-route">Route (optional)</Label><Input id="med-order-route" value={medication.route} onChange={(e) => setMedication((m) => ({ ...m, route: e.target.value }))} placeholder="e.g. IV" /></div>
+            <div><Label htmlFor="med-order-frequency">Frequency / times</Label><Input id="med-order-frequency" required value={medication.frequency} onChange={(e) => setMedication((m) => ({ ...m, frequency: e.target.value }))} placeholder="e.g. Every 8 hours" /></div>
+            <div><Label htmlFor="med-order-duration">Duration (optional)</Label><Input id="med-order-duration" value={medication.duration} onChange={(e) => setMedication((m) => ({ ...m, duration: e.target.value }))} placeholder="e.g. 5 days" /></div>
+            <div className="sm:col-span-2"><Label htmlFor="med-order-instructions">Instructions (optional)</Label><Textarea id="med-order-instructions" rows={2} value={medication.instructions} onChange={(e) => setMedication((m) => ({ ...m, instructions: e.target.value }))} placeholder="Additional instructions for nursing staff" /></div>
+            <p className="sm:col-span-2 text-xs text-slate-500">A new order records the ward-round decision in the chart and alerts nursing staff. It does not dispense stock.</p>
+            <Button type="submit" disabled={busy} className="sm:w-fit">{busy ? 'Saving…' : 'Save ward-round order'}</Button>
+          </form>}
+          <div className="mt-4 space-y-3">
+            {(admission.medicationOrders ?? []).length === 0 ? <p className="text-sm text-slate-500">No medication orders recorded during this stay.</p> : admission.medicationOrders.map((order: any) => <article key={order.id} className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div><h3 className="font-medium">{order.medication}{order.strength ? ` · ${order.strength}` : ''}</h3><p className="text-sm">{order.dose}{order.route ? ` · ${order.route}` : ''} · {order.frequency}{order.duration ? ` · ${order.duration}` : ''}</p>{order.instructions && <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{order.instructions}</p>}<p className="mt-1 text-xs text-slate-500">Ordered {when(order.createdAt)} by {order.prescribedByName}</p></div>
+                <span className={`rounded-full px-2 py-1 text-xs font-medium ${order.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{order.status === 'ACTIVE' ? 'Active' : `Stopped ${order.stoppedAt ? when(order.stoppedAt) : ''}`}</span>
+                {order.status === 'ACTIVE' && canPrescribe && admitted && <Button size="sm" variant="outline" disabled={busy} onClick={() => void stopMedicationOrder(order)}>Stop order</Button>}
+              </div>
+              {order.stopReason && <p className="mt-1 text-xs text-slate-500">Reason stopped: {order.stopReason}</p>}
+              {order.administrations?.length > 0 && <ul className="mt-3 space-y-1 border-t border-slate-200 pt-2 text-xs dark:border-slate-800">{order.administrations.map((entry: any) => <li key={entry.id}>{when(entry.administeredAt)} · {entry.status.replace('_', ' ')}{entry.doseGiven ? ` · ${entry.doseGiven}` : ''}{entry.routeGiven ? ` ${entry.routeGiven}` : ''} · {entry.givenByName}{entry.note ? ` — ${entry.note}` : ''}</li>)}</ul>}
+            </article>)}
+          </div>
         </Card>
 
         {panel === 'transfer' && admitted && (

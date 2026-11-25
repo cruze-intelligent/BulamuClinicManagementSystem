@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify';
-import { AdmissionNoteKind, DischargeOutcome, WardType } from '@prisma/client';
+import { AdmissionNoteKind, DischargeOutcome, Role, WardType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { getAuthUser, worksAs } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
@@ -28,6 +28,7 @@ const NOTE_KINDS: AdmissionNoteKind[] = ['NURSING_NOTE', 'WARD_ROUND', 'OBSERVAT
 // An operation note is the surgeon's; procedures are done by nurses and clinicians alike.
 const OPERATION_NOTE_ROLES = ['DOCTOR', 'ADMIN'];
 const CLINICAL = ['DOCTOR', 'NURSE', 'ADMIN'];
+const MEDICATION_STATUSES = ['GIVEN', 'REFUSED', 'WITHHELD', 'NOT_AVAILABLE'] as const;
 
 /** The unit given for a ward: null for none, false when it is not one of the facility's. */
 async function unitOf(clinicId: string, value: unknown): Promise<string | null | false> {
@@ -165,7 +166,17 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     const { id } = request.params as any;
     const admission = await prisma.admission.findUnique({
       where: { id },
-      include: { ...admissionInclude, notes: { orderBy: { createdAt: 'desc' }, include: { author: { select: { name: true } } } } },
+      include: {
+        ...admissionInclude,
+        notes: { orderBy: { createdAt: 'desc' }, include: { author: { select: { name: true } } } },
+        medicationOrders: {
+          orderBy: { createdAt: 'desc' },
+          include: {
+            prescribedBy: { select: { name: true } },
+            administrations: { orderBy: { administeredAt: 'desc' }, take: 20, include: { givenBy: { select: { name: true } } } },
+          },
+        },
+      },
     });
     if (!admission || admission.clinicId !== clinicId) return reply.status(404).send({ error: 'Admission not found' });
     return {
@@ -173,8 +184,116 @@ export async function admissionRoutes(fastify: FastifyInstance) {
       admission: {
         ...present(admission),
         notes: admission.notes.map(({ author, ...n }) => ({ ...n, authorName: author.name })),
+        medicationOrders: admission.medicationOrders.map(({ prescribedBy, administrations, ...order }) => ({
+          ...order,
+          prescribedByName: prescribedBy.name,
+          administrations: administrations.map(({ givenBy, ...entry }) => ({ ...entry, givenByName: givenBy.name })),
+        })),
       },
     };
+  });
+
+  // Current inpatient medication chart for nurses. Orders stay separate from
+  // pharmacy dispensing and are returned only for the caller's own facility.
+  fastify.get('/nursing/medications', { preHandler: [requireRole(...CLINICAL)] }, async (request) => {
+    const { clinicId } = getAuthUser(request);
+    const orders = await prisma.inpatientMedicationOrder.findMany({
+      where: { status: 'ACTIVE', startAt: { lte: new Date() }, admission: { clinicId, status: 'ADMITTED' } },
+      orderBy: [{ admission: { ward: { name: 'asc' } } }, { admission: { patient: { name: 'asc' } } }, { createdAt: 'desc' }],
+      include: {
+        prescribedBy: { select: { name: true } },
+        administrations: { orderBy: { administeredAt: 'desc' }, take: 5, include: { givenBy: { select: { name: true } } } },
+        admission: { select: {
+          id: true, bed: true, ward: { select: { name: true } },
+          patient: { select: { id: true, name: true, sex: true, dateOfBirth: true, dateOfBirthEstimated: true, patientNumber: true, allergyStatus: true, allergies: true } },
+        } },
+      },
+    });
+    return { success: true, orders: orders.map(({ prescribedBy, administrations, admission, ...order }) => ({
+      ...order,
+      prescribedByName: prescribedBy.name,
+      admission,
+      administrations: administrations.map(({ givenBy, ...entry }) => ({ ...entry, givenByName: givenBy.name })),
+    })) };
+  });
+
+  fastify.post('/admissions/:id/medication-orders', { preHandler: [requireRole('DOCTOR', 'ADMIN')] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const { id } = request.params as { id: string };
+    const body = request.body as any;
+    const medication = text(body?.medication, 120);
+    const strength = text(body?.strength, 80);
+    const dose = text(body?.dose, 120);
+    const route = text(body?.route, 60);
+    const frequency = text(body?.frequency, 100);
+    const duration = text(body?.duration, 100);
+    const instructions = text(body?.instructions, 500);
+    const startAt = body?.startAt ? new Date(body.startAt) : new Date();
+    if (!medication || !dose || !frequency) return reply.status(400).send({ error: 'Enter the medicine, dose and frequency' });
+    if (Number.isNaN(startAt.getTime())) return reply.status(400).send({ error: 'Enter a valid start date' });
+    const admission = await prisma.admission.findUnique({ where: { id }, select: { clinicId: true, status: true, patient: { select: { name: true } } } });
+    if (!admission || admission.clinicId !== authUser.clinicId) return reply.status(404).send({ error: 'Admission not found' });
+    if (admission.status !== 'ADMITTED') return reply.status(409).send({ error: 'Medication cannot be ordered after discharge' });
+    const order = await prisma.$transaction(async (tx) => {
+      const created = await tx.inpatientMedicationOrder.create({ data: {
+        admissionId: id, prescribedByUserId: authUser.userId, medication, strength, dose, route, frequency, duration, instructions, startAt,
+      } });
+      await tx.admissionNote.create({ data: {
+        admissionId: id, authorUserId: authUser.userId, authorRole: authUser.role as Role, kind: 'WARD_ROUND',
+        note: `Medication ordered: ${medication}${strength ? ` ${strength}` : ''}; ${dose}${route ? ` ${route}` : ''}; ${frequency}${duration ? ` for ${duration}` : ''}.${instructions ? ` ${instructions}` : ''}`,
+      } });
+      return created;
+    });
+    await recordAudit({ entity: 'InpatientMedicationOrder', recordId: order.id, clinicId: admission.clinicId, action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { admissionId: id } });
+    await notifyStaff({
+      type: 'NEW_INPATIENT_MEDICATION_ORDER', clinicId: admission.clinicId,
+      title: `Ward medication order: ${admission.patient.name}`,
+      body: `${medication} ${dose} ${route ?? ''} - ${frequency}.`.replace(/\s+/g, ' ').trim(),
+      link: '/nursing', emailSummary: 'A new inpatient medication order is available in the nursing chart.',
+      excludeUserId: authUser.userId,
+    });
+    return { success: true, order };
+  });
+
+  fastify.post('/admissions/:id/medication-orders/:orderId/stop', { preHandler: [requireRole('DOCTOR', 'ADMIN')] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const { id, orderId } = request.params as { id: string; orderId: string };
+    const reason = text((request.body as any)?.reason, 500);
+    const admission = await prisma.admission.findUnique({ where: { id }, select: { clinicId: true, status: true } });
+    if (!admission || admission.clinicId !== authUser.clinicId) return reply.status(404).send({ error: 'Admission not found' });
+    if (admission.status !== 'ADMITTED') return reply.status(409).send({ error: 'This patient has been discharged' });
+    const updated = await prisma.inpatientMedicationOrder.updateMany({
+      where: { id: orderId, admissionId: id, status: 'ACTIVE' },
+      data: { status: 'STOPPED', stoppedAt: new Date(), stopReason: reason },
+    });
+    if (!updated.count) return reply.status(404).send({ error: 'Active medication order not found' });
+    await recordAudit({ entity: 'InpatientMedicationOrder', recordId: orderId, clinicId: admission.clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { event: 'STOPPED' } });
+    return { success: true };
+  });
+
+  fastify.post('/admissions/:id/medication-orders/:orderId/administrations', { preHandler: [requireRole(...CLINICAL)] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const { id, orderId } = request.params as { id: string; orderId: string };
+    const body = request.body as any;
+    const status = body?.status;
+    const doseGiven = text(body?.doseGiven, 120);
+    const routeGiven = text(body?.routeGiven, 60);
+    const note = text(body?.note, 500);
+    const administeredAt = body?.administeredAt ? new Date(body.administeredAt) : new Date();
+    if (!MEDICATION_STATUSES.includes(status)) return reply.status(400).send({ error: 'Choose whether the dose was given, refused, withheld or unavailable' });
+    if (status === 'GIVEN' && !doseGiven) return reply.status(400).send({ error: 'Enter the dose that was given' });
+    if (status !== 'GIVEN' && !note) return reply.status(400).send({ error: 'Record why the dose was not given' });
+    if (Number.isNaN(administeredAt.getTime()) || administeredAt.getTime() > Date.now() + 60_000) return reply.status(400).send({ error: 'Enter a valid administration time that is not in the future' });
+    const order = await prisma.inpatientMedicationOrder.findFirst({ where: { id: orderId, admissionId: id }, include: { admission: { select: { clinicId: true, status: true } } } });
+    if (!order || order.admission.clinicId !== authUser.clinicId) return reply.status(404).send({ error: 'Medication order not found' });
+    if (order.admission.status !== 'ADMITTED' || order.status !== 'ACTIVE') return reply.status(409).send({ error: 'This medication order is no longer active' });
+    if (administeredAt < order.startAt) return reply.status(400).send({ error: 'The administration time is before this order started' });
+    const entry = await prisma.medicationAdministration.create({ data: {
+      orderId, givenByUserId: authUser.userId, status, doseGiven: status === 'GIVEN' ? doseGiven : null,
+      routeGiven: status === 'GIVEN' ? routeGiven : null, administeredAt, note,
+    } });
+    await recordAudit({ entity: 'MedicationAdministration', recordId: entry.id, clinicId: order.admission.clinicId, action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { admissionId: id, orderId, status } });
+    return { success: true, administration: entry };
   });
 
   // Admit a patient to a ward bed.
@@ -370,20 +489,28 @@ export async function admissionRoutes(fastify: FastifyInstance) {
       }
     }
 
-    const discharged = await prisma.admission.update({
-      where: { id },
-      data: {
-        status: 'DISCHARGED',
-        dischargedAt: new Date(),
-        dischargedByUserId: authUser.userId,
-        outcome,
-        dischargeDiagnosis,
-        dischargeIcd10Code: icd10(body.dischargeIcd10Code),
-        dischargeSummary,
-        followUpInstructions,
-        referralId,
-      },
-      include: admissionInclude,
+    const dischargedAt = new Date();
+    const discharged = await prisma.$transaction(async (tx) => {
+      const result = await tx.admission.update({
+        where: { id },
+        data: {
+          status: 'DISCHARGED',
+          dischargedAt,
+          dischargedByUserId: authUser.userId,
+          outcome,
+          dischargeDiagnosis,
+          dischargeIcd10Code: icd10(body.dischargeIcd10Code),
+          dischargeSummary,
+          followUpInstructions,
+          referralId,
+        },
+        include: admissionInclude,
+      });
+      await tx.inpatientMedicationOrder.updateMany({
+        where: { admissionId: id, status: 'ACTIVE' },
+        data: { status: 'STOPPED', stoppedAt: dischargedAt, stopReason: 'Patient discharged' },
+      });
+      return result;
     });
 
     await recordAudit({ entity: 'Admission', recordId: id, clinicId: authUser.clinicId, action: 'UPDATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { discharged: true, outcome, referralId } });

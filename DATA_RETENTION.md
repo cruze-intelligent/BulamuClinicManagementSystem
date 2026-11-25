@@ -22,7 +22,7 @@ it in the other.
 
 | Category | Kept | At the end |
 | --- | --- | --- |
-| Clinical records (patients, appointments, consultations, prescriptions, lab tests, reproductive health, referrals and referral letters, inpatient admissions, ward notes and observations, discharge summaries, invoices) | While the facility is active, then 5 years from the last entry | Erase |
+| Clinical records (patients, appointments, consultations, prescriptions, lab tests, reproductive health, referrals and referral letters, inpatient admissions, ward notes and observations, inpatient medication orders and dose records, discharge summaries, invoices) | While the facility is active, then 5 years from the last entry | Erase |
 | A patient's approvals to share their history between facilities (who asked, when and how the patient approved, declined or stopped sharing) | As long as the clinical records they concern; every viewing of shared history is in the audit trail | Erase |
 | Documents | With the clinical record; deleting a document erases it at once | Erase |
 | Facility and staff account details | While the facility is active; after facility deletion, 5 years (same as clinical) | Erase |
@@ -40,6 +40,7 @@ it in the other.
 | --- | --- | --- | --- |
 | Patient | `Patient` | Soft delete (`deletedAt`) via `DELETE /patients/:id` (ADMIN) or sync. Hidden from every list, search and report. | Manual, end of retention |
 | Appointment, consultation, lab test, reproductive-health record, medicine | respective models | Soft delete (`deletedAt`) via sync | Manual, end of retention |
+| Inpatient medication orders and administration records | `InpatientMedicationOrder`, `MedicationAdministration` | Append-only treatment history under an `Admission`; orders stop at discharge and records cannot be edited | Manual, with the admission at end of retention |
 | Diagnosis, prescription, invoice, referral | `Diagnosis`, `Prescription`, `Invoice`, `Referral` | No delete path; retained with the parent record (a consultation's diagnoses and prescriptions are replaced, not appended, when it is re-synced) | Manual, end of retention |
 | Allergies, dispensing record | `Patient.allergies` / `allergyStatus`, `Prescription.dispensed*` | Kept with the patient and the prescription they belong to. An allergy record is replaced, not appended, when updated. Audit entries note that allergies changed, never what they were. | Manual, end of retention |
 | Document | `Document` + file | **Hard delete** (file and row) by the uploader, a facility ADMIN, or the patient for their own uploads | Immediately |
@@ -95,8 +96,9 @@ example a Neon branch) is taken first.
 3. **Delete in foreign-key-safe order**, scoping every statement to that
    facility's `clinicId` (or its patients / users): notifications for its
    users; documents (files first, then rows); prescriptions; invoices; lab
-   tests; reproductive-health records; consultations; appointment requests;
-   appointments; referrals (both directions); access grants and codes for the
+   tests; reproductive-health records; medication administration records;
+   inpatient medication orders; ward notes; admissions; consultations;
+   appointment requests; appointments; referrals (both directions); access grants and codes for the
    clinic; patients; medicines; comments; then users.
 4. **Do not delete the `Clinic` row** if it created any `PatientAccount`
    (the foreign key is `RESTRICT`). Anonymise it instead (name, address, phone,

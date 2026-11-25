@@ -234,4 +234,46 @@ describe('wards and admissions', () => {
     await app.inject({ method: 'POST', url: `/admissions/${id}/discharge`, headers: authHeader(doctor.token), payload: { outcome: 'RECOVERED', dischargeDiagnosis: 'Severe P. falciparum malaria', dischargeSummary: 'Recovered.' } });
     expect((await update(doctor.token, [{ description: 'Late change' }])).statusCode).toBe(409);
   });
+
+  it('keeps inpatient medication orders separate from dispensing and records each nursing treatment safely', async () => {
+    const { doctor, nurse, nurse2, ward, patient } = await setup();
+    const admissionId = (await admit(nurse.token, { patientId: patient.id, wardId: ward.id, reason: 'Severe malaria' })).json().admission.id;
+    const orderUrl = `/admissions/${admissionId}/medication-orders`;
+    const payload = { medication: 'Artemether', strength: '80 mg/ml', dose: '80 mg', route: 'IM', frequency: 'Every 12 hours', duration: '3 days', instructions: 'Alternate thigh sites' };
+
+    expect((await app.inject({ method: 'POST', url: orderUrl, headers: authHeader(nurse.token), payload })).statusCode).toBe(403);
+    const created = await app.inject({ method: 'POST', url: orderUrl, headers: authHeader(doctor.token), payload });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().order).toMatchObject({ ...payload, status: 'ACTIVE' });
+    const orderId = created.json().order.id;
+    expect(await prisma.admissionNote.count({ where: { admissionId, kind: 'WARD_ROUND' } })).toBe(1);
+    expect((await prisma.notification.findMany({ where: { userId: nurse2.id, type: 'NEW_INPATIENT_MEDICATION_ORDER' } })).length).toBe(1);
+
+    const nursing = await app.inject({ method: 'GET', url: '/nursing/medications', headers: authHeader(nurse.token) });
+    expect(nursing.json().orders[0]).toMatchObject({ id: orderId, admission: { id: admissionId, patient: { name: 'Sarah Nakato' } } });
+    const administrationUrl = `${orderUrl}/${orderId}/administrations`;
+    expect((await app.inject({ method: 'POST', url: administrationUrl, headers: authHeader(nurse.token), payload: { status: 'GIVEN' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: administrationUrl, headers: authHeader(nurse.token), payload: { status: 'WITHHELD' } })).statusCode).toBe(400);
+    const given = await app.inject({ method: 'POST', url: administrationUrl, headers: authHeader(nurse.token), payload: { status: 'GIVEN', doseGiven: '80 mg', routeGiven: 'IM', note: 'Left thigh' } });
+    expect(given.statusCode).toBe(200);
+    expect(given.json().administration).toMatchObject({ status: 'GIVEN', doseGiven: '80 mg', routeGiven: 'IM' });
+    const withheld = await app.inject({ method: 'POST', url: administrationUrl, headers: authHeader(nurse.token), payload: { status: 'WITHHELD', note: 'Patient vomiting; clinician notified' } });
+    expect(withheld.statusCode).toBe(200);
+    expect(await prisma.medicationAdministration.count({ where: { orderId } })).toBe(2);
+    expect(await prisma.prescription.count()).toBe(0);
+
+    expect((await app.inject({ method: 'POST', url: `${orderUrl}/${orderId}/stop`, headers: authHeader(nurse.token), payload: {} })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: `${orderUrl}/${orderId}/stop`, headers: authHeader(doctor.token), payload: { reason: 'Course complete' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/nursing/medications', headers: authHeader(nurse.token) })).json().orders).toHaveLength(0);
+    expect((await app.inject({ method: 'POST', url: administrationUrl, headers: authHeader(nurse.token), payload: { status: 'GIVEN', doseGiven: '80 mg' } })).statusCode).toBe(409);
+
+    const secondOrder = await app.inject({ method: 'POST', url: orderUrl, headers: authHeader(doctor.token), payload: { medication: 'Paracetamol', dose: '1 g', frequency: 'Every 8 hours' } });
+    expect(secondOrder.statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/admissions/${admissionId}/discharge`, headers: authHeader(doctor.token), payload: { outcome: 'RECOVERED', dischargeDiagnosis: 'Malaria', dischargeSummary: 'Recovered.' } })).statusCode).toBe(200);
+    expect(await prisma.inpatientMedicationOrder.findFirstOrThrow({ where: { id: secondOrder.json().order.id } })).toMatchObject({ status: 'STOPPED', stopReason: 'Patient discharged' });
+
+    const other = await seedClinic({ name: 'Other facility', phone: '0702000005' });
+    const outsider = await staff(other.id, 'NURSE');
+    expect((await app.inject({ method: 'GET', url: '/nursing/medications', headers: authHeader(outsider.token) })).json().orders).toHaveLength(0);
+  });
 });

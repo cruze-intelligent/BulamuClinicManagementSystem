@@ -21,6 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
   { name: 'Lab Tests', path: '/lab', icon: FlaskConical, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECH'] },
   { name: 'Imaging', path: '/imaging', icon: ScanLine, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'RADIOGRAPHER'] },
   { name: 'Results', path: '/results', icon: FileCheck2, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECH', 'RADIOGRAPHER'] },
+  { name: 'Nursing', path: '/nursing', icon: ClipboardList, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
   { name: 'Wards', path: '/wards', icon: BedDouble, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
   { name: 'Clinical summary', path: '/summary', icon: FileText, roles: ['ADMIN', 'DOCTOR', 'NURSE'] },
   { name: 'Referrals', path: '/referrals', icon: ArrowRightLeft, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },

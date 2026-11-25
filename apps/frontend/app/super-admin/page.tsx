@@ -34,6 +34,7 @@ import { FacilityDetailsModal } from '@/components/facility-details-modal';
 import { isOnTrial, TrialExtensionsCard } from '@/components/trial-extensions-card';
 import { FacilityChangeReviews } from '@/components/facility-change-reviews';
 import { CashAndGraceCard } from '@/components/cash-and-grace-card';
+import { SuperAdminNotificationPanel } from '@/components/super-admin-notification-panel';
 import { formatDate, formatDateTime } from '@/lib/time';
 
 
@@ -349,6 +350,8 @@ export default function SuperAdminPage() {
         ))}
       </section>
 
+      <SuperAdminNotificationPanel pendingFacilities={pending.length} />
+
       {decisionNotice && (
         <div role="status" className="flex items-start justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
           <span>{decisionNotice}</span>
@@ -359,7 +362,7 @@ export default function SuperAdminPage() {
       <FacilityChangeReviews />
 
       {pending.length > 0 && (
-        <Card className="rounded-lg border-amber-200 bg-amber-50 p-5">
+        <Card id="pending-approvals" className="rounded-lg border-amber-200 bg-amber-50 p-5">
           <div className="flex items-center gap-2">
             <ShieldAlert className="size-5 text-amber-700" aria-hidden="true" />
             <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Pending approvals ({pending.length})</h2>

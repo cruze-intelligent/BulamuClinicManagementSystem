@@ -82,7 +82,7 @@ export function FacilityChangeReviews() {
   if (changes.length === 0 && !notice) return null;
 
   return (
-    <Card className="rounded-lg border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
+    <Card id="facility-change-reviews" className="rounded-lg border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
       <div className="flex items-center gap-2">
         <FilePenLine className="size-5 text-amber-700" aria-hidden="true" />
         <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Facility details to review ({changes.length})</h2>
