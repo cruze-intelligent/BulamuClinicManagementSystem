@@ -488,11 +488,12 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
     const { id, itemId } = request.params as any;
     const authUser = getAuthUser(request);
     try {
-      const existing = await prisma.invoice.findUnique({ where: { id }, include: { items: { select: { id: true, amount: true, kind: true, quantity: true, medicineId: true, prescriptionId: true } } } });
+      const existing = await prisma.invoice.findUnique({ where: { id }, include: { items: { select: { id: true, amount: true, kind: true, quantity: true, medicineId: true, prescriptionId: true, medicationAdministrationId: true } } } });
       if (!existing) return reply.status(404).send({ error: 'Invoice not found' });
       if (!assertClinicMatch(request, reply, existing.clinicId)) return;
       const item = existing.items.find((i) => i.id === itemId);
       if (!item) return reply.status(404).send({ error: 'That charge is not on this invoice' });
+      if (item.medicationAdministrationId) return reply.status(409).send({ error: 'This charge is linked to an administered dose. Keep the stock and treatment record together; contact an administrator to correct the bill.' });
       if (existing.status === 'CANCELLED') return reply.status(409).send({ error: 'This invoice was cancelled' });
 
       const outcome = await prisma.$transaction(async (tx) => {
@@ -625,7 +626,7 @@ export async function invoiceRoutes(fastify: FastifyInstance) {
       const invoice = await prisma.$transaction(async (tx) => {
         await lockInvoice(tx, id);
         if (restock) {
-          const sold = await tx.invoiceItem.findMany({ where: { invoiceId: id, medicineId: { not: null }, prescriptionId: null } });
+          const sold = await tx.invoiceItem.findMany({ where: { invoiceId: id, medicineId: { not: null }, prescriptionId: null, medicationAdministrationId: null } });
           for (const item of sold) {
             await returnStock(tx, { medicineId: item.medicineId!, quantity: item.quantity, kind: 'SALE_REVERSED', invoiceItemId: item.id, clinicId: existing.clinicId, userId: authUser.userId });
           }

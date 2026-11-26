@@ -140,10 +140,9 @@ export const LAB_PANELS: LabPanel[] = [
   { test: 'Anti-Mullerian hormone (AMH)', parameters: [{ name: 'AMH', unit: 'ng/mL' }] },
   { test: 'Testosterone (total)', parameters: [{ name: 'Testosterone', unit: 'nmol/L', male: r(8.6, 29.0), female: r(0.29, 1.67) }] },
 
-  // Cardiac markers. Troponin and CK-MB cut-offs belong to each assay, so the
-  // lab writes its own; the others are common adult ranges.
+  // Cardiac marker ranges are set by the facility's assay.
   { test: 'Troponin I', parameters: [{ name: 'Troponin I', unit: 'ng/mL' }] },
-  { test: 'Creatine kinase-MB (CK-MB)', parameters: [{ name: 'CK-MB', unit: 'U/L' }] },
+  { test: 'Creatine kinase-MB (CK-MB)', parameters: [{ name: 'CK-MB', unit: 'ng/mL', range: r(0, 5) }] },
   { test: 'Creatine kinase (CK, total)', parameters: [{ name: 'CK (total)', unit: 'U/L', male: r(39, 308), female: r(26, 192) }] },
   { test: 'NT-proBNP', parameters: [{ name: 'NT-proBNP', unit: 'pg/mL', range: r(undefined, 125) }] },
   { test: 'D-dimer', parameters: [{ name: 'D-dimer', unit: 'mg/L FEU', range: r(undefined, 0.5) }] },

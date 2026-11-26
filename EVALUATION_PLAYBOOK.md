@@ -41,7 +41,7 @@ Track each evaluation facility here - never record passwords in this document:
 7. Register a patient (include sex, date of birth, geography, and consent).
 8. Book an appointment.
 9. Record a consultation and prescription.
-10. Admit a patient to a ward, add a medication order during the ward round, then open Nursing and record a given dose and a withheld/refused dose; confirm both appear in the admission chart and do not change pharmacy stock.
+10. Admit a patient to a ward, add a medication order during the ward round, and optionally link it to a facility stock item. In Nursing, record the actual stock units used for a given dose and confirm stock decreases and the same quantity is added to the patient's bill. Record a withheld/refused dose too and confirm it changes neither stock nor billing; confirm both outcomes appear in the admission chart.
 11. Add a lab test and inventory item.
 12. For a female patient, record a reproductive-health observation and confirm it appears in the patient's timeline.
 13. Create a referral to another facility, then sign in as that facility's admin/doctor to accept it.

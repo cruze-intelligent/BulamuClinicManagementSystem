@@ -26,7 +26,8 @@ const EMPTY_DISCHARGE = {
   outcome: 'RECOVERED', dischargeDiagnosis: '', dischargeIcd10Code: '', dischargeSummary: '', followUpInstructions: '',
   toClinicId: '', urgency: 'URGENT', consentConfirmed: false,
 };
-const EMPTY_MEDICATION = { medication: '', strength: '', dose: '', route: '', frequency: '', duration: '', instructions: '' };
+const EMPTY_MEDICATION = { medication: '', medicineId: '', strength: '', dose: '', route: '', frequency: '', duration: '', instructions: '' };
+type StockItem = { id: string; name: string; unit: string; price: number };
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -42,14 +43,15 @@ export default function AdmissionPage() {
 
 function AdmissionChart() {
   const id = useSearchParams().get('id') || '';
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
   const role = user?.role as string | undefined;
-  const canDischarge = role === 'DOCTOR' || role === 'ADMIN';
-  const canPrescribe = role === 'DOCTOR' || role === 'ADMIN';
+  const canDischarge = hasRole('DOCTOR', 'ADMIN');
+  const canPrescribe = hasRole('DOCTOR', 'ADMIN');
 
   const [admission, setAdmission] = useState<any>(null);
   const [wards, setWards] = useState<any[]>([]);
   const [clinics, setClinics] = useState<any[]>([]);
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [error, setError] = useState('');
   const [note, setNote] = useState<{ kind: string; note: string; vitals: Record<string, string>; details: Record<string, string> }>({ kind: 'OBSERVATION', note: '', vitals: {}, details: {} });
   const [noteProblem, setNoteProblem] = useState('');
@@ -79,11 +81,12 @@ function AdmissionChart() {
 
   useEffect(() => {
     load();
+    if (canPrescribe) fetch(`${API}/nursing/stock-items`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setStockItems(d.medicines)).catch(() => {});
     fetch(`${API}/wards`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setWards(d.wards.filter((w: any) => w.isActive))).catch(() => {});
     fetch(`${API}/clinics`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setClinics(d.clinics.filter((c: any) => c.id !== user?.clinicId))).catch(() => {});
     window.addEventListener('online', load);
     return () => window.removeEventListener('online', load);
-  }, [load, user?.clinicId]);
+  }, [load, user?.clinicId, canPrescribe]);
 
   const send = async (url: string, body: unknown) => {
     setBusy(true);
@@ -309,13 +312,14 @@ function AdmissionChart() {
           </div>
           {showMedication && admitted && canPrescribe && <form onSubmit={addMedicationOrder} className="mt-4 grid gap-3 rounded-lg border border-slate-200 p-4 sm:grid-cols-2 dark:border-slate-800">
             <div><Label htmlFor="med-order-name">Medicine</Label><Input id="med-order-name" required maxLength={120} value={medication.medication} onChange={(e) => setMedication((m) => ({ ...m, medication: e.target.value }))} placeholder="e.g. Ceftriaxone" /></div>
+            <div><Label htmlFor="med-order-stock">Link to stock item (optional)</Label><Select id="med-order-stock" value={medication.medicineId} onChange={(e) => setMedication((m) => ({ ...m, medicineId: e.target.value }))}><option value="">No stock link</option>{stockItems.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.unit} · UGX {Math.round(item.price).toLocaleString()}</option>)}</Select><p className="mt-1 text-xs text-slate-500">For linked orders, nursing records the exact stock units used; only doses marked Given are billed and deducted.</p></div>
             <div><Label htmlFor="med-order-strength">Strength (optional)</Label><Input id="med-order-strength" value={medication.strength} onChange={(e) => setMedication((m) => ({ ...m, strength: e.target.value }))} placeholder="e.g. 1 g vial" /></div>
             <div><Label htmlFor="med-order-dose">Dose</Label><Input id="med-order-dose" required value={medication.dose} onChange={(e) => setMedication((m) => ({ ...m, dose: e.target.value }))} placeholder="e.g. 1 g" /></div>
             <div><Label htmlFor="med-order-route">Route (optional)</Label><Input id="med-order-route" value={medication.route} onChange={(e) => setMedication((m) => ({ ...m, route: e.target.value }))} placeholder="e.g. IV" /></div>
             <div><Label htmlFor="med-order-frequency">Frequency / times</Label><Input id="med-order-frequency" required value={medication.frequency} onChange={(e) => setMedication((m) => ({ ...m, frequency: e.target.value }))} placeholder="e.g. Every 8 hours" /></div>
             <div><Label htmlFor="med-order-duration">Duration (optional)</Label><Input id="med-order-duration" value={medication.duration} onChange={(e) => setMedication((m) => ({ ...m, duration: e.target.value }))} placeholder="e.g. 5 days" /></div>
             <div className="sm:col-span-2"><Label htmlFor="med-order-instructions">Instructions (optional)</Label><Textarea id="med-order-instructions" rows={2} value={medication.instructions} onChange={(e) => setMedication((m) => ({ ...m, instructions: e.target.value }))} placeholder="Additional instructions for nursing staff" /></div>
-            <p className="sm:col-span-2 text-xs text-slate-500">A new order records the ward-round decision in the chart and alerts nursing staff. It does not dispense stock.</p>
+            <p className="sm:col-span-2 text-xs text-slate-500">The order records the ward-round decision and alerts nursing staff. Stock is deducted and billed only when a linked dose is recorded as Given.</p>
             <Button type="submit" disabled={busy} className="sm:w-fit">{busy ? 'Saving…' : 'Save ward-round order'}</Button>
           </form>}
           <div className="mt-4 space-y-3">

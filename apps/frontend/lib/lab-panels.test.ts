@@ -34,6 +34,10 @@ describe('lab results entered value by value', () => {
     expect(cbc.parameters.map((p) => p.name).slice(0, 7)).toEqual(['WBC', 'Lym%', 'Gran%', 'Mid%', 'Lym#', 'Gran#', 'Mid#']);
   });
 
+  it('uses the requested CK-MB reference interval and unit', () => {
+    expect(blankValues(labPanelFor('Creatine kinase-MB (CK-MB)')!, 'MALE')[0]).toMatchObject({ low: 0, high: 5, unit: 'ng/mL' });
+  });
+
   it('flags a value High or Low against its range, and a word reading that is not the normal one', () => {
     expect(flagFor('9.6', 1.71, 8.55)).toBe('H');
     expect(flagFor('0.01', 0.02, 0.1)).toBe('L');

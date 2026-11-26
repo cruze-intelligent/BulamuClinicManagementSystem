@@ -45,6 +45,11 @@ export default function BillsPage() {
   const [pricing, setPricing] = useState(false);
   const clinicName = (user as any)?.clinic?.name ?? 'Your facility';
 
+  useEffect(() => {
+    const patient = new URLSearchParams(window.location.search).get('q');
+    if (patient) setQuery(patient);
+  }, []);
+
   const load = useCallback(async () => {
     const clinicId = JSON.parse(localStorage.getItem('user') || '{}').clinicId;
     if (!clinicId) return;

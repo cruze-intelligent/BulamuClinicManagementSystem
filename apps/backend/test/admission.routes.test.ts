@@ -276,4 +276,37 @@ describe('wards and admissions', () => {
     const outsider = await staff(other.id, 'NURSE');
     expect((await app.inject({ method: 'GET', url: '/nursing/medications', headers: authHeader(outsider.token) })).json().orders).toHaveLength(0);
   });
+
+  it('deducts and bills the exact linked stock quantity only for a given dose, in the same transaction', async () => {
+    const { clinic, admin, doctor, nurse, ward, patient } = await setup();
+    const medicine = await prisma.medicine.create({ data: { clinicId: clinic.id, name: 'Ward paracetamol', quantity: 6, unit: 'tablet', reorderLevel: 2, price: 500 } });
+    const admissionId = (await admit(nurse.token, { patientId: patient.id, wardId: ward.id, reason: 'Pain' })).json().admission.id;
+    const orderResponse = await app.inject({
+      method: 'POST', url: `/admissions/${admissionId}/medication-orders`, headers: authHeader(doctor.token),
+      payload: { medication: 'Paracetamol', dose: '1 g', frequency: 'Every 8 hours', medicineId: medicine.id },
+    });
+    expect(orderResponse.statusCode).toBe(200);
+    const orderId = orderResponse.json().order.id;
+    const url = `/admissions/${admissionId}/medication-orders/${orderId}/administrations`;
+    expect((await app.inject({ method: 'POST', url, headers: authHeader(nurse.token), payload: { status: 'GIVEN', doseGiven: '1 g' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url, headers: authHeader(nurse.token), payload: { status: 'WITHHELD', note: 'Patient declined', stockQuantity: 1 } })).statusCode).toBe(400);
+
+    const given = await app.inject({ method: 'POST', url, headers: authHeader(nurse.token), payload: { status: 'GIVEN', doseGiven: '1 g', stockQuantity: 2 } });
+    expect(given.statusCode).toBe(200);
+    expect(given.json()).toMatchObject({ invoiceId: expect.any(String), administration: { status: 'GIVEN', stockQuantity: 2 } });
+    expect(await prisma.medicine.findUniqueOrThrow({ where: { id: medicine.id } })).toMatchObject({ quantity: 4 });
+    const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id: given.json().invoiceId }, include: { items: true } });
+    expect(invoice).toMatchObject({ patientId: patient.id, clinicId: clinic.id, amount: 1000, status: 'PENDING' });
+    expect(invoice.items[0]).toMatchObject({ kind: 'MEDICINE', quantity: 2, unitPrice: 500, amount: 1000, medicineId: medicine.id, admissionId, medicationAdministrationId: given.json().administration.id });
+    expect(await prisma.stockMovement.findFirstOrThrow({ where: { invoiceItemId: invoice.items[0].id } })).toMatchObject({ kind: 'ADMINISTERED', change: -2, balanceAfter: 4 });
+    expect((await app.inject({ method: 'DELETE', url: `/invoices/${invoice.id}/items/${invoice.items[0].id}`, headers: authHeader(doctor.token) })).statusCode).toBe(409);
+
+    const unavailable = await app.inject({ method: 'POST', url, headers: authHeader(nurse.token), payload: { status: 'GIVEN', doseGiven: '1 g', stockQuantity: 5 } });
+    expect(unavailable.statusCode).toBe(409);
+    expect(await prisma.medicationAdministration.count({ where: { orderId } })).toBe(1);
+    expect(await prisma.invoiceItem.count({ where: { invoiceId: invoice.id } })).toBe(1);
+    expect(await prisma.medicine.findUniqueOrThrow({ where: { id: medicine.id } })).toMatchObject({ quantity: 4 });
+    expect((await app.inject({ method: 'PATCH', url: `/invoices/${invoice.id}/cancel`, headers: authHeader(admin.token), payload: { restock: true } })).statusCode).toBe(200);
+    expect(await prisma.medicine.findUniqueOrThrow({ where: { id: medicine.id } })).toMatchObject({ quantity: 4 });
+  });
 });

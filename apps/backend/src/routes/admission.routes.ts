@@ -15,6 +15,8 @@ import { facilityLogo } from '../lib/facility-logo';
 import { documentProducer, roleTitle } from '../lib/document-signer';
 import { parseStructuredNote, structuredNoteLines, structuredNoteTitle, type StructuredNote } from '../lib/procedure-notes';
 import { documentFileName, inlineDisposition } from '../lib/document-name';
+import { StockError, takeStock } from '../lib/stock';
+import { ensureItemised, lockInvoice, settleInvoice } from '../lib/invoices';
 
 /**
  * Inpatients: wards and beds, admission, notes and observations during the
@@ -173,6 +175,7 @@ export async function admissionRoutes(fastify: FastifyInstance) {
           orderBy: { createdAt: 'desc' },
           include: {
             prescribedBy: { select: { name: true } },
+            stockMedicine: { select: { id: true, name: true, unit: true, price: true } },
             administrations: { orderBy: { administeredAt: 'desc' }, take: 20, include: { givenBy: { select: { name: true } } } },
           },
         },
@@ -184,8 +187,9 @@ export async function admissionRoutes(fastify: FastifyInstance) {
       admission: {
         ...present(admission),
         notes: admission.notes.map(({ author, ...n }) => ({ ...n, authorName: author.name })),
-        medicationOrders: admission.medicationOrders.map(({ prescribedBy, administrations, ...order }) => ({
+        medicationOrders: admission.medicationOrders.map(({ prescribedBy, administrations, stockMedicine, ...order }) => ({
           ...order,
+          stockMedicine,
           prescribedByName: prescribedBy.name,
           administrations: administrations.map(({ givenBy, ...entry }) => ({ ...entry, givenByName: givenBy.name })),
         })),
@@ -202,19 +206,31 @@ export async function admissionRoutes(fastify: FastifyInstance) {
       orderBy: [{ admission: { ward: { name: 'asc' } } }, { admission: { patient: { name: 'asc' } } }, { createdAt: 'desc' }],
       include: {
         prescribedBy: { select: { name: true } },
+        stockMedicine: { select: { id: true, name: true, unit: true, price: true } },
         administrations: { orderBy: { administeredAt: 'desc' }, take: 5, include: { givenBy: { select: { name: true } } } },
+        _count: { select: { administrations: { where: { status: 'GIVEN' } } } },
         admission: { select: {
           id: true, bed: true, ward: { select: { name: true } },
           patient: { select: { id: true, name: true, sex: true, dateOfBirth: true, dateOfBirthEstimated: true, patientNumber: true, allergyStatus: true, allergies: true } },
         } },
       },
     });
-    return { success: true, orders: orders.map(({ prescribedBy, administrations, admission, ...order }) => ({
+    return { success: true, orders: orders.map(({ prescribedBy, administrations, admission, _count, stockMedicine, ...order }) => ({
       ...order,
+      administrationCount: _count.administrations,
+      stockMedicine,
       prescribedByName: prescribedBy.name,
       admission,
       administrations: administrations.map(({ givenBy, ...entry }) => ({ ...entry, givenByName: givenBy.name })),
     })) };
+  });
+
+  fastify.get('/nursing/stock-items', { preHandler: [requireRole(...CLINICAL)] }, async (request) => {
+    const { clinicId } = getAuthUser(request);
+    const medicines = await prisma.medicine.findMany({
+      where: { clinicId, deletedAt: null }, select: { id: true, name: true, unit: true, price: true }, orderBy: { name: 'asc' }, take: 500,
+    });
+    return { success: true, medicines };
   });
 
   fastify.post('/admissions/:id/medication-orders', { preHandler: [requireRole('DOCTOR', 'ADMIN')] }, async (request, reply) => {
@@ -228,15 +244,17 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     const frequency = text(body?.frequency, 100);
     const duration = text(body?.duration, 100);
     const instructions = text(body?.instructions, 500);
+    const medicineId = typeof body?.medicineId === 'string' && body.medicineId ? body.medicineId : null;
     const startAt = body?.startAt ? new Date(body.startAt) : new Date();
     if (!medication || !dose || !frequency) return reply.status(400).send({ error: 'Enter the medicine, dose and frequency' });
     if (Number.isNaN(startAt.getTime())) return reply.status(400).send({ error: 'Enter a valid start date' });
     const admission = await prisma.admission.findUnique({ where: { id }, select: { clinicId: true, status: true, patient: { select: { name: true } } } });
     if (!admission || admission.clinicId !== authUser.clinicId) return reply.status(404).send({ error: 'Admission not found' });
     if (admission.status !== 'ADMITTED') return reply.status(409).send({ error: 'Medication cannot be ordered after discharge' });
+    if (medicineId && !await prisma.medicine.findFirst({ where: { id: medicineId, clinicId: admission.clinicId, deletedAt: null }, select: { id: true } })) return reply.status(400).send({ error: 'Choose a stock item from this facility' });
     const order = await prisma.$transaction(async (tx) => {
       const created = await tx.inpatientMedicationOrder.create({ data: {
-        admissionId: id, prescribedByUserId: authUser.userId, medication, strength, dose, route, frequency, duration, instructions, startAt,
+        admissionId: id, prescribedByUserId: authUser.userId, medication, medicineId, strength, dose, route, frequency, duration, instructions, startAt,
       } });
       await tx.admissionNote.create({ data: {
         admissionId: id, authorUserId: authUser.userId, authorRole: authUser.role as Role, kind: 'WARD_ROUND',
@@ -279,21 +297,52 @@ export async function admissionRoutes(fastify: FastifyInstance) {
     const doseGiven = text(body?.doseGiven, 120);
     const routeGiven = text(body?.routeGiven, 60);
     const note = text(body?.note, 500);
+    const stockQuantity = body?.stockQuantity === undefined || body?.stockQuantity === '' ? null : Number(body.stockQuantity);
     const administeredAt = body?.administeredAt ? new Date(body.administeredAt) : new Date();
     if (!MEDICATION_STATUSES.includes(status)) return reply.status(400).send({ error: 'Choose whether the dose was given, refused, withheld or unavailable' });
     if (status === 'GIVEN' && !doseGiven) return reply.status(400).send({ error: 'Enter the dose that was given' });
     if (status !== 'GIVEN' && !note) return reply.status(400).send({ error: 'Record why the dose was not given' });
     if (Number.isNaN(administeredAt.getTime()) || administeredAt.getTime() > Date.now() + 60_000) return reply.status(400).send({ error: 'Enter a valid administration time that is not in the future' });
-    const order = await prisma.inpatientMedicationOrder.findFirst({ where: { id: orderId, admissionId: id }, include: { admission: { select: { clinicId: true, status: true } } } });
+    const order = await prisma.inpatientMedicationOrder.findFirst({ where: { id: orderId, admissionId: id }, include: { admission: { select: { clinicId: true, status: true, patientId: true } }, stockMedicine: { select: { id: true, clinicId: true, name: true, unit: true, price: true, deletedAt: true } } } });
     if (!order || order.admission.clinicId !== authUser.clinicId) return reply.status(404).send({ error: 'Medication order not found' });
     if (order.admission.status !== 'ADMITTED' || order.status !== 'ACTIVE') return reply.status(409).send({ error: 'This medication order is no longer active' });
     if (administeredAt < order.startAt) return reply.status(400).send({ error: 'The administration time is before this order started' });
-    const entry = await prisma.medicationAdministration.create({ data: {
-      orderId, givenByUserId: authUser.userId, status, doseGiven: status === 'GIVEN' ? doseGiven : null,
-      routeGiven: status === 'GIVEN' ? routeGiven : null, administeredAt, note,
-    } });
-    await recordAudit({ entity: 'MedicationAdministration', recordId: entry.id, clinicId: order.admission.clinicId, action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { admissionId: id, orderId, status } });
-    return { success: true, administration: entry };
+    if (status === 'GIVEN' && order.medicineId && (!Number.isInteger(stockQuantity) || stockQuantity! < 1 || stockQuantity! > 10_000_000)) return reply.status(400).send({ error: `Enter the number of ${order.stockMedicine?.unit ?? 'stock units'} used for this dose` });
+    if (status !== 'GIVEN' && stockQuantity !== null) return reply.status(400).send({ error: 'Stock is only recorded for a dose marked Given' });
+    if (!order.medicineId && stockQuantity !== null) return reply.status(400).send({ error: 'This order has no stock item linked to it' });
+    const medicine = order.stockMedicine;
+    if (order.medicineId && (!medicine || medicine.deletedAt || medicine.clinicId !== order.admission.clinicId)) return reply.status(409).send({ error: 'The linked stock item is no longer available. Update the order before recording a dose.' });
+    if (medicine && (!Number.isInteger(medicine.price) || medicine.price <= 0)) return reply.status(409).send({ error: 'The linked stock item must have a positive whole-shilling selling price before it can be administered and billed.' });
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const entry = await tx.medicationAdministration.create({ data: {
+          orderId, givenByUserId: authUser.userId, status, doseGiven: status === 'GIVEN' ? doseGiven : null,
+          routeGiven: status === 'GIVEN' ? routeGiven : null, administeredAt, note,
+          stockQuantity: status === 'GIVEN' && medicine ? stockQuantity : null,
+        } });
+        if (!medicine || status !== 'GIVEN') return { entry, invoiceId: null };
+
+        let invoice = await tx.invoice.findFirst({ where: { patientId: order.admission.patientId, clinicId: order.admission.clinicId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
+        if (!invoice) invoice = await tx.invoice.create({ data: { patientId: order.admission.patientId, clinicId: order.admission.clinicId, amount: 0, createdByUserId: authUser.userId } });
+        await lockInvoice(tx, invoice.id);
+        await ensureItemised(tx, invoice);
+        const unitPrice = Math.round(medicine.price);
+        const item = await tx.invoiceItem.create({ data: {
+          invoiceId: invoice.id, kind: 'MEDICINE', description: `Administered: ${medicine.name}`,
+          quantity: stockQuantity!, unitPrice, amount: stockQuantity! * unitPrice, medicineId: medicine.id,
+          admissionId: id, medicationAdministrationId: entry.id, addedByUserId: authUser.userId,
+        } });
+        const deducted = await takeStock(tx, { medicineId: medicine.id, quantity: stockQuantity!, kind: 'ADMINISTERED', invoiceItemId: item.id, clinicId: order.admission.clinicId, userId: authUser.userId });
+        if (!deducted) throw new StockError(409, 'The linked stock item is no longer available. Nothing was recorded or billed.');
+        await settleInvoice(tx, invoice.id);
+        return { entry, invoiceId: invoice.id };
+      });
+      await recordAudit({ entity: 'MedicationAdministration', recordId: result.entry.id, clinicId: order.admission.clinicId, action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { admissionId: id, orderId, status, stockQuantity: result.entry.stockQuantity, invoiceId: result.invoiceId } });
+      return { success: true, administration: result.entry, invoiceId: result.invoiceId };
+    } catch (error: any) {
+      if (error instanceof StockError) return reply.status(error.statusCode).send({ error: error.message });
+      throw error;
+    }
   });
 
   // Admit a patient to a ward bed.

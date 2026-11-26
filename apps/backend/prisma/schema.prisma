@@ -674,6 +674,10 @@ model InpatientMedicationOrder {
   prescribedByUserId    String
   prescribedBy          User     @relation("InpatientMedicationPrescribedBy", fields: [prescribedByUserId], references: [id])
   medication            String
+  // Optional explicit link to facility stock; the administered quantity is
+  // entered in that item's inventory unit by nursing.
+  medicineId            String?
+  stockMedicine         Medicine? @relation("InpatientMedicationStock", fields: [medicineId], references: [id], onDelete: SetNull)
   strength              String?
   dose                  String
   route                 String?
@@ -689,6 +693,7 @@ model InpatientMedicationOrder {
   updatedAt             DateTime @updatedAt
 
   @@index([admissionId, status, startAt])
+  @@index([medicineId])
 }
 
 enum InpatientMedicationOrderStatus {
@@ -709,6 +714,8 @@ model MedicationAdministration {
   routeGiven            String?
   administeredAt        DateTime
   note                  String?
+  stockQuantity         Int?
+  invoiceItem           InvoiceItem?
   createdAt             DateTime @default(now())
 
   @@index([orderId, administeredAt])
@@ -1013,10 +1020,13 @@ model InvoiceItem {
   // An outpatient procedure done at a visit (incision and drainage, ear syringing...).
   visitProcedureId String?         @unique
   visitProcedure   VisitProcedure? @relation(fields: [visitProcedureId], references: [id], onDelete: SetNull)
+  medicationAdministrationId String? @unique
+  medicationAdministration MedicationAdministration? @relation(fields: [medicationAdministrationId], references: [id], onDelete: Restrict)
   // Medicine sold from stock without a prescription (over the counter): taken
   // off the shelf when the line is added, put back if the line is removed.
   // Prescribed medicine is taken off stock when dispensed, not here.
   medicineId     String?
+  medicine        Medicine?  @relation(fields: [medicineId], references: [id], onDelete: SetNull)
   addedByUserId  String?
   createdAt      DateTime   @default(now())
 
@@ -1148,6 +1158,8 @@ model Medicine {
   price       Float
   expiryDate  DateTime?
   prescriptions Prescription[]
+  inpatientMedicationOrders InpatientMedicationOrder[] @relation("InpatientMedicationStock")
+  invoiceItems InvoiceItem[]
   batches     MedicineBatch[]
   movements   StockMovement[]
   deletedAt   DateTime?
@@ -1212,6 +1224,7 @@ enum StockMovementKind {
   RECEIVED
   DISPENSED
   DISPENSE_REVERSED
+  ADMINISTERED
   SOLD
   SALE_REVERSED
   REMOVED

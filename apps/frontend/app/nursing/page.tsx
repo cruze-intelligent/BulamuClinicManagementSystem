@@ -17,10 +17,12 @@ const headers = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}
 type Status = 'GIVEN' | 'REFUSED' | 'WITHHELD' | 'NOT_AVAILABLE';
 type Order = {
   id: string; medication: string; strength: string | null; dose: string; route: string | null;
-  frequency: string; duration: string | null; instructions: string | null; prescribedByName: string;
+  frequency: string; duration: string | null; instructions: string | null; prescribedByName: string; administrationCount: number;
+  stockMedicine: { id: string; name: string; unit: string; price: number } | null;
   admission: { id: string; bed: string | null; ward: { name: string }; patient: { id: string; name: string; allergies: string } };
-  administrations: { id: string; status: Status; doseGiven: string | null; administeredAt: string; note: string | null; givenByName: string }[];
+  administrations: { id: string; status: Status; doseGiven: string | null; administeredAt: string; note: string | null; givenByName: string; stockQuantity: number | null }[];
 };
+type Inpatient = { id: string; bed: string | null; ward: { name: string }; patient: { id: string; name: string; allergies?: string | null } };
 
 const localDateTime = (date: Date) => {
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -30,12 +32,17 @@ const statusLabel: Record<Status, string> = { GIVEN: 'Given', REFUSED: 'Refused'
 
 export default function NursingPage() {
   const { hasRole } = useAuth();
+  const canBill = hasRole('ADMIN', 'DOCTOR', 'NURSE', 'STAFF', 'PHARMACIST');
   const [orders, setOrders] = useState<Order[]>([]);
+  const [admissions, setAdmissions] = useState<Inpatient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<Order | null>(null);
+  const [openedPatientId, setOpenedPatientId] = useState<string | null>(null);
+  const [patientSearch, setPatientSearch] = useState('');
   const [status, setStatus] = useState<Status>('GIVEN');
   const [dose, setDose] = useState('');
+  const [stockQuantity, setStockQuantity] = useState('');
   const [route, setRoute] = useState('');
   const [time, setTime] = useState(localDateTime(new Date()));
   const [note, setNote] = useState('');
@@ -45,10 +52,15 @@ export default function NursingPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API}/nursing/medications`, { headers: headers() });
-      const data = await response.json();
-      if (!response.ok || !data.success) throw new Error(data.error || 'Could not load the medication chart');
+      const [medicationResponse, admissionResponse] = await Promise.all([
+        fetch(`${API}/nursing/medications`, { headers: headers() }),
+        fetch(`${API}/admissions`, { headers: headers() }),
+      ]);
+      const [data, admissionData] = await Promise.all([medicationResponse.json(), admissionResponse.json()]);
+      if (!medicationResponse.ok || !data.success) throw new Error(data.error || 'Could not load the medication chart');
+      if (!admissionResponse.ok || !admissionData.success) throw new Error(admissionData.error || 'Could not load admitted patients');
       setOrders(data.orders);
+      setAdmissions(admissionData.admissions);
       setError('');
     } catch (error: unknown) {
       setError(navigator.onLine ? (error instanceof Error ? error.message : 'Could not load the medication chart') : 'You are offline. Medication charts need a connection to save safely.');
@@ -61,10 +73,14 @@ export default function NursingPage() {
     return () => window.removeEventListener('online', load);
   }, [hasRole, load]);
 
-  const patientCount = useMemo(() => new Set(orders.map((o) => o.admission.id)).size, [orders]);
+  const patients = useMemo(() => {
+    const query = patientSearch.trim().toLocaleLowerCase();
+    return admissions.filter((admission) => !query || `${admission.patient.name} ${admission.ward.name} ${admission.bed ?? ''}`.toLocaleLowerCase().includes(query));
+  }, [admissions, patientSearch]);
+  const patientCount = admissions.length;
 
   const openRecord = (order: Order) => {
-    setSelected(order); setStatus('GIVEN'); setDose(order.dose); setRoute(order.route ?? '');
+    setSelected(order); setStatus('GIVEN'); setDose(order.dose); setRoute(order.route ?? ''); setStockQuantity('');
     setTime(localDateTime(new Date())); setNote(''); setMessage('');
   };
 
@@ -75,11 +91,11 @@ export default function NursingPage() {
     try {
       const response = await fetch(`${API}/admissions/${selected.admission.id}/medication-orders/${selected.id}/administrations`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers() },
-        body: JSON.stringify({ status, doseGiven: dose, routeGiven: route || undefined, administeredAt: new Date(time).toISOString(), note: note || undefined }),
+        body: JSON.stringify({ status, doseGiven: dose, routeGiven: route || undefined, stockQuantity: status === 'GIVEN' && selected.stockMedicine ? Number(stockQuantity) : undefined, administeredAt: new Date(time).toISOString(), note: note || undefined }),
       });
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || 'The treatment record could not be saved');
-      setSelected(null); setMessage('Treatment recorded in the patient chart.'); await load();
+      setSelected(null); setMessage(data.invoiceId ? 'Treatment recorded, stock deducted and medication added to the patient bill.' : 'Treatment recorded in the patient chart.'); await load();
     } catch (error: unknown) { setMessage(error instanceof Error ? error.message : 'The treatment record could not be saved'); }
     finally { setSaving(false); }
   };
@@ -104,6 +120,11 @@ export default function NursingPage() {
       </section>
 
       {error && <Card role="alert" className="border-rose-200 bg-rose-50 p-4 text-sm text-rose-900 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">{error}</Card>}
+      {orders.length > 0 && <section aria-label="Inpatients" className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-semibold">Patients</h2><p className="text-sm text-slate-500">Open a patient to review their medication chart and administered-dose counts.</p></div><Input aria-label="Find inpatient" className="max-w-sm" placeholder="Search patients, wards or beds" value={patientSearch} onChange={(event) => setPatientSearch(event.target.value)} /></div>
+        {patients.map((admission) => { const patientOrders = orders.filter((order) => order.admission.id === admission.id); const expanded = openedPatientId === admission.id; const count = patientOrders.reduce((n, order) => n + order.administrationCount, 0); return <Card key={admission.id} className="overflow-hidden"><button type="button" aria-expanded={expanded} onClick={() => setOpenedPatientId(expanded ? null : admission.id)} className="flex w-full flex-wrap items-center justify-between gap-3 p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-900"><span><strong className="block">{admission.patient.name}</strong><span className="text-sm text-slate-500">{admission.ward.name}{admission.bed ? ` · Bed ${admission.bed}` : ''}</span></span><span className="text-right text-sm"><strong>{patientOrders.length}</strong><span className="block text-xs text-slate-500">prescriptions · {count} doses given</span></span></button>{expanded && <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4"><p className="text-sm text-slate-500">{patientOrders.length ? 'Medication prescriptions and treatment records for this patient are shown below.' : 'This patient has no active medication prescriptions.'} <Link href={`/wards/admission?id=${admission.id}`} className="underline">Open full chart</Link></p>{canBill && <Link href={`/invoices?q=${encodeURIComponent(admission.patient.name)}`} className="text-sm font-medium text-emerald-800 underline dark:text-emerald-300">Open patient bill</Link>}</div>}</Card>; })}
+        {patients.length === 0 && <Card className="p-6 text-center text-sm text-slate-500">No patients match that search.</Card>}
+      </section>}
       {message && !selected && <p role="status" className="text-sm text-emerald-800 dark:text-emerald-300">{message}</p>}
       {loading && orders.length === 0 ? <p className="text-sm text-slate-500">Loading medication orders…</p> : orders.length === 0 ? (
         <Card className="p-8 text-center">
@@ -113,7 +134,7 @@ export default function NursingPage() {
         </Card>
       ) : (
         <section className="grid gap-4 lg:grid-cols-2" aria-label="Active medication orders">
-          {orders.map((order) => {
+          {orders.filter((order) => order.admission.id === openedPatientId).map((order) => {
             const allergy = order.admission.patient.allergies && order.admission.patient.allergies !== 'No known allergies';
             return <Card key={order.id} className="overflow-hidden">
               <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
@@ -126,6 +147,8 @@ export default function NursingPage() {
               <div className="space-y-3 p-4">
                 <div><h2 className="text-lg font-semibold">{order.medication}{order.strength ? ` · ${order.strength}` : ''}</h2><p className="text-sm">{order.dose}{order.route ? ` · ${order.route}` : ''} · {order.frequency}{order.duration ? ` · ${order.duration}` : ''}</p>{order.instructions && <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{order.instructions}</p>}<p className="mt-1 text-xs text-slate-500">Prescribed by {order.prescribedByName}</p></div>
                 {order.administrations.length > 0 && <div className="rounded-md bg-slate-50 p-3 text-xs dark:bg-slate-900"><p className="mb-1 font-semibold">Recent treatment records</p><ul className="space-y-1">{order.administrations.slice(0, 3).map((entry) => <li key={entry.id}>{formatDayTime(entry.administeredAt)} · {statusLabel[entry.status]}{entry.doseGiven ? ` (${entry.doseGiven})` : ''} · {entry.givenByName}{entry.note ? ` — ${entry.note}` : ''}</li>)}</ul></div>}
+                <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">{order.administrationCount} doses administered</p>
+                {order.stockMedicine && <p className="text-xs text-emerald-800 dark:text-emerald-300">Linked stock: {order.stockMedicine.name} ({order.stockMedicine.unit}) · UGX {Math.round(order.stockMedicine.price).toLocaleString()} per unit</p>}
                 <Button onClick={() => openRecord(order)}>Record treatment</Button>
               </div>
             </Card>;
@@ -139,6 +162,7 @@ export default function NursingPage() {
           <form onSubmit={save} className="mt-4 space-y-3">
             <div><Label htmlFor="treatment-status">Outcome</Label><Select id="treatment-status" value={status} onChange={(e) => setStatus(e.target.value as Status)}><option value="GIVEN">Given</option><option value="REFUSED">Refused</option><option value="WITHHELD">Withheld</option><option value="NOT_AVAILABLE">Not available</option></Select></div>
             {status === 'GIVEN' && <div className="grid gap-3 sm:grid-cols-2"><div><Label htmlFor="dose-given">Dose given</Label><Input id="dose-given" required value={dose} onChange={(e) => setDose(e.target.value)} /></div><div><Label htmlFor="route-given">How given / route</Label><Input id="route-given" value={route} onChange={(e) => setRoute(e.target.value)} placeholder="e.g. oral, IV, IM" /></div></div>}
+            {status === 'GIVEN' && selected.stockMedicine && <div><Label htmlFor="stock-units-used">{selected.stockMedicine.name} used ({selected.stockMedicine.unit})</Label><Input id="stock-units-used" type="number" min="1" step="1" required value={stockQuantity} onChange={(e) => setStockQuantity(e.target.value)} /><p className="mt-1 text-xs text-slate-500">Enter the actual inventory units used. Saving this dose deducts that amount and adds its charge to the patient bill.</p></div>}
             <div><Label htmlFor="given-at">Date and time</Label><Input id="given-at" type="datetime-local" required value={time} onChange={(e) => setTime(e.target.value)} /></div>
             <div><Label htmlFor="treatment-note">{status === 'GIVEN' ? 'Treatment note (optional)' : 'Why was it not given?'}</Label><Textarea id="treatment-note" required={status !== 'GIVEN'} rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder={status === 'GIVEN' ? 'Optional details about how the dose was given' : 'Record the reason and any follow-up'} /></div>
             {message && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{message}</p>}

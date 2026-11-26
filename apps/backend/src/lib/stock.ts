@@ -33,6 +33,7 @@ export const MOVEMENT_LABELS: Record<StockMovementKind, string> = {
   RECEIVED: 'Received',
   DISPENSED: 'Dispensed',
   DISPENSE_REVERSED: 'Dispensing undone',
+  ADMINISTERED: 'Administered to inpatient',
   SOLD: 'Sold over the counter',
   SALE_REVERSED: 'Sale taken off the bill',
   REMOVED: 'Removed',
@@ -151,7 +152,7 @@ const allocationsOf = (value: Prisma.JsonValue | null | undefined): Allocation[]
  */
 export async function takeStock(
   tx: Tx,
-  input: { medicineId: string; quantity: number; kind: 'DISPENSED' | 'SOLD'; prescriptionId?: string | null; invoiceItemId?: string | null; now?: Date } & Actor,
+  input: { medicineId: string; quantity: number; kind: 'DISPENSED' | 'ADMINISTERED' | 'SOLD'; prescriptionId?: string | null; invoiceItemId?: string | null; now?: Date } & Actor,
 ) {
   const now = input.now ?? new Date();
   const open = await openStock(tx, input.medicineId, input.clinicId);
