@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 import { getAuthUser, worksAs } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
 import { recordAudit } from '../lib/audit';
-import { notifyPatient, notifyStaff } from '../lib/notifications';
+import { notifyLabOrdered, notifyPatient, notifyStaff } from '../lib/notifications';
 import { createReferral } from '../lib/referrals';
 import { HttpError } from '../lib/http-error';
 import { ICD10_PATTERN, normalizeDiagnoses } from '../lib/clinical';
@@ -179,6 +179,7 @@ export async function admissionRoutes(fastify: FastifyInstance) {
             administrations: { orderBy: { administeredAt: 'desc' }, take: 20, include: { givenBy: { select: { name: true } } } },
           },
         },
+        labTests: { orderBy: { createdAt: 'desc' }, take: 100, select: { id: true, testName: true, results: true, status: true, createdAt: true, completedAt: true, verifiedAt: true } },
       },
     });
     if (!admission || admission.clinicId !== clinicId) return reply.status(404).send({ error: 'Admission not found' });
@@ -231,6 +232,51 @@ export async function admissionRoutes(fastify: FastifyInstance) {
       where: { clinicId, deletedAt: null }, select: { id: true, name: true, unit: true, price: true }, orderBy: { name: 'asc' }, take: 500,
     });
     return { success: true, medicines };
+  });
+
+  fastify.get('/admissions/:id/lab-test-options', { preHandler: [requireRole('DOCTOR', 'ADMIN')] }, async (request, reply) => {
+    const { clinicId } = getAuthUser(request);
+    const { id } = request.params as { id: string };
+    const admission = await prisma.admission.findFirst({ where: { id, clinicId }, select: { id: true } });
+    if (!admission) return reply.status(404).send({ error: 'Admission not found' });
+    const prices = await prisma.servicePrice.findMany({ where: { clinicId, kind: 'LAB' }, orderBy: { name: 'asc' }, select: { id: true, name: true, price: true } });
+    return { success: true, tests: prices };
+  });
+
+  fastify.post('/admissions/:id/lab-tests', { preHandler: [requireRole('DOCTOR', 'ADMIN')] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const { id } = request.params as { id: string };
+    const servicePriceId = typeof (request.body as any)?.servicePriceId === 'string' ? (request.body as any).servicePriceId : '';
+    if (!servicePriceId) return reply.status(400).send({ error: 'Choose a priced lab test' });
+    const admission = await prisma.admission.findUnique({ where: { id }, select: { id: true, clinicId: true, patientId: true, patient: { select: { name: true } }, status: true } });
+    if (!admission || admission.clinicId !== authUser.clinicId) return reply.status(404).send({ error: 'Admission not found' });
+    if (admission.status !== 'ADMITTED') return reply.status(409).send({ error: 'Lab tests can only be requested while the patient is admitted' });
+    const price = await prisma.servicePrice.findFirst({ where: { id: servicePriceId, clinicId: admission.clinicId, kind: 'LAB' } });
+    if (!price) return reply.status(400).send({ error: 'Choose a lab test on this facility’s price list' });
+    const clinician = await prisma.user.findUnique({ where: { id: authUser.userId }, select: { name: true } });
+    const result = await prisma.$transaction(async (tx) => {
+      let invoice = await tx.invoice.findFirst({ where: { patientId: admission.patientId, clinicId: admission.clinicId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
+      if (!invoice) invoice = await tx.invoice.create({ data: { patientId: admission.patientId, clinicId: admission.clinicId, amount: 0, createdByUserId: authUser.userId } });
+      await lockInvoice(tx, invoice.id);
+      await ensureItemised(tx, invoice);
+      const test = await tx.labTest.create({ data: {
+        patientId: admission.patientId, admissionId: admission.id, testName: price.name,
+        orderedBy: clinician?.name ?? 'Ward round', orderedByUserId: authUser.userId, results: '',
+      } });
+      await tx.invoiceItem.create({ data: {
+        invoiceId: invoice.id, kind: 'LAB', description: price.name, quantity: 1,
+        unitPrice: price.price, amount: price.price, labTestId: test.id, addedByUserId: authUser.userId,
+      } });
+      await tx.admissionNote.create({ data: {
+        admissionId: admission.id, authorUserId: authUser.userId, authorRole: authUser.role as Role,
+        kind: 'WARD_ROUND', note: `Lab test requested: ${price.name}. Added to the patient bill at UGX ${price.price.toLocaleString()}.`,
+      } });
+      await settleInvoice(tx, invoice.id);
+      return { test, invoiceId: invoice.id };
+    });
+    await notifyLabOrdered({ clinicId: admission.clinicId, patientName: admission.patient.name, testName: price.name, orderedByUserId: authUser.userId }, log);
+    await recordAudit({ entity: 'LabTest', recordId: result.test.id, clinicId: admission.clinicId, action: 'CREATE', actorUserId: authUser.userId, actorRole: authUser.role, metadata: { admissionId: admission.id, price: price.price, invoiceId: result.invoiceId } });
+    return { success: true, test: result.test, invoiceId: result.invoiceId, price: price.price };
   });
 
   fastify.post('/admissions/:id/medication-orders', { preHandler: [requireRole('DOCTOR', 'ADMIN')] }, async (request, reply) => {

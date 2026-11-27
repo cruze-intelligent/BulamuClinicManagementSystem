@@ -1,10 +1,10 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireRole } from '../middleware/rbac.middleware';
-import { buildAnalytics, buildSystemReport, listStaff, parseDays } from '../lib/analytics';
+import { buildAnalytics, buildSystemReport, facilityEngagement, listStaff, parseDays, periodRange } from '../lib/analytics';
 import { snapshotRuntimeMetrics } from '../lib/runtime-metrics';
-import { purgeOldUsageRecords } from '../lib/usage-tracking';
+import { eastAfricaDay, purgeOldUsageRecords } from '../lib/usage-tracking';
 import { buildCsv, sendCsv } from '../lib/csv';
-import { ADMIN_NOTIFY_EMAIL, demoFacilityEmail, mailStatus, operatorAlertEmail, sendMail } from '../lib/mailer';
+import { ADMIN_NOTIFY_EMAIL, demoFacilityEmail, facilityReminderEmail, FacilityReminderKind, formatEmailDate, mailStatus, operatorAlertEmail, sendMail } from '../lib/mailer';
 import { buildSampleDocuments } from '../lib/sample-documents';
 import { buildSampleEmails } from '../lib/sample-emails';
 import { sweepLapsedSubscriptions } from '../lib/subscription';
@@ -18,6 +18,7 @@ import { sendRouteError } from '../lib/http-error';
 import { documentProducer as documentProducerFor } from '../lib/document-signer';
 import { emailReportCopy } from '../lib/report-delivery';
 import { COMPANY_NAME, bulamuLetterhead, generateTableReportPdf } from '../lib/pdf';
+import { REAL_FACILITY } from '../lib/facility';
 
 /** An operator export is also emailed to the operator who made it (?email=0 to skip). */
 function sendOperatorCsv(request: FastifyRequest, reply: FastifyReply, filename: string, csv: string, title: string) {
@@ -50,6 +51,74 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
   fastify.get('/super-admin/system', { preHandler: [requireRole('SUPER_ADMIN')] }, async (_request, reply) => {
     try {
       return { success: true, system: { ...(await buildSystemReport()), runtime: snapshotRuntimeMetrics(), mail: mailStatus() } };
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
+  // A fresh, privacy-safe list of approved facilities without activity for at
+  // least 30 days. The operator chooses whether and which of four messages to
+  // send; the inactivity signal never suspends or deletes a facility.
+  fastify.get('/super-admin/facility-reminders', { preHandler: [requireRole('SUPER_ADMIN')] }, async (_request, reply) => {
+    try {
+      const now = new Date();
+      const activity = await facilityEngagement(periodRange(30, now), now);
+      const eligible = activity.map((facility) => {
+        const lastAt = facility.lastActivityAt ?? facility.registeredAt;
+        const idleDays = Math.floor((now.getTime() - new Date(lastAt).getTime()) / (24 * 60 * 60 * 1000));
+        return { ...facility, lastActivityAt: facility.lastActivityAt, idleDays };
+      }).filter((facility) => facility.suspended === false && facility.idleDays >= 30);
+      if (!eligible.length) return { success: true, facilities: [] };
+      const admins = await prisma.user.findMany({
+        where: { clinicId: { in: eligible.map((f) => f.id) }, role: 'ADMIN', isActive: true },
+        select: { clinicId: true, name: true, email: true }, orderBy: { createdAt: 'asc' },
+      });
+      const adminByClinic = new Map<string, (typeof admins)[number]>();
+      admins.forEach((admin) => { if (!adminByClinic.has(admin.clinicId)) adminByClinic.set(admin.clinicId, admin); });
+      return { success: true, facilities: eligible.map(({ id, name, facilityCode, lastActivityAt, idleDays }) => {
+        const admin = adminByClinic.get(id);
+        return { id, name, facilityCode, lastActivityAt, idleDays, admin: admin ? { name: admin.name, email: admin.email } : null };
+      }) };
+    } catch (error: any) {
+      return sendRouteError(reply, error);
+    }
+  });
+
+  fastify.post('/super-admin/facility-reminders/:clinicId', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const { clinicId } = request.params as { clinicId: string };
+    const body = request.body as { kind?: unknown } | undefined;
+    const kinds: FacilityReminderKind[] = ['INACTIVITY', 'FEATURES', 'ONBOARDING', 'RETENTION'];
+    if (typeof body?.kind !== 'string' || !kinds.includes(body.kind as FacilityReminderKind)) {
+      return reply.status(400).send({ error: 'Choose one of the available facility reminders' });
+    }
+    try {
+      const clinic = await prisma.clinic.findFirst({
+        where: { ...REAL_FACILITY, id: clinicId, registrationStatus: 'APPROVED', isActive: true },
+        include: { users: { where: { role: 'ADMIN', isActive: true }, select: { id: true, name: true, email: true }, orderBy: { createdAt: 'asc' }, take: 1 } },
+      });
+      if (!clinic) return reply.status(404).send({ error: 'Active approved facility not found' });
+      const admin = clinic.users[0];
+      if (!admin) return reply.status(409).send({ error: 'This facility has no active administrator to email' });
+      if (body.kind === 'INACTIVITY') {
+        const now = new Date();
+        const activity = await facilityEngagement(periodRange(30, now), now);
+        const target = activity.find((f) => f.id === clinic.id);
+        const lastAt = target?.lastActivityAt ?? target?.registeredAt;
+        const idleDays = lastAt ? Math.floor((now.getTime() - new Date(lastAt).getTime()) / (24 * 60 * 60 * 1000)) : 0;
+        if (idleDays < 30) return reply.status(409).send({ error: 'The 30-day inactivity reminder is only available after 30 days without recorded activity' });
+      }
+      const kind = body.kind as FacilityReminderKind;
+      const message = facilityReminderEmail({
+        kind, recipientName: admin.name, facilityName: clinic.name,
+        loginUrl: frontendUrl('/auth/login'), retentionUrl: frontendUrl('/legal/data-retention'),
+      });
+      const result = await sendMail({ to: admin.email, ...message });
+      await recordAudit({
+        entity: 'FacilityReminder', recordId: clinic.id, clinicId: clinic.id, action: 'CREATE',
+        actorUserId: getAuthUser(request).userId, actorRole: 'SUPER_ADMIN',
+        metadata: { kind, recipient: admin.email, sent: result.sent },
+      });
+      return { success: true, sent: result.sent, reason: result.reason, recipient: admin.email };
     } catch (error: any) {
       return sendRouteError(reply, error);
     }
@@ -197,30 +266,54 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
   // under Bulamu's letterhead - downloaded, and a copy emailed to the operator.
   // Counts only - never patient or clinical details.
   fastify.get('/super-admin/analytics/report.pdf', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
-    const days = parseDays((request.query as { days?: string }).days);
+    const query = request.query as { days?: string; year?: string };
+    const requestedYear = Number(query.year);
+    const currentYear = new Date().getFullYear();
+    const annual = Number.isInteger(requestedYear) && requestedYear >= 2020 && requestedYear <= currentYear;
+    if (query.year !== undefined && !annual) return reply.status(400).send({ error: `Choose an annual report year from 2020 to ${currentYear}` });
+    const reportAt = annual && requestedYear < currentYear
+      ? new Date(Date.UTC(requestedYear, 11, 31, 20, 0, 0))
+      : new Date();
+    const yearDay = annual ? new Date(Date.UTC(requestedYear, 0, 1)) : null;
+    const endDay = annual ? new Date(`${eastAfricaDay(reportAt)}T00:00:00Z`) : null;
+    const days = annual && yearDay && endDay ? Math.floor((endDay.getTime() - yearDay.getTime()) / (24 * 60 * 60 * 1000)) + 1 : parseDays(query.days);
     try {
       await sweepLapsedSubscriptions();
-      const a = await buildAnalytics(days);
+      const a = await buildAnalytics(days, reportAt);
       const h = a.headline;
       const n = (value: number) => value.toLocaleString('en-US');
       const pct = (value: number | null | undefined) => (value === null || value === undefined ? '-' : `${Math.round(value * 100)}%`);
-      const filename = `bulamu-platform-report-${days}d-${today()}.pdf`;
+      const filename = annual ? `bulamu-annual-system-report-${requestedYear}.pdf` : `bulamu-platform-report-${days}d-${today()}.pdf`;
       const pdf = await generateTableReportPdf({
         letterhead: bulamuLetterhead(`Platform report - ${COMPANY_NAME}`),
-        title: 'PLATFORM REPORT',
-        subtitle: `${a.period.from} to ${a.period.to} - the last ${days} days, East Africa Time`,
+        title: annual ? 'ANNUAL SYSTEM PERFORMANCE REPORT' : 'PLATFORM REPORT',
+        subtitle: annual
+          ? `${a.period.from} to ${a.period.to} - ${requestedYear === currentYear ? 'year to date' : 'full calendar year'}, East Africa Time (UTC+3)`
+          : `${a.period.from} to ${a.period.to} - the last ${days} days, East Africa Time`,
         facts: [
-          ['Facilities approved', `${n(h.facilities.approved)} (${n(h.facilities.active)} active, ${n(h.facilities.suspended)} suspended)`],
+          annual
+            ? ['Facility status snapshot today', `${n(h.facilities.approved - h.facilities.suspended)} approved and enabled, ${n(h.facilities.suspended)} suspended`]
+            : ['Facilities approved', `${n(h.facilities.approved)} (${n(h.facilities.active)} active in the last 7 days, ${n(h.facilities.approved - h.facilities.active - h.facilities.suspended)} quiet or dormant, ${n(h.facilities.suspended)} suspended)`],
           ['Waiting for approval', n(h.facilities.pending)],
           ['New registrations in the period', n(h.facilities.new)],
-          ['Staff accounts', `${n(h.staff.total)} (${n(h.staff.activeThisMonth)} active in the last 30 days, ${n(h.staff.activeToday)} today)`],
-          ['Patients', `${n(h.patients.total)} (${n(h.patients.new)} new in the period)`],
+          ['Staff accounts', `${n(h.staff.total)} (${n(h.staff.activeThisMonth)} active in the last 30 days${annual ? ' of the report period' : ''}${annual ? '' : `, ${n(h.staff.activeToday)} today`})`],
+          [annual ? 'Current patient records' : 'Patients', `${n(h.patients.total)} (${n(h.patients.new)} new in the period)`],
           ['Consultations in the period', n(h.consultations.count)],
           ['Subscription revenue in the period', `UGX ${n(h.revenue.inPeriod)} from ${n(h.revenue.payments)} payments`],
-          ['Monthly recurring revenue', `UGX ${n(h.revenue.monthlyRecurring)}`],
-          ['Subscriptions', `${n(h.subscriptions.active)} active, ${n(h.subscriptions.trialing)} on trial, ${n(h.subscriptions.pastDue)} past due, ${n(h.subscriptions.cancelled)} cancelled`],
+          ['Monthly recurring revenue (current)', `UGX ${n(h.revenue.monthlyRecurring)}`],
+          ['Subscriptions (current status)', `${n(h.subscriptions.active)} active, ${n(h.subscriptions.trialing)} on trial, ${n(h.subscriptions.pastDue)} past due, ${n(h.subscriptions.cancelled)} cancelled`],
           ['Facilities recording care', `${n(a.adoption.facilitiesRecording.count)} of ${n(a.adoption.facilitiesRecording.of)}`],
           ['Prescriptions dispensed', `${pct(a.adoption.prescriptions.dispensedShare)} of ${n(a.adoption.prescriptions.written)} written`],
+          ['Ward / laboratory tests', n(a.adoption.labTests)],
+          ['Referrals', n(a.adoption.referrals)],
+          ['Diagnoses with ICD-10 code', `${pct(a.adoption.codedDiagnoses.of ? a.adoption.codedDiagnoses.consultations / a.adoption.codedDiagnoses.of : null)} (${n(a.adoption.codedDiagnoses.consultations)} of ${n(a.adoption.codedDiagnoses.of)})`],
+          ['Patient Portal accounts', `${n(a.adoption.portal.activated)} active of ${n(a.adoption.portal.accounts)} created`],
+          ['Documents stored', `${n(a.adoption.documents.byStaff + a.adoption.documents.byPatients)} (${n(a.adoption.documents.byStaff)} staff, ${n(a.adoption.documents.byPatients)} patient)`],
+          ['Sign-in security events', `${n(a.security.signIns)} successful, ${n(a.security.wrongPassword)} incorrect-password, ${n(a.security.blocked)} blocked`],
+          ['Audit trail entries', n(a.security.auditEvents)],
+          ['In-app notifications', n(a.security.notifications)],
+          ['Report scope', `${annual ? 'Activity metrics cover the selected report period; current facility and subscription statuses are snapshots.' : 'Metrics cover the selected report period.'} Real, non-demo facilities; aggregate counts only; no patient names or clinical content`],
+          ['Prepared', formatEmailDate(new Date())],
         ],
         tables: [
           {
@@ -245,12 +338,52 @@ export async function superAdminAnalyticsRoutes(fastify: FastifyInstance) {
             columns: [{ header: 'District', width: 370 }, { header: 'Facilities', width: 125, align: 'right' }],
             rows: [...a.distributions.districts.map((d) => [d.key, n(d.count)]), ...(a.distributions.districtsOther ? [['Other districts', n(a.distributions.districtsOther)]] : [])],
           },
+          {
+            title: 'Care delivery and service activity',
+            columns: [{ header: 'Measure', width: 370 }, { header: 'Count', width: 125, align: 'right' }],
+            rows: [
+              ['New patient records', n(h.patients.new)], ['Consultations', n(h.consultations.count)],
+              ['Appointments', n(a.series.appointments.reduce((sum, point) => sum + point.value, 0))],
+              ['Prescriptions written', n(a.adoption.prescriptions.written)], ['Prescriptions dispensed', n(a.adoption.prescriptions.dispensed)],
+              ['Lab tests requested', n(a.adoption.labTests)], ['Referrals created', n(a.adoption.referrals)],
+              ...a.adoption.appointments.map((row) => [`Appointments - ${row.key.toLowerCase().replaceAll('_', ' ')}`, n(row.count)]),
+            ],
+          },
+          {
+            title: 'Digital adoption and record quality',
+            columns: [{ header: 'Measure', width: 370 }, { header: 'Result', width: 125, align: 'right' }],
+            rows: [
+              ['Facilities recording care', `${n(a.adoption.facilitiesRecording.count)} of ${n(a.adoption.facilitiesRecording.of)}`],
+              ['Primary diagnoses with ICD-10 code', `${n(a.adoption.codedDiagnoses.consultations)} of ${n(a.adoption.codedDiagnoses.of)}`],
+              ['Patient Portal accounts activated', `${n(a.adoption.portal.activated)} of ${n(a.adoption.portal.accounts)}`],
+              ['Documents uploaded by staff', n(a.adoption.documents.byStaff)], ['Documents uploaded by patients', n(a.adoption.documents.byPatients)],
+            ],
+          },
+          {
+            title: 'Security and governance activity',
+            columns: [{ header: 'Measure', width: 370 }, { header: 'Count', width: 125, align: 'right' }],
+            rows: [
+              ['Successful sign-ins', n(a.security.signIns)], ['Incorrect-password sign-ins', n(a.security.wrongPassword)],
+              ['Blocked sign-ins', n(a.security.blocked)], ['Audit trail entries', n(a.security.auditEvents)],
+              ['Sync conflicts', n(a.security.syncConflicts)], ['In-app notifications', n(a.security.notifications)],
+            ],
+          },
+          {
+            title: 'Subscription status at report generation',
+            note: 'Status counts are a current snapshot; revenue above is measured within the stated report period.',
+            columns: [{ header: 'Status', width: 370 }, { header: 'Facilities', width: 125, align: 'right' }],
+            rows: [
+              ['Active', n(h.subscriptions.active)], ['Trialing', n(h.subscriptions.trialing)],
+              ['Past due', n(h.subscriptions.pastDue)], ['Cancelled', n(h.subscriptions.cancelled)],
+              ['Custom plans', n(h.subscriptions.customPlans)],
+            ],
+          },
         ],
         producedBy: await documentProducerFor(getAuthUser(request).userId),
       });
       if ((request.query as { email?: string }).email !== '0') {
         await emailReportCopy(reply, getAuthUser(request).userId, {
-          title: `Bulamu platform report - last ${days} days`, filename, content: pdf, contentType: 'application/pdf',
+          title: annual ? `Annual system performance report - ${requestedYear}` : `Bulamu platform report - last ${days} days`, filename, content: pdf, contentType: 'application/pdf',
           facts: [['Period', `${a.period.from} to ${a.period.to}`]],
         }, (m) => request.log.warn(m));
       }

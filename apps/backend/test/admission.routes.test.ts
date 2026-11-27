@@ -235,6 +235,27 @@ describe('wards and admissions', () => {
     expect((await update(doctor.token, [{ description: 'Late change' }])).statusCode).toBe(409);
   });
 
+  it('orders ward-round lab tests directly to the lab and bills the facility price', async () => {
+    const { clinic, doctor, nurse, ward, patient } = await setup();
+    const admissionId = (await admit(nurse.token, { patientId: patient.id, wardId: ward.id, reason: 'Persistent fever' })).json().admission.id;
+    const price = await prisma.servicePrice.create({ data: { clinicId: clinic.id, kind: 'LAB', name: 'Full blood count', price: 18000 } });
+    const options = await app.inject({ method: 'GET', url: `/admissions/${admissionId}/lab-test-options`, headers: authHeader(doctor.token) });
+    expect(options.json().tests).toContainEqual({ id: price.id, name: price.name, price: price.price });
+    expect((await app.inject({ method: 'POST', url: `/admissions/${admissionId}/lab-tests`, headers: authHeader(nurse.token), payload: { servicePriceId: price.id } })).statusCode).toBe(403);
+
+    const requested = await app.inject({ method: 'POST', url: `/admissions/${admissionId}/lab-tests`, headers: authHeader(doctor.token), payload: { servicePriceId: price.id } });
+    expect(requested.statusCode).toBe(200);
+    expect(requested.json()).toMatchObject({ test: { admissionId, patientId: patient.id, testName: price.name, status: 'PENDING' }, price: price.price });
+    const invoiceItem = await prisma.invoiceItem.findUnique({ where: { labTestId: requested.json().test.id } });
+    expect(invoiceItem).toMatchObject({ kind: 'LAB', description: price.name, unitPrice: price.price, amount: price.price, quantity: 1 });
+
+    const chart = (await app.inject({ method: 'GET', url: `/admissions/${admissionId}`, headers: authHeader(nurse.token) })).json().admission;
+    expect(chart.labTests).toContainEqual(expect.objectContaining({ id: requested.json().test.id, testName: price.name, status: 'PENDING' }));
+    expect(chart.notes.some((entry: any) => entry.kind === 'WARD_ROUND' && entry.note.includes(`Lab test requested: ${price.name}`))).toBe(true);
+    const worklist = await app.inject({ method: 'GET', url: `/lab/clinic/${clinic.id}`, headers: authHeader(doctor.token) });
+    expect(worklist.json().tests.some((test: any) => test.id === requested.json().test.id)).toBe(true);
+  });
+
   it('keeps inpatient medication orders separate from dispensing and records each nursing treatment safely', async () => {
     const { doctor, nurse, nurse2, ward, patient } = await setup();
     const admissionId = (await admit(nurse.token, { patientId: patient.id, wardId: ward.id, reason: 'Severe malaria' })).json().admission.id;

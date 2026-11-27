@@ -380,6 +380,60 @@ export function facilitySetupCheckInEmail(input: { recipientName: string; facili
   });
 }
 
+export type FacilityReminderKind = 'INACTIVITY' | 'FEATURES' | 'ONBOARDING' | 'RETENTION';
+
+const FACILITY_REMINDER_DETAILS: Record<FacilityReminderKind, { label: string; subject: string }> = {
+  INACTIVITY: { label: '30-day inactivity check-in', subject: 'Can we help your team get more from Bulamu?' },
+  FEATURES: { label: 'Recent features and workflows', subject: 'More ways Bulamu can support your facility' },
+  ONBOARDING: { label: 'Setup and training support', subject: 'A practical Bulamu setup check-in for your team' },
+  RETENTION: { label: 'Data retention policy', subject: 'How Bulamu keeps and protects your facility records' },
+};
+
+export function facilityReminderEmail(input: { kind: FacilityReminderKind; recipientName: string; facilityName: string; loginUrl: string; retentionUrl: string }): { subject: string; html: string } {
+  const recipient = escapeHtml(input.recipientName);
+  const facility = escapeHtml(input.facilityName);
+  const intro = `Hello ${recipient},`;
+  const content: Record<FacilityReminderKind, string> = {
+    INACTIVITY: `
+      ${heading('Can we help your team get more from Bulamu?')}${para(intro)}
+      ${para(`We noticed that ${facility} has not recorded recent activity in Bulamu. If your team has been busy or paused using the system, that is completely understandable. We would be glad to help you restart at a pace that works for you.`)}
+      ${para('<strong>We can help with:</strong> staff access and roles, setting up your services and fees, a guided first patient workflow, or questions about sign-in, syncing, forms and printing.')}
+      ${para('Reply to this email with the area you would like help with, or open Bulamu to continue where your team left off.')}
+      ${action(input.loginUrl, 'Open Bulamu')}
+      ${callout('Thirty days without activity does not delete your facility or its records. The published retention schedule applies; clinical records are kept while the facility account is active and afterwards for 5 years from the last entry, subject to any longer legal requirement.')}`,
+    FEATURES: `
+      ${heading('More ways Bulamu can support your facility')}${para(intro)}
+      ${para(`Bulamu brings daily facility work together, and ${facility} can use these workflows to reduce repeat entry and keep teams coordinated:`)}
+      <ul style="margin:0 0 22px;padding-left:22px;font-size:15px;line-height:1.8;color:${TEXT}">
+        <li>Ward-round prescriptions and lab requests stay with the admitted patient's chart.</li>
+        <li>Nursing records each administered dose; linked items can support stock and billing reconciliation.</li>
+        <li>Requested tests flow to the laboratory and their results return to the patient's record.</li>
+        <li>Secure chat supports message likes and direct replies.</li>
+      </ul>
+      ${para('Your facility can review these workflows with its staff and contact us for a short walkthrough.')}${action(input.loginUrl, 'Explore Bulamu')}`,
+    ONBOARDING: `
+      ${heading('A practical setup check-in for your team')}${para(intro)}
+      ${para(`A few small setup steps can make Bulamu more useful at ${facility}: confirm each staff member's role, add the services and fees you provide, review the patient registration flow, and agree how your team will handle results, prescriptions and follow-up.`)}
+      ${para('If you would like a guided walkthrough or help with a particular workflow, reply with the best time and the area you want to cover. Please do not include patient details in email.')}
+      ${action(input.loginUrl, 'Continue setup in Bulamu')}`,
+    RETENTION: `
+      ${heading('Your facility data and the retention schedule')}${para(intro)}
+      ${para(`We want ${facility} to have clear information about how records are handled. Clinical records are kept while the facility account is active and afterwards for 5 years from the last entry on the record. Where Ugandan law or your regulator requires a longer period, the longer period applies.`)}
+      ${para('Other categories have their own published periods: subscription, payment and receipt records are kept for 7 years; audit trail entries for 7 years; staff activity and sign-in records for 13 months; and notifications for 90 days. At the end of the applicable period, records are permanently erased.')}
+      ${callout('Thirty days without activity alone does not delete a facility or its records. The documented end-of-retention erasure process is currently manual; facilities can export their records before a deletion request is completed.')}
+      ${action(input.retentionUrl, 'Read the full retention policy')}`,
+  };
+  const detail = FACILITY_REMINDER_DETAILS[input.kind];
+  return {
+    subject: `${detail.subject} - ${input.facilityName}`,
+    html: emailShell(`${content[input.kind]}${SIGN_OFF}`, {
+      eyebrow: detail.label,
+      preheader: detail.subject,
+      footnote: 'A service message from the Bulamu team. Please do not send patient or other sensitive health information by email.',
+    }),
+  };
+}
+
 // "23 October 2026" - unambiguous, unlike 10/23/2026 vs 23/10/2026.
 export function formatEmailDate(date: Date): string {
   return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' });

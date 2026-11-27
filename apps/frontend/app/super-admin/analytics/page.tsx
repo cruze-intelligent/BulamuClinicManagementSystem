@@ -120,6 +120,7 @@ export default function SuperAdminAnalyticsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [exporting, setExporting] = useState('');
+  const [annualYear, setAnnualYear] = useState(String(new Date().getFullYear()));
 
   // Facilities table controls
   const [facilityFilter, setFacilityFilter] = useState('ALL');
@@ -157,8 +158,8 @@ export default function SuperAdminAnalyticsPage() {
         if (!a.success) throw new Error(a.error || 'Could not load analytics');
         setData(a.analytics);
         if (s.success) setSystem(s.system);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message || 'Could not load analytics');
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load analytics');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -202,12 +203,26 @@ export default function SuperAdminAnalyticsPage() {
     try {
       const { emailedTo } = await downloadWithAuth(`${API}/super-admin/analytics/report.pdf?days=${days}`, localStorage.getItem('token'), `bulamu-platform-report-${days}d.pdf`);
       setReportNotice(reportReadyMessage('Platform report', emailedTo));
-    } catch (e: any) {
-      setReportNotice(e.message || 'The report could not be prepared - please try again.');
+    } catch (e: unknown) {
+      setReportNotice(e instanceof Error ? e.message : 'The report could not be prepared - please try again.');
     } finally {
       setExporting('');
     }
   }, [days]);
+
+  const annualPlatformReport = useCallback(async () => {
+    setExporting('annual-report');
+    setReportNotice('');
+    try {
+      const year = Number(annualYear);
+      const { emailedTo } = await downloadWithAuth(`${API}/super-admin/analytics/report.pdf?year=${year}`, localStorage.getItem('token'), `bulamu-annual-system-report-${year}.pdf`);
+      setReportNotice(reportReadyMessage(`Annual system report (${year})`, emailedTo));
+    } catch (e: unknown) {
+      setReportNotice(e instanceof Error ? e.message : 'The annual report could not be prepared - please try again.');
+    } finally {
+      setExporting('');
+    }
+  }, [annualYear]);
 
   const exportCsv = useCallback(async (dataset: 'facilities' | 'daily' | 'users') => {
     setExporting(dataset);
@@ -221,8 +236,8 @@ export default function SuperAdminAnalyticsPage() {
       }
       const { emailedTo } = await downloadWithAuth(`${API}/super-admin/analytics/export?${qs}`, localStorage.getItem('token'), `bulamu-${dataset}-${days}d.csv`);
       setReportNotice(reportReadyMessage('Export', emailedTo));
-    } catch (e: any) {
-      setReportNotice(e.message || 'Export failed');
+    } catch (e: unknown) {
+      setReportNotice(e instanceof Error ? e.message : 'Export failed');
     } finally {
       setExporting('');
     }
@@ -231,8 +246,6 @@ export default function SuperAdminAnalyticsPage() {
   if (!isOperator) return null;
 
   const h = data?.headline;
-  const rt = system?.runtime;
-
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -297,6 +310,10 @@ export default function SuperAdminAnalyticsPage() {
               <div className="flex flex-wrap justify-end gap-2">
                 <Button size="sm" onClick={platformReport} disabled={exporting === 'report'}>
                   <Download className="h-4 w-4 mr-1" aria-hidden />{exporting === 'report' ? 'Preparing...' : 'Platform report (PDF)'}
+                </Button>
+                <Input aria-label="Annual report year" type="number" min="2020" max={new Date().getFullYear()} value={annualYear} onChange={(event) => setAnnualYear(event.target.value)} className="w-28" />
+                <Button variant="outline" size="sm" onClick={annualPlatformReport} disabled={exporting === 'annual-report' || !/^20\d{2}$/.test(annualYear) || Number(annualYear) < 2020 || Number(annualYear) > new Date().getFullYear()}>
+                  <Download className="h-4 w-4 mr-1" aria-hidden />{exporting === 'annual-report' ? 'Preparing...' : 'Annual system report (PDF)'}
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => exportCsv('daily')} disabled={exporting === 'daily'}>
                   <Download className="h-4 w-4 mr-1" aria-hidden />{exporting === 'daily' ? 'Preparing...' : 'Export daily activity (CSV)'}

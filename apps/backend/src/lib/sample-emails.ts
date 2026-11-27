@@ -2,6 +2,7 @@ import {
   demoFacilityEmail, facilityApprovedEmail, facilityRejectedEmail, facilityRemovedEmail, facilityStatusEmail, feedbackSubmittedEmail,
   historyShareOtpEmail, notificationEmail, operatorAlertEmail, passwordResetEmail, patientAccessOtpEmail, patientAccountClosedEmail,
   patientPasswordResetEmail, patientPortalAccountCreatedEmail, registrationReceivedEmail, subscriptionReceiptEmail, trialExtendedEmail,
+  facilityReminderEmail,
 } from './mailer';
 import { frontendUrl } from './operator-alerts';
 
@@ -18,6 +19,11 @@ export function buildSampleEmails(now: Date = new Date()): SampleEmail[] {
   const login = frontendUrl('/auth/login');
   const in14 = new Date(now.getTime() + 14 * DAY);
   const letter = { adminName: 'Grace Nankya', facilityCode: 'BLM-7Q4K2D', reason: 'Subscription payment overdue' };
+  const reminderBase = { recipientName: 'Grace Nankya', facilityName: 'Mbarara Community Clinic', loginUrl: login, retentionUrl: frontendUrl('/legal/data-retention') };
+  const reminders = (['INACTIVITY', 'FEATURES', 'ONBOARDING', 'RETENTION'] as const).map((kind) => {
+    const sample = facilityReminderEmail({ ...reminderBase, kind });
+    return sample;
+  });
   return [
     {
       subject: 'Thank you for your interest in Bulamu: your demo is ready',
@@ -65,5 +71,6 @@ export function buildSampleEmails(now: Date = new Date()): SampleEmail[] {
       }),
     },
     { subject: '[Bulamu] New feedback - Mbarara Community Clinic', html: feedbackSubmittedEmail('Dr Samuel Okello', 'DOCTOR', 'Mbarara Community Clinic', 'It would help to print the lab request form for samples we send out.\nThank you for the quick fixes last week!') },
+    ...reminders,
   ];
 }

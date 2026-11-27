@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Building2, ChevronDown, MessageCircle, Pin, Plus, Search, Send, ShieldCheck, Smile, Users } from 'lucide-react';
+import { ArrowLeft, Building2, ChevronDown, MessageCircle, Pin, Plus, Reply, Search, Send, ShieldCheck, Smile, ThumbsUp, Users } from 'lucide-react';
 import { NOTIFICATIONS_CHANGED_EVENT } from '@/lib/useUnreadNotifications';
 
 type Mode = 'staff' | 'patient' | 'super';
@@ -13,7 +13,7 @@ type Thread = {
   patientAccount?: { id: string; email: string }; userA?: Member; userB?: Member | null;
   lastMessage?: { body: string; createdAt: string } | null; unreadCount?: number;
 };
-type ChatMessage = { id: string; body: string; createdAt: string; authorUserId?: string | null; authorName?: string | null; authorPatientAccountId?: string | null };
+type ChatMessage = { id: string; body: string; createdAt: string; authorUserId?: string | null; authorName?: string | null; authorPatientAccountId?: string | null; likeCount: number; likedByMe: boolean; replyToMessage?: { id: string; body: string; authorName?: string | null } | null };
 type Staff = Member & { extraRoles?: string[] };
 type Clinic = { id: string; name: string };
 
@@ -37,8 +37,10 @@ export function ChatInbox({ mode }: { mode: Mode }) {
   const [selectedClinic, setSelectedClinic] = useState('');
   const [selected, setSelected] = useState<Thread | null>(null);
   const [body, setBody] = useState('');
+  const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [likingId, setLikingId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [showStart, setShowStart] = useState(false);
@@ -95,17 +97,17 @@ export function ChatInbox({ mode }: { mode: Mode }) {
     const selectedId = selected?.id;
     if (!selectedId || !threadPath || document.visibilityState === 'hidden') return;
     try {
-      const last = messagesRef.current[messagesRef.current.length - 1];
-      const data = await request(`${threadPath}/messages${last ? `?after=${encodeURIComponent(last.createdAt)}` : ''}`);
+      const currentMessages = messagesRef.current;
+      const data = await request(`${threadPath}/messages`);
       if (Array.isArray(data.messages)) {
         const next = (data.messages as ChatMessage[]).reverse();
-        const combined = last
-          ? [...messagesRef.current, ...next.filter((message) => !messagesRef.current.some((existing) => existing.id === message.id))]
-          : next;
+        const newMessages = next.filter((message) => !currentMessages.some((existing) => existing.id === message.id));
+        const refreshed = currentMessages.map((existing) => next.find((message) => message.id === existing.id) ?? existing);
+        const combined = currentMessages.length ? [...refreshed, ...newMessages] : next;
         messagesRef.current = combined;
         setMessages(combined);
         const readPath = mode === 'super' ? `/chat/super-admin/threads/${selectedId}/read` : `${threadPath}/read`;
-        const hasIncoming = next.some((message) => mode === 'patient' ? !!message.authorUserId : message.authorUserId !== identity().id && !message.authorPatientAccountId);
+        const hasIncoming = newMessages.some((message) => mode === 'patient' ? !!message.authorUserId : message.authorUserId !== identity().id && !message.authorPatientAccountId);
         if (hasIncoming) {
           await request(readPath, { method: 'POST' });
           window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED_EVENT));
@@ -118,6 +120,7 @@ export function ChatInbox({ mode }: { mode: Mode }) {
   useEffect(() => {
     messagesRef.current = [];
     setMessages([]); setSendEmail(false);
+    setReplyTarget(null);
     if (!selected?.id) return;
     void loadMessages();
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void loadMessages(); }, 5000);
@@ -149,11 +152,41 @@ export function ChatInbox({ mode }: { mode: Mode }) {
     if (!selected || !body.trim() || sending) return;
     setSending(true); setError('');
     try {
-      await request(`${threadPath}/messages`, { method: 'POST', body: JSON.stringify({ body, ...(selected.kind === 'ADMIN_SUPER' ? { sendEmail } : {}) }) });
-      setBody(''); setSendEmail(false); setShowEmoji(false);
+      await request(`${threadPath}/messages`, { method: 'POST', body: JSON.stringify({ body, ...(replyTarget ? { replyToMessageId: replyTarget.id } : {}), ...(selected.kind === 'ADMIN_SUPER' ? { sendEmail } : {}) }) });
+      setBody(''); setReplyTarget(null); setSendEmail(false); setShowEmoji(false);
       await Promise.all([loadMessages(), listThreads()]);
     } catch (e) { setError(e instanceof Error ? e.message : 'Message could not be sent'); }
     finally { setSending(false); }
+  };
+
+  const toggleLike = async (message: ChatMessage) => {
+    if (!selected || likingId) return;
+    const liked = !message.likedByMe;
+    const previous = { likedByMe: message.likedByMe, likeCount: message.likeCount };
+    const update = (item: ChatMessage) => item.id === message.id ? { ...item, likedByMe: liked, likeCount: Math.max(0, item.likeCount + (liked ? 1 : -1)) } : item;
+    setLikingId(message.id);
+    messagesRef.current = messagesRef.current.map(update);
+    setMessages(messagesRef.current);
+    const path = mode === 'patient'
+      ? `/patient-portal/chat/threads/${selected.id}/messages/${message.id}/like`
+      : mode === 'super'
+        ? `/chat/super-admin/threads/${selected.id}/messages/${message.id}/like`
+        : selected.kind === 'PATIENT_STAFF'
+          ? `/chat/patient-threads/${selected.id}/messages/${message.id}/like`
+          : `/chat/threads/${selected.id}/messages/${message.id}/like`;
+    try {
+      const result = await request(path, { method: 'PUT', body: JSON.stringify({ liked }) });
+      const saved = (item: ChatMessage) => item.id === message.id ? { ...item, likedByMe: result.liked, likeCount: result.likeCount } : item;
+      messagesRef.current = messagesRef.current.map(saved);
+      setMessages(messagesRef.current);
+    } catch (e) {
+      const restore = (item: ChatMessage) => item.id === message.id ? { ...item, ...previous } : item;
+      messagesRef.current = messagesRef.current.map(restore);
+      setMessages(messagesRef.current);
+      setError(e instanceof Error ? e.message : 'Could not update the message like');
+    } finally {
+      setLikingId(null);
+    }
   };
 
   const openStaff = async (userId: string) => {
@@ -254,10 +287,11 @@ export function ChatInbox({ mode }: { mode: Mode }) {
           {selected.kind === 'STAFF_GROUP' && selected.members?.length ? <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500 dark:border-slate-800">{selected.members.map((member) => member.name).join(' · ')}</p> : null}
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-slate-50/70 p-4 dark:bg-slate-950/30 sm:p-6" aria-live="polite">{messages.length === 0 ? <div className="flex h-full min-h-40 flex-col items-center justify-center text-center"><span className="flex size-12 items-center justify-center rounded-full bg-white text-emerald-700 shadow-sm dark:bg-slate-900 dark:text-emerald-300"><MessageCircle className="size-5" /></span><p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-300">No messages yet</p><p className="mt-1 text-xs text-slate-500">Send the first message to get the conversation started.</p></div> : messages.map((message) => {
             const mine = mode === 'patient' ? !!message.authorPatientAccountId : message.authorUserId === identityValue.id;
-            return <article key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}><div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm shadow-sm ${mine ? 'rounded-br-md bg-emerald-700 text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}><p className={`mb-1.5 text-xs font-semibold ${mine ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'}`}>{mine ? 'You' : message.authorName || (message.authorPatientAccountId ? 'Patient' : 'Staff')}</p><p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p></div></article>;
+            return <article id={`chat-message-${message.id}`} key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}><div className="max-w-[88%]"><div className={`rounded-2xl px-4 py-3 text-sm shadow-sm ${mine ? 'rounded-br-md bg-emerald-700 text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'}`}><p className={`mb-1.5 text-xs font-semibold ${mine ? 'text-emerald-100' : 'text-slate-500 dark:text-slate-400'}`}>{mine ? 'You' : message.authorName || (message.authorPatientAccountId ? 'Patient' : 'Staff')}</p>{message.replyToMessage && <button type="button" onClick={() => document.getElementById(`chat-message-${message.replyToMessage?.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className={`mb-2 block w-full rounded-md border-l-2 px-2 py-1 text-left text-xs ${mine ? 'border-emerald-200 bg-emerald-800/60 text-emerald-100' : 'border-emerald-600 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}><span className="block font-semibold">{message.replyToMessage.authorName || 'Message'}</span><span className="line-clamp-2">{message.replyToMessage.body}</span></button>}<p className="whitespace-pre-wrap break-words leading-relaxed">{message.body}</p></div><div className="flex items-center gap-1"><button type="button" onClick={() => { setReplyTarget(message); document.getElementById('chat-body')?.focus(); }} aria-label="Reply to message" title="Reply to message" className="mt-1 inline-flex min-h-7 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 text-xs text-slate-500 transition hover:border-emerald-300 hover:text-emerald-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-emerald-300"><Reply className="size-3.5" aria-hidden="true" /><span>Reply</span></button><button type="button" disabled={likingId === message.id} aria-label={message.likedByMe ? 'Unlike message' : 'Like message'} aria-pressed={message.likedByMe} onClick={() => void toggleLike(message)} className={`mt-1 inline-flex min-h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs transition disabled:opacity-60 ${message.likedByMe ? 'border-emerald-300 bg-emerald-50 font-semibold text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'border-slate-200 bg-white text-slate-500 hover:border-emerald-300 hover:text-emerald-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-emerald-300'}`}><ThumbsUp className={`size-3.5 ${message.likedByMe ? 'fill-current' : ''}`} aria-hidden="true" />{message.likeCount > 0 && <span>{message.likeCount}</span>}</button></div></div></article>;
           })}</div>
           <form onSubmit={send} className="relative border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             {selected.kind === 'ADMIN_SUPER' && <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-md bg-slate-50 px-3 py-2 text-xs dark:bg-slate-800"><span className="text-slate-600 dark:text-slate-300">Email a notification too? The email contains no chat text.</span><label className="inline-flex items-center gap-2 font-medium"><input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} /> Email notice</label></div>}
+            {replyTarget && <div className="mb-2 flex items-center gap-3 rounded-lg border-l-2 border-emerald-600 bg-slate-50 px-3 py-2 dark:bg-slate-800"><Reply className="size-4 shrink-0 text-emerald-700 dark:text-emerald-300" /><div className="min-w-0 flex-1"><p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Replying to {replyTarget.authorName || (replyTarget.authorPatientAccountId ? 'Patient' : 'Staff')}</p><p className="truncate text-xs text-slate-500">{replyTarget.body}</p></div><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply" className="rounded p-1 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700">×</button></div>}
             {showEmoji && <div className="absolute bottom-20 left-3 z-10 grid grid-cols-8 gap-1 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-slate-700 dark:bg-slate-900" aria-label="Emoji picker">{EMOJI.map((emoji) => <button key={emoji} type="button" onClick={() => setBody((value) => value + emoji)} className="rounded p-1.5 text-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label={`Insert ${emoji}`}>{emoji}</button>)}</div>}
             <div className="flex items-end gap-2"><button type="button" aria-label="Choose emoji" onClick={() => setShowEmoji((value) => !value)} className="flex size-11 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:hover:bg-slate-800"><Smile className="size-5" /></button><label className="sr-only" htmlFor="chat-body">Message</label><textarea id="chat-body" value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} rows={2} required placeholder="Write a message..." className="min-h-11 flex-1 resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:ring-emerald-950" /><button type="submit" disabled={sending || !body.trim()} className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"><Send className="size-4" /><span className="hidden sm:inline">Send</span></button></div>
             <p className="mt-1.5 pl-11 text-[11px] text-slate-400">In-app only · no attachments · up to 2,000 characters</p>

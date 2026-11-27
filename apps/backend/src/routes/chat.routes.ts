@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply } from 'fastify';
 import { Role } from '@prisma/client';
 import { isUniqueConstraintError, prisma } from '../lib/prisma';
 import { authenticate, getAuthUser, worksAs } from '../middleware/auth.middleware';
@@ -140,6 +140,18 @@ async function findAccessiblePatientThread(id: string, clinicId: string) {
     select: { id: true, clinicId: true, kind: true },
   });
 }
+type MessageViewer = { userId?: string; patientAccountId?: string };
+
+function messageInclude(viewer: MessageViewer) {
+  return {
+    authorUser: { select: { name: true } },
+    authorPatientAccount: { select: { email: true } },
+    replyToMessage: { select: { id: true, body: true, authorUser: { select: { name: true } }, authorPatientAccount: { select: { email: true } } } },
+    _count: { select: { likes: true } },
+    likes: { where: viewer.userId ? { userId: viewer.userId } : { patientAccountId: viewer.patientAccountId }, select: { id: true } },
+  };
+}
+
 function presentMessage(msg: any) {
   return {
     id: msg.id,
@@ -150,7 +162,43 @@ function presentMessage(msg: any) {
     authorUserId: msg.authorUserId,
     authorName: msg.authorUser?.name ?? msg.authorPatientAccount?.email ?? null,
     authorPatientAccountId: msg.authorPatientAccountId,
+    replyToMessage: msg.replyToMessage ? {
+      id: msg.replyToMessage.id,
+      body: msg.replyToMessage.body,
+      authorName: msg.replyToMessage.authorUser?.name ?? msg.replyToMessage.authorPatientAccount?.email ?? null,
+    } : null,
+    likeCount: msg._count?.likes ?? 0,
+    likedByMe: (msg.likes?.length ?? 0) > 0,
   };
+}
+
+async function resolveReplyToMessageId(threadId: string, body: any): Promise<string | null | undefined> {
+  const messageId = body?.replyToMessageId;
+  if (messageId === undefined || messageId === null || messageId === '') return null;
+  if (typeof messageId !== 'string') return undefined;
+  const message = await prisma.chatMessage.findFirst({ where: { id: messageId, threadId }, select: { id: true } });
+  return message?.id;
+}
+
+async function setMessageLike(messageId: string, viewer: MessageViewer, liked: boolean) {
+  if (viewer.userId) {
+    const where = { messageId_userId: { messageId, userId: viewer.userId } };
+    if (liked) await prisma.chatMessageLike.upsert({ where, create: { messageId, userId: viewer.userId }, update: {} });
+    else await prisma.chatMessageLike.deleteMany({ where: { messageId, userId: viewer.userId } });
+  } else if (viewer.patientAccountId) {
+    const where = { messageId_patientAccountId: { messageId, patientAccountId: viewer.patientAccountId } };
+    if (liked) await prisma.chatMessageLike.upsert({ where, create: { messageId, patientAccountId: viewer.patientAccountId }, update: {} });
+    else await prisma.chatMessageLike.deleteMany({ where: { messageId, patientAccountId: viewer.patientAccountId } });
+  }
+  return prisma.chatMessageLike.count({ where: { messageId } });
+}
+
+async function updateMessageLike(reply: FastifyReply, threadId: string, messageId: string, viewer: MessageViewer, body: any) {
+  if (typeof body?.liked !== 'boolean') return reply.status(400).send({ error: 'liked must be true or false' });
+  const message = await prisma.chatMessage.findFirst({ where: { id: messageId, threadId }, select: { id: true } });
+  if (!message) return reply.status(404).send({ error: 'Message not found' });
+  const likeCount = await setMessageLike(messageId, viewer, body.liked);
+  return { success: true, liked: body.liked, likeCount };
 }
 
 export async function chatRoutes(fastify: FastifyInstance) {
@@ -395,7 +443,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       where: { threadId: id, ...(before ? { createdAt: { lt: new Date(before) } } : after ? { createdAt: { gte: new Date(after) } } : {}) },
       orderBy: { createdAt: 'desc' },
       take: PAGE_SIZE,
-      include: { authorUser: { select: { name: true } } },
+      include: messageInclude({ userId: authUser.userId }),
     });
     return { success: true, messages: messages.map(presentMessage) };
   });
@@ -410,16 +458,25 @@ export async function chatRoutes(fastify: FastifyInstance) {
     let emailRequested: boolean;
     try { ({ body, emailRequested } = messageInput(request.body, thread.kind)); }
     catch (error: any) { return reply.status(400).send({ error: error.message }); }
+    const replyToMessageId = await resolveReplyToMessageId(id, request.body);
+    if (replyToMessageId === undefined) return reply.status(400).send({ error: 'Choose a message in this conversation to reply to' });
 
     const [msg] = await prisma.$transaction([
       prisma.chatMessage.create({
-        data: { threadId: id, authorUserId: authUser.userId, body },
-        include: { authorUser: { select: { name: true } } },
+        data: { threadId: id, authorUserId: authUser.userId, body, replyToMessageId },
+        include: messageInclude({ userId: authUser.userId }),
       }),
       prisma.chatThread.update({ where: { id }, data: { updatedAt: new Date() } }),
     ]);
     const emailNotification = emailRequested ? await sendSupportEmail({ threadId: id, clinicId: authUser.clinicId, senderName: msg.authorUser?.name ?? 'A facility administrator', fromSuperAdmin: false }) : undefined;
     return { success: true, message: presentMessage(msg), ...(emailRequested ? { emailNotification } : {}) };
+  });
+
+  fastify.put('/chat/threads/:id/messages/:messageId/like', { preHandler: [authenticate] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const { id, messageId } = request.params as { id: string; messageId: string };
+    if (!await findStaffThread(id, authUser)) return reply.status(404).send({ error: 'Thread not found' });
+    return updateMessageLike(reply, id, messageId, { userId: authUser.userId }, request.body);
   });
 
   // ─── Staff: mark thread read ───────────────────────────────────────────
@@ -582,6 +639,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/chat/super-admin/threads/:id/messages', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
     const { id } = request.params as any;
     const { before, after } = request.query as any;
     const thread = await prisma.chatThread.findUnique({ where: { id }, select: { kind: true } });
@@ -590,7 +648,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       where: { threadId: id, ...(before ? { createdAt: { lt: new Date(before) } } : after ? { createdAt: { gte: new Date(after) } } : {}) },
       orderBy: { createdAt: 'desc' },
       take: PAGE_SIZE,
-      include: { authorUser: { select: { name: true } } },
+      include: messageInclude({ userId: authUser.userId }),
     });
     return { success: true, messages: messages.map(presentMessage) };
   });
@@ -604,15 +662,23 @@ export async function chatRoutes(fastify: FastifyInstance) {
     if (!thread || thread.kind !== 'ADMIN_SUPER') return reply.status(404).send({ error: 'Thread not found' });
     try { ({ body, emailRequested } = messageInput(request.body, thread.kind)); }
     catch (error: any) { return reply.status(400).send({ error: error.message }); }
+    const replyToMessageId = await resolveReplyToMessageId(id, request.body);
+    if (replyToMessageId === undefined) return reply.status(400).send({ error: 'Choose a message in this conversation to reply to' });
     const [msg] = await prisma.$transaction([
       prisma.chatMessage.create({
-        data: { threadId: id, authorUserId: authUser.userId, body },
-        include: { authorUser: { select: { name: true } } },
+        data: { threadId: id, authorUserId: authUser.userId, body, replyToMessageId },
+        include: messageInclude({ userId: authUser.userId }),
       }),
       prisma.chatThread.update({ where: { id }, data: { updatedAt: new Date() } }),
     ]);
     const emailNotification = emailRequested ? await sendSupportEmail({ threadId: id, clinicId: thread.clinicId!, senderName: msg.authorUser?.name ?? 'Bulamu Support', fromSuperAdmin: true }) : undefined;
     return { success: true, message: presentMessage(msg), ...(emailRequested ? { emailNotification } : {}) };
+  });
+  fastify.put('/chat/super-admin/threads/:id/messages/:messageId/like', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
+    const { id, messageId } = request.params as { id: string; messageId: string };
+    const thread = await prisma.chatThread.findUnique({ where: { id }, select: { kind: true } });
+    if (!thread || thread.kind !== 'ADMIN_SUPER') return reply.status(404).send({ error: 'Thread not found' });
+    return updateMessageLike(reply, id, messageId, { userId: getAuthUser(request).userId }, request.body);
   });
   fastify.post('/chat/super-admin/threads/:id/read', { preHandler: [requireRole('SUPER_ADMIN')] }, async (request, reply) => {
     const { id } = request.params as any;
@@ -686,7 +752,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const { before, after } = request.query as any;
     const thread = await findPatientChatThread(id, patientAccountId);
     if (!thread) return reply.status(404).send({ error: 'Thread not found' });
-    const messages = await prisma.chatMessage.findMany({ where: { threadId: id, ...(before ? { createdAt: { lt: new Date(before) } } : after ? { createdAt: { gte: new Date(after) } } : {}) }, orderBy: { createdAt: 'desc' }, take: PAGE_SIZE, include: { authorUser: { select: { name: true } } } });
+    const messages = await prisma.chatMessage.findMany({ where: { threadId: id, ...(before ? { createdAt: { lt: new Date(before) } } : after ? { createdAt: { gte: new Date(after) } } : {}) }, orderBy: { createdAt: 'desc' }, take: PAGE_SIZE, include: messageInclude({ patientAccountId }) });
     return { success: true, messages: messages.map(presentMessage) };
   });
 
@@ -697,11 +763,20 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try { rejectAttachments(request.body); body = sanitizeBody((request.body as any)?.body); } catch (error: any) { return reply.status(400).send({ error: error.message }); }
     const thread = await findPatientChatThread(id, patientAccountId);
     if (!thread) return reply.status(404).send({ error: 'Thread not found' });
+    const replyToMessageId = await resolveReplyToMessageId(id, request.body);
+    if (replyToMessageId === undefined) return reply.status(400).send({ error: 'Choose a message in this conversation to reply to' });
     const [message] = await prisma.$transaction([
-      prisma.chatMessage.create({ data: { threadId: id, authorPatientAccountId: patientAccountId, body }, include: { authorPatientAccount: { select: { email: true } } } }),
+      prisma.chatMessage.create({ data: { threadId: id, authorPatientAccountId: patientAccountId, body, replyToMessageId }, include: messageInclude({ patientAccountId }) }),
       prisma.chatThread.update({ where: { id }, data: { updatedAt: new Date() } }),
     ]);
     return { success: true, message: presentMessage(message) };
+  });
+
+  fastify.put('/patient-portal/chat/threads/:id/messages/:messageId/like', { preHandler: [authenticatePatient] }, async (request, reply) => {
+    const { patientAccountId } = getPatientAuthUser(request);
+    const { id, messageId } = request.params as { id: string; messageId: string };
+    if (!await findPatientChatThread(id, patientAccountId)) return reply.status(404).send({ error: 'Thread not found' });
+    return updateMessageLike(reply, id, messageId, { patientAccountId }, request.body);
   });
 
   fastify.post('/patient-portal/chat/threads/:id/read', { preHandler: [authenticatePatient] }, async (request, reply) => {
@@ -729,7 +804,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const { before } = request.query as any;
     const thread = await findAccessiblePatientThread(id, authUser.clinicId);
     if (!thread) return reply.status(404).send({ error: 'Thread not found' });
-    const messages = await prisma.chatMessage.findMany({ where: { threadId: id, ...(before ? { createdAt: { lt: new Date(before) } } : {}) }, orderBy: { createdAt: 'desc' }, take: PAGE_SIZE, include: { authorUser: { select: { name: true } }, authorPatientAccount: { select: { email: true } } } });
+    const messages = await prisma.chatMessage.findMany({ where: { threadId: id, ...(before ? { createdAt: { lt: new Date(before) } } : {}) }, orderBy: { createdAt: 'desc' }, take: PAGE_SIZE, include: messageInclude({ userId: authUser.userId }) });
     return { success: true, messages: messages.map(presentMessage) };
   });
 
@@ -739,11 +814,20 @@ export async function chatRoutes(fastify: FastifyInstance) {
     let body: string;
     try { rejectAttachments(request.body); body = sanitizeBody((request.body as any)?.body); } catch (error: any) { return reply.status(400).send({ error: error.message }); }
     if (!await findAccessiblePatientThread(id, authUser.clinicId)) return reply.status(404).send({ error: 'Thread not found' });
+    const replyToMessageId = await resolveReplyToMessageId(id, request.body);
+    if (replyToMessageId === undefined) return reply.status(400).send({ error: 'Choose a message in this conversation to reply to' });
     const [message] = await prisma.$transaction([
-      prisma.chatMessage.create({ data: { threadId: id, authorUserId: authUser.userId, body }, include: { authorUser: { select: { name: true } } } }),
+      prisma.chatMessage.create({ data: { threadId: id, authorUserId: authUser.userId, body, replyToMessageId }, include: messageInclude({ userId: authUser.userId }) }),
       prisma.chatThread.update({ where: { id }, data: { updatedAt: new Date() } }),
     ]);
     return { success: true, message: presentMessage(message) };
+  });
+
+  fastify.put('/chat/patient-threads/:id/messages/:messageId/like', { preHandler: [requireRole('DOCTOR', 'NURSE', 'ADMIN')] }, async (request, reply) => {
+    const authUser = getAuthUser(request);
+    const { id, messageId } = request.params as { id: string; messageId: string };
+    if (!await findAccessiblePatientThread(id, authUser.clinicId)) return reply.status(404).send({ error: 'Thread not found' });
+    return updateMessageLike(reply, id, messageId, { userId: authUser.userId }, request.body);
   });
 
   fastify.post('/chat/patient-threads/:id/read', { preHandler: [requireRole('DOCTOR', 'NURSE', 'ADMIN')] }, async (request, reply) => {

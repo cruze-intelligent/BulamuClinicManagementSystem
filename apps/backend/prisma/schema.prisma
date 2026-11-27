@@ -29,6 +29,7 @@ model User {
   chatThreadsAsA   ChatThread[]  @relation("ThreadUserA")
   chatThreadsAsB   ChatThread[]  @relation("ThreadUserB")
   chatMessages     ChatMessage[] @relation("ChatMessageAuthor")
+  chatMessageLikes ChatMessageLike[] @relation("ChatMessageLikeUser")
   chatGroupMemberships ChatThreadMember[]
   chatThreadPins ChatThreadPin[]
   chatThreadReads ChatThreadRead[]
@@ -616,6 +617,7 @@ model Admission {
   referral             Referral?      @relation(fields: [referralId], references: [id])
   notes                AdmissionNote[]
   medicationOrders     InpatientMedicationOrder[]
+  labTests             LabTest[]
   // Bill lines charging for the stay (a long stay may be billed in parts).
   invoiceItems         InvoiceItem[]
   createdAt            DateTime       @default(now())
@@ -1238,6 +1240,8 @@ model LabTest {
   patient         Patient  @relation(fields: [patientId], references: [id])
   consultationId  String?
   consultation    Consultation? @relation(fields: [consultationId], references: [id])
+  admissionId     String?
+  admission       Admission? @relation(fields: [admissionId], references: [id], onDelete: SetNull)
   testName        String
   // The result as text - for a test entered value by value, a summary of them.
   results         String
@@ -1270,6 +1274,7 @@ model LabTest {
   @@index([patientId])
   @@index([patientId, updatedAt])
   @@index([consultationId])
+  @@index([admissionId])
 }
 
 enum LabStatus {
@@ -1411,6 +1416,7 @@ model PatientAccount {
   notifications     Notification[]
   chatThreads   ChatThread[]
   chatMessages  ChatMessage[] @relation("ChatMessagePatientAuthor")
+  chatMessageLikes ChatMessageLike[] @relation("ChatMessageLikePatient")
   historyShares     HistoryShare[]
   emailOptOuts      NotificationType[]          @default([])
   // Set when the patient closes their account: the row is kept as an
@@ -1716,10 +1722,31 @@ model ChatMessage {
   authorUser              User?       @relation("ChatMessageAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
   authorPatientAccountId  String?
   authorPatientAccount    PatientAccount? @relation("ChatMessagePatientAuthor", fields: [authorPatientAccountId], references: [id], onDelete: Restrict)
+  replyToMessageId        String?
+  replyToMessage          ChatMessage? @relation("ChatMessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull)
+  replies                 ChatMessage[] @relation("ChatMessageReplies")
   body                    String      @db.Text
   // Set when the other side first reads it.
   readAt                  DateTime?
   createdAt               DateTime    @default(now())
+  likes                   ChatMessageLike[]
 
   @@index([threadId, createdAt])
+  @@index([replyToMessageId])
+}
+
+// One like per message per authenticated staff or patient account.
+model ChatMessageLike {
+  id                 String          @id @default(uuid())
+  messageId          String
+  message            ChatMessage     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId             String?
+  user               User?           @relation("ChatMessageLikeUser", fields: [userId], references: [id], onDelete: Cascade)
+  patientAccountId   String?
+  patientAccount     PatientAccount? @relation("ChatMessageLikePatient", fields: [patientAccountId], references: [id], onDelete: Cascade)
+  createdAt          DateTime        @default(now())
+
+  @@unique([messageId, userId])
+  @@unique([messageId, patientAccountId])
+  @@index([messageId])
 }

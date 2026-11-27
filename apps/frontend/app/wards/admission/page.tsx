@@ -28,6 +28,35 @@ const EMPTY_DISCHARGE = {
 };
 const EMPTY_MEDICATION = { medication: '', medicineId: '', strength: '', dose: '', route: '', frequency: '', duration: '', instructions: '' };
 type StockItem = { id: string; name: string; unit: string; price: number };
+type LabPriceOption = { id: string; name: string; price: number };
+type WardLabTest = { id: string; testName: string; results: string; status: string; createdAt: string; verifiedAt: string | null };
+type WardView = { id: string; name: string; beds: number; occupied: number; isActive: boolean };
+type ClinicView = { id: string; name: string; facilityType: string };
+type MedicationAdministrationView = {
+  id: string; administeredAt: string; status: string; doseGiven: string | null; routeGiven: string | null;
+  givenByName: string; note: string | null;
+};
+type InpatientOrderView = {
+  id: string; medication: string; strength: string | null; dose: string; route: string | null;
+  frequency: string; duration: string | null; instructions: string | null; createdAt: string;
+  prescribedByName: string; status: string; stoppedAt: string | null; stopReason: string | null;
+  administrations: MedicationAdministrationView[];
+};
+type AdmissionNoteView = {
+  id: string; kind: string; createdAt: string; authorName: string; note: string | null;
+  vitals: Record<string, number> | null; details?: Record<string, string> | null;
+};
+type AdmissionView = {
+  status: string; reason: string; admissionIcd10Code: string | null; diagnoses: DiagnosisView[] | null;
+  patient: { id: string; name: string; sexAge: string; allergies: string };
+  ward: { id: string; name: string }; bed: string | null; daysAdmitted: number; admittedAt: string;
+  admittedBy: { name: string }; attendingDoctor: { name: string } | null; outcomeLabel: string | null;
+  dischargedAt: string | null; dischargedBy: { name: string } | null;
+  referral: { id: string; toClinic: { name: string } } | null;
+  dischargeDiagnosis: string | null; dischargeIcd10Code: string | null; dischargeSummary: string | null;
+  followUpInstructions: string | null; labTests: WardLabTest[]; medicationOrders: InpatientOrderView[];
+  notes: AdmissionNoteView[];
+};
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
@@ -48,10 +77,13 @@ function AdmissionChart() {
   const canDischarge = hasRole('DOCTOR', 'ADMIN');
   const canPrescribe = hasRole('DOCTOR', 'ADMIN');
 
-  const [admission, setAdmission] = useState<any>(null);
-  const [wards, setWards] = useState<any[]>([]);
-  const [clinics, setClinics] = useState<any[]>([]);
+  const [admission, setAdmission] = useState<AdmissionView | null>(null);
+  const [wards, setWards] = useState<WardView[]>([]);
+  const [clinics, setClinics] = useState<ClinicView[]>([]);
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [labPrices, setLabPrices] = useState<LabPriceOption[]>([]);
+  const [labPriceId, setLabPriceId] = useState('');
+  const [showLabRequest, setShowLabRequest] = useState(false);
   const [error, setError] = useState('');
   const [note, setNote] = useState<{ kind: string; note: string; vitals: Record<string, string>; details: Record<string, string> }>({ kind: 'OBSERVATION', note: '', vitals: {}, details: {} });
   const [noteProblem, setNoteProblem] = useState('');
@@ -70,10 +102,10 @@ function AdmissionChart() {
     if (!id) return;
     try {
       const res = await fetch(`${API}/admissions/${id}`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = await res.json() as { success: boolean; error?: string; admission?: AdmissionView };
       if (!data.success) return setError(data.error || 'Admission not found');
       setError('');
-      setAdmission(data.admission);
+      setAdmission(data.admission ?? null);
     } catch {
       setError(navigator.onLine ? 'Could not load this admission - please try again.' : 'You are offline. The ward chart needs an internet connection - it will load when it returns.');
     }
@@ -82,11 +114,16 @@ function AdmissionChart() {
   useEffect(() => {
     load();
     if (canPrescribe) fetch(`${API}/nursing/stock-items`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setStockItems(d.medicines)).catch(() => {});
-    fetch(`${API}/wards`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setWards(d.wards.filter((w: any) => w.isActive))).catch(() => {});
-    fetch(`${API}/clinics`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setClinics(d.clinics.filter((c: any) => c.id !== user?.clinicId))).catch(() => {});
+    if (canPrescribe && id) fetch(`${API}/admissions/${id}/lab-test-options`, { headers: authHeaders() }).then((r) => r.json()).then((d) => d.success && setLabPrices(d.tests)).catch(() => {});
+    fetch(`${API}/wards`, { headers: authHeaders() }).then((r) => r.json()).then((d: { success: boolean; wards?: WardView[] }) => {
+      if (d.success) setWards((d.wards ?? []).filter((w) => w.isActive));
+    }).catch(() => {});
+    fetch(`${API}/clinics`, { headers: authHeaders() }).then((r) => r.json()).then((d: { success: boolean; clinics?: ClinicView[] }) => {
+      if (d.success) setClinics((d.clinics ?? []).filter((c) => c.id !== user?.clinicId));
+    }).catch(() => {});
     window.addEventListener('online', load);
     return () => window.removeEventListener('online', load);
-  }, [load, user?.clinicId, canPrescribe]);
+  }, [load, id, user?.clinicId, canPrescribe]);
 
   const send = async (url: string, body: unknown) => {
     setBusy(true);
@@ -96,8 +133,8 @@ function AdmissionChart() {
       if (!data.success) throw new Error(data.error || 'Something went wrong');
       await load();
       return true;
-    } catch (e: any) {
-      alert(e.message);
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : 'Something went wrong');
       return false;
     } finally {
       setBusy(false);
@@ -147,8 +184,8 @@ function AdmissionChart() {
       if (!data.success) throw new Error(data.error || 'The diagnosis could not be saved');
       setDxOpen(false);
       await load();
-    } catch (e: any) {
-      alert(navigator.onLine ? e.message : 'You are offline - the diagnosis is saved when the connection returns. Keep this page open.');
+    } catch (e: unknown) {
+      alert(navigator.onLine ? (e instanceof Error ? e.message : 'The diagnosis could not be saved') : 'You are offline - the diagnosis is saved when the connection returns. Keep this page open.');
     } finally {
       setBusy(false);
     }
@@ -162,7 +199,16 @@ function AdmissionChart() {
     }
   };
 
-  const stopMedicationOrder = async (order: any) => {
+  const requestLabTest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!labPriceId) return;
+    if (await send(`/admissions/${id}/lab-tests`, { servicePriceId: labPriceId })) {
+      setLabPriceId('');
+      setShowLabRequest(false);
+    }
+  };
+
+  const stopMedicationOrder = async (order: InpatientOrderView) => {
     const reason = window.prompt(`Stop ${order.medication}? Optional reason for the chart:`);
     if (reason === null) return;
     await send(`/admissions/${id}/medication-orders/${order.id}/stop`, { reason: reason || undefined });
@@ -287,7 +333,7 @@ function AdmissionChart() {
             </div>
           ) : (
             <div className="mt-4 space-y-2 rounded-md border border-slate-200 p-3 text-sm dark:border-slate-800">
-              <p><span className="font-medium">Discharged</span> {when(admission.dischargedAt)} by {admission.dischargedBy?.name ?? '-'}{admission.referral ? ` · referred to ${admission.referral.toClinic.name}` : ''}</p>
+              <p><span className="font-medium">Discharged</span> {when(admission.dischargedAt ?? admission.admittedAt)} by {admission.dischargedBy?.name ?? '-'}{admission.referral ? ` · referred to ${admission.referral.toClinic.name}` : ''}</p>
               <p><span className="font-medium">Final diagnosis:</span> {admission.dischargeDiagnosis}{admission.dischargeIcd10Code ? ` (${admission.dischargeIcd10Code})` : ''}</p>
               {admission.dischargeSummary && <p className="whitespace-pre-wrap"><span className="font-medium">Summary:</span> {admission.dischargeSummary}</p>}
               {admission.followUpInstructions && <p className="whitespace-pre-wrap"><span className="font-medium">Follow-up:</span> {admission.followUpInstructions}</p>}
@@ -296,13 +342,28 @@ function AdmissionChart() {
                   <Printer className="size-4" aria-hidden="true" /> Discharge summary
                 </Button>
                 {admission.referral && (
-                  <Button size="sm" variant="outline" onClick={() => openPdfWithAuth(`${API}/referrals/${admission.referral.id}/letter`, localStorage.getItem('token'), 'referral.pdf').catch((e) => alert(e.message))}>
+                  <Button size="sm" variant="outline" onClick={() => openPdfWithAuth(`${API}/referrals/${admission.referral!.id}/letter`, localStorage.getItem('token'), 'referral.pdf').catch((e) => alert(e.message))}>
                     <Printer className="size-4" aria-hidden="true" /> Referral letter
                   </Button>
                 )}
               </div>
             </div>
           )}
+
+          <div className="mt-4 rounded-md border border-slate-200 p-3 dark:border-slate-800" data-testid="inpatient-investigations">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div><h2 className="text-sm font-semibold">Investigations</h2><p className="text-xs text-slate-500">Ward-round tests go straight to the lab and appear here as results are entered.</p></div>
+              {admitted && canPrescribe && !showLabRequest && <Button size="sm" variant="outline" onClick={() => setShowLabRequest(true)}>Request lab test</Button>}
+            </div>
+            {showLabRequest && admitted && canPrescribe && <form onSubmit={requestLabTest} className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <div><Label htmlFor="ward-lab-test">Test and price</Label><Select id="ward-lab-test" required value={labPriceId} onChange={(event) => setLabPriceId(event.target.value)}><option value="">Choose from facility price list</option>{labPrices.map((test) => <option key={test.id} value={test.id}>{test.name} · UGX {test.price.toLocaleString()}</option>)}</Select>
+                {labPrices.length === 0 && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">No lab tests are priced yet. Ask an administrator to add tests to Bills &amp; Payments → Price list.</p>}
+                <p className="mt-1 text-xs text-slate-500">Requesting adds the test to the lab worklist and charges its listed price to the patient bill.</p>
+              </div>
+              <div className="flex gap-2"><Button type="submit" disabled={busy || !labPriceId || labPrices.length === 0}>{busy ? 'Sending…' : 'Request test'}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => { setShowLabRequest(false); setLabPriceId(''); }}>Cancel</Button></div>
+            </form>}
+            {(admission.labTests ?? []).length === 0 ? <p className="mt-3 text-sm text-slate-500">No lab tests requested during this admission.</p> : <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">{admission.labTests.map((test: WardLabTest) => <li key={test.id} className="py-2 first:pt-0 last:pb-0"><div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-medium">{test.testName}</span><span className={`rounded-full px-2 py-0.5 text-xs font-medium ${test.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : test.status === 'CANCELLED' ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'}`}>{test.status === 'COMPLETED' ? (test.verifiedAt ? 'Result verified' : 'Result awaiting review') : test.status === 'CANCELLED' ? 'Cancelled' : 'Pending'}</span></div><p className="text-xs text-slate-500">Requested {when(test.createdAt)}</p>{test.status === 'COMPLETED' && <p className="mt-1 whitespace-pre-wrap text-sm">{test.results}</p>}</li>)}</ul>}
+          </div>
         </Card>
 
         <Card className="p-5" data-testid="inpatient-medication-chart">
@@ -323,14 +384,14 @@ function AdmissionChart() {
             <Button type="submit" disabled={busy} className="sm:w-fit">{busy ? 'Saving…' : 'Save ward-round order'}</Button>
           </form>}
           <div className="mt-4 space-y-3">
-            {(admission.medicationOrders ?? []).length === 0 ? <p className="text-sm text-slate-500">No medication orders recorded during this stay.</p> : admission.medicationOrders.map((order: any) => <article key={order.id} className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
+            {(admission.medicationOrders ?? []).length === 0 ? <p className="text-sm text-slate-500">No medication orders recorded during this stay.</p> : admission.medicationOrders.map((order) => <article key={order.id} className="rounded-md border border-slate-200 p-3 dark:border-slate-800">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div><h3 className="font-medium">{order.medication}{order.strength ? ` · ${order.strength}` : ''}</h3><p className="text-sm">{order.dose}{order.route ? ` · ${order.route}` : ''} · {order.frequency}{order.duration ? ` · ${order.duration}` : ''}</p>{order.instructions && <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{order.instructions}</p>}<p className="mt-1 text-xs text-slate-500">Ordered {when(order.createdAt)} by {order.prescribedByName}</p></div>
                 <span className={`rounded-full px-2 py-1 text-xs font-medium ${order.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>{order.status === 'ACTIVE' ? 'Active' : `Stopped ${order.stoppedAt ? when(order.stoppedAt) : ''}`}</span>
                 {order.status === 'ACTIVE' && canPrescribe && admitted && <Button size="sm" variant="outline" disabled={busy} onClick={() => void stopMedicationOrder(order)}>Stop order</Button>}
               </div>
               {order.stopReason && <p className="mt-1 text-xs text-slate-500">Reason stopped: {order.stopReason}</p>}
-              {order.administrations?.length > 0 && <ul className="mt-3 space-y-1 border-t border-slate-200 pt-2 text-xs dark:border-slate-800">{order.administrations.map((entry: any) => <li key={entry.id}>{when(entry.administeredAt)} · {entry.status.replace('_', ' ')}{entry.doseGiven ? ` · ${entry.doseGiven}` : ''}{entry.routeGiven ? ` ${entry.routeGiven}` : ''} · {entry.givenByName}{entry.note ? ` — ${entry.note}` : ''}</li>)}</ul>}
+              {order.administrations?.length > 0 && <ul className="mt-3 space-y-1 border-t border-slate-200 pt-2 text-xs dark:border-slate-800">{order.administrations.map((entry) => <li key={entry.id}>{when(entry.administeredAt)} · {entry.status.replace('_', ' ')}{entry.doseGiven ? ` · ${entry.doseGiven}` : ''}{entry.routeGiven ? ` ${entry.routeGiven}` : ''} · {entry.givenByName}{entry.note ? ` — ${entry.note}` : ''}</li>)}</ul>}
             </article>)}
           </div>
         </Card>
@@ -464,20 +525,21 @@ function AdmissionChart() {
             <p className="text-sm text-slate-500">Nothing recorded yet.</p>
           ) : (
             <ol className="space-y-3">
-              {admission.notes.map((n: any) => {
+              {admission.notes.map((n) => {
                 const flags = abnormalVitals(n.vitals);
+                const details = n.details;
                 return (
                   <li key={n.id} className="border-l-2 border-slate-200 pl-3 dark:border-slate-700">
                     <p className="text-xs text-slate-500">{when(n.createdAt)} · {KIND_LABEL[n.kind] ?? n.kind} · {n.authorName}</p>
                     {n.vitals && <p className="text-sm font-medium">{vitalsText(n.vitals)}</p>}
                     {flags.length > 0 && <p className="text-xs font-semibold text-rose-700 dark:text-rose-400">{flags.join(' · ')}</p>}
-                    {n.details && <p className="text-sm font-semibold">{structuredTitle(n.kind, n.details)}</p>}
-                    {n.details && (
+                    {details && <p className="text-sm font-semibold">{structuredTitle(n.kind, details)}</p>}
+                    {details && (
                       <dl className="mt-1 grid gap-x-3 gap-y-0.5 text-sm sm:grid-cols-[11rem_minmax(0,1fr)]">
-                        {(structuredFields(n.kind) ?? []).filter((f) => n.details[f.key]).map((f) => (
+                        {(structuredFields(n.kind) ?? []).filter((f) => details[f.key]).map((f) => (
                           <div key={f.key} className="contents">
                             <dt className="text-slate-500 dark:text-slate-400">{f.label}</dt>
-                            <dd className="whitespace-pre-wrap break-words">{n.details[f.key]}</dd>
+                            <dd className="whitespace-pre-wrap break-words">{details[f.key]}</dd>
                           </div>
                         ))}
                       </dl>

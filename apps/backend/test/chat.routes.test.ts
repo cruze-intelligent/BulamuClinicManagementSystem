@@ -49,6 +49,33 @@ vi.mock('../src/lib/mailer', async (importOriginal) => {
     expect(deletion.json().reason).toBe('HAS_CHAT_HISTORY');
   });
 
+  it('lets thread participants like and unlike a message idempotently', async () => {
+    const clinic = await seedClinic();
+    const { user: alice, password: alicePassword } = await seedUser({ clinicId: clinic.id, role: 'DOCTOR' });
+    const { user: bob, password: bobPassword } = await seedUser({ clinicId: clinic.id, role: 'NURSE' });
+    const { user: outsider, password: outsiderPassword } = await seedUser({ clinicId: clinic.id, role: 'STAFF' });
+    const aliceToken = (await loginAs(app, alice.email, alicePassword)).token;
+    const bobToken = (await loginAs(app, bob.email, bobPassword)).token;
+    const outsiderToken = (await loginAs(app, outsider.email, outsiderPassword)).token;
+    const threadId = (await app.inject({ method: 'POST', url: '/chat/threads', headers: authHeader(aliceToken), payload: { toUserId: bob.id } })).json().thread.id;
+    const sent = await app.inject({ method: 'POST', url: `/chat/threads/${threadId}/messages`, headers: authHeader(aliceToken), payload: { body: 'Ward update' } });
+    const messageId = sent.json().message.id;
+    expect(sent.json().message).toMatchObject({ likeCount: 0, likedByMe: false });
+    expect((await app.inject({ method: 'PUT', url: `/chat/threads/${threadId}/messages/${messageId}/like`, headers: authHeader(outsiderToken), payload: { liked: true } })).statusCode).toBe(404);
+    const likeUrl = `/chat/threads/${threadId}/messages/${messageId}/like`;
+    expect((await app.inject({ method: 'PUT', url: likeUrl, headers: authHeader(bobToken), payload: { liked: true } })).json()).toMatchObject({ liked: true, likeCount: 1 });
+    expect((await app.inject({ method: 'PUT', url: likeUrl, headers: authHeader(bobToken), payload: { liked: true } })).json().likeCount).toBe(1);
+    expect((await app.inject({ method: 'GET', url: `/chat/threads/${threadId}/messages`, headers: authHeader(bobToken) })).json().messages[0]).toMatchObject({ likeCount: 1, likedByMe: true });
+    expect((await app.inject({ method: 'PUT', url: likeUrl, headers: authHeader(bobToken), payload: { liked: false } })).json()).toMatchObject({ liked: false, likeCount: 0 });
+
+    const replied = await app.inject({ method: 'POST', url: `/chat/threads/${threadId}/messages`, headers: authHeader(bobToken), payload: { body: 'I will follow up', replyToMessageId: messageId } });
+    expect(replied.statusCode).toBe(200);
+    expect(replied.json().message.replyToMessage).toMatchObject({ id: messageId, body: 'Ward update' });
+    const otherThreadId = (await app.inject({ method: 'POST', url: '/chat/threads', headers: authHeader(outsiderToken), payload: { toUserId: alice.id } })).json().thread.id;
+    const otherMessageId = (await app.inject({ method: 'POST', url: `/chat/threads/${otherThreadId}/messages`, headers: authHeader(outsiderToken), payload: { body: 'Separate thread' } })).json().message.id;
+    expect((await app.inject({ method: 'POST', url: `/chat/threads/${threadId}/messages`, headers: authHeader(bobToken), payload: { body: 'Wrong thread', replyToMessageId: otherMessageId } })).statusCode).toBe(400);
+  });
+
   it('shares one facility support thread between admins and the super-admin inbox', async () => {
     const clinic = await seedClinic();
     const { user: adminA, password: passwordA } = await seedUser({ clinicId: clinic.id, role: 'ADMIN' });

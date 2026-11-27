@@ -256,6 +256,10 @@ export async function buildAnalytics(days: number, now: Date = new Date()) {
 
   // --- per-facility engagement ---------------------------------------------
   const facilities = await facilityEngagement(range, now);
+  // In analytics, "active" means an enabled facility with recorded activity
+  // in the last seven days; facilities with quiet or dormant engagement are
+  // listed separately and do not inflate the active figure.
+  facilityCounts.active = facilities.filter((facility) => !facility.suspended && facility.engagement === 'ACTIVE').length;
 
   // --- adoption, security, activity volumes --------------------------------
   const [
@@ -404,12 +408,12 @@ export async function facilityEngagement(range: Range, now: Date = new Date()) {
       WHERE c."deletedAt" IS NULL AND c."createdAt" >= ${range.fromTs} AND c."createdAt" < ${range.toTs}
       GROUP BY 1
     `),
-    prisma.user.groupBy({ by: ['clinicId'], where: { role: { not: 'SUPER_ADMIN' } }, _max: { lastSeenAt: true } }),
+    prisma.user.groupBy({ by: ['clinicId'], where: { role: { not: 'SUPER_ADMIN' }, lastSeenAt: { lte: now } }, _max: { lastSeenAt: true } }),
     prisma.$queryRaw<Array<{ clinicId: string; at: Date }>>(Prisma.sql`
       SELECT ap."clinicId", max(c."createdAt") AS at
-      FROM "Consultation" c JOIN "Appointment" ap ON ap."id" = c."appointmentId" WHERE c."deletedAt" IS NULL GROUP BY 1
+      FROM "Consultation" c JOIN "Appointment" ap ON ap."id" = c."appointmentId" WHERE c."deletedAt" IS NULL AND c."createdAt" <= ${now} GROUP BY 1
     `),
-    prisma.patient.groupBy({ by: ['clinicId'], where: { deletedAt: null }, _max: { createdAt: true } }),
+    prisma.patient.groupBy({ by: ['clinicId'], where: { deletedAt: null, createdAt: { lte: now } }, _max: { createdAt: true } }),
   ]);
 
   const by = <T extends { clinicId: string }>(rows: T[]) => new Map(rows.map((r) => [r.clinicId, r]));

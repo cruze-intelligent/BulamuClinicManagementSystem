@@ -133,10 +133,11 @@ describe('super admin analytics', () => {
     const { clinic } = await facility('Some Clinic');
     const { user, password } = await seedUser({ clinicId: clinic.id, role: 'ADMIN' });
     const token = (await loginAs(app, user.email, password)).token;
-    for (const url of ['/super-admin/analytics', '/super-admin/system', '/super-admin/users', '/super-admin/analytics/export?dataset=facilities']) {
+    for (const url of ['/super-admin/analytics', '/super-admin/system', '/super-admin/users', '/super-admin/analytics/export?dataset=facilities', '/super-admin/facility-reminders']) {
       expect((await get(token, url)).statusCode, url).toBe(403);
       expect((await app.inject({ method: 'GET', url })).statusCode, url).toBe(401);
     }
+    expect((await app.inject({ method: 'POST', url: '/super-admin/facility-reminders/not-a-facility', headers: authHeader(token), payload: { kind: 'RETENTION' } })).statusCode).toBe(403);
   });
 
   it('counts real facilities, staff, patients, consultations and revenue - and not the operator\'s own account', async () => {
@@ -221,11 +222,13 @@ describe('super admin analytics', () => {
     const appt = await prisma.appointment.create({ data: { patientId: p.id, doctorId: busy.nurse.id, clinicId: busy.clinic.id, date: new Date(), time: '09:00' } });
     await prisma.consultation.create({ data: { appointmentId: appt.id, patientId: p.id, diagnosis: 'x', symptoms: 'y' } });
 
-    const { facilities } = (await get(token, '/super-admin/analytics?days=30')).json().analytics;
+    const result = (await get(token, '/super-admin/analytics?days=30')).json().analytics;
+    const { facilities } = result;
     const row = (name: string) => facilities.find((f: any) => f.name === name);
 
     expect(row('Busy Clinic')).toMatchObject({ engagement: 'ACTIVE', staffAccounts: 2, activeStaffInPeriod: 2, patients: 1, newPatientsInPeriod: 1, consultationsInPeriod: 1 });
     expect(row('Quiet Clinic').engagement).toBe('QUIET');
+    expect(result.headline.facilities.active).toBe(1); // quiet, dormant, never-used, and new facilities are not active
     expect(row('Dormant Clinic').engagement).toBe('DORMANT');
     expect(row('Empty Clinic')).toMatchObject({ engagement: 'NEVER_USED', lastActivityAt: null });
     expect(row('Fresh Clinic').engagement).toBe('NEW');

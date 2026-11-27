@@ -35,6 +35,7 @@ import { isOnTrial, TrialExtensionsCard } from '@/components/trial-extensions-ca
 import { FacilityChangeReviews } from '@/components/facility-change-reviews';
 import { CashAndGraceCard } from '@/components/cash-and-grace-card';
 import { SuperAdminNotificationPanel } from '@/components/super-admin-notification-panel';
+import { SuperAdminFacilityReminders } from '@/components/super-admin-facility-reminders';
 import { formatDate, formatDateTime } from '@/lib/time';
 
 
@@ -181,10 +182,10 @@ export default function SuperAdminPage() {
       );
       void fetchOverview();
       void fetchPending();
-    } catch (error: any) {
+    } catch (error: unknown) {
       setDecisionError((e) => ({
         ...e,
-        [facility.id]: navigator.onLine ? error.message : 'You are offline - try again when the connection returns.',
+        [facility.id]: navigator.onLine ? (error instanceof Error ? error.message : `Could not ${decision} the facility`) : 'You are offline - try again when the connection returns.',
       }));
     } finally {
       setDeciding((d) => {
@@ -351,6 +352,7 @@ export default function SuperAdminPage() {
       </section>
 
       <SuperAdminNotificationPanel pendingFacilities={pending.length} />
+      <SuperAdminFacilityReminders />
 
       {decisionNotice && (
         <div role="status" className="flex items-start justify-between gap-3 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
