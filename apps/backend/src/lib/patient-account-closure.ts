@@ -11,8 +11,8 @@ type Logger = (message: string) => void;
  * Closes a patient's portal account, as described in the Data Retention and
  * Deletion Policy (section 4.4) and DATA_RETENTION.md:
  *
- * - erased now: the account's contact details and password, notifications and
- *   preferences, sign-in links and codes, and every document the patient
+ * - erased now: the account's contact details and password, notes, notifications
+ *   and preferences, sign-in links and codes, and every document the patient
  *   uploaded themselves;
  * - access ended: every facility grant is revoked and each facility's Patient
  *   row is unlinked from the account (the clinical record itself stays with the
@@ -51,6 +51,7 @@ export async function closePatientAccount(patientAccountId: string, log: Logger 
       data: { status: 'WITHDRAWN', endedAt: now },
     }),
     prisma.notification.deleteMany({ where: { patientAccountId } }),
+    prisma.personalNote.deleteMany({ where: { patientAccountId } }),
     prisma.patientAccessOtp.deleteMany({ where: { patientAccountId } }),
     prisma.patientPasswordResetToken.deleteMany({ where: { patientAccountId } }),
     prisma.patientAccount.update({

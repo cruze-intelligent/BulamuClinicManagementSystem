@@ -1,7 +1,7 @@
 import {
   FileText,
   ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FlaskConical,
-  HelpCircle, History, Home, MapPinned, Moon, Package, Pill, Receipt, ScanLine, ShieldCheck, Stethoscope, Users, Wallet, type LucideIcon,
+  HelpCircle, History, Home, MapPinned, Moon, NotebookPen, Package, Pill, Receipt, ScanLine, ShieldCheck, Stethoscope, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 /**
@@ -35,6 +35,12 @@ const notifications: TourStep = {
   tips: ['Important ones are also emailed (never with patient details).', 'You can switch individual emails off on this page.'],
 };
 
+const notes: TourStep = {
+  target: nav('/notes'), where: 'Menu', icon: NotebookPen,
+  title: 'Notes and reminders',
+  body: 'Keep personal bullet notes here and set a date for reminders. Notes are private to your account and stay separate from patient records.',
+};
+
 const activity: TourStep = {
   target: nav('/sync-activity'), where: 'Menu', icon: History,
   title: 'Your activity and offline work',
@@ -53,7 +59,7 @@ const help: TourStep = {
   body: 'Help & FAQ answers common questions. You can take this tour again from there at any time - it will not open by itself again.',
 };
 
-const closing = [notifications, activity, theme, help];
+const closing = [notes, notifications, activity, theme, help];
 
 export const TOUR_STEPS: Record<string, TourStep[]> = {
   SUPER_ADMIN: [

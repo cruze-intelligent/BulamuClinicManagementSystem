@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
-// Fired by the notifications page after the user marks things read, so the
-// sidebar / header badge updates immediately instead of at the next poll.
+// Fired by pages that change a sidebar count, so its badge updates immediately
+// instead of waiting for the next poll.
 export const NOTIFICATIONS_CHANGED_EVENT = 'bulamu:notifications-changed';
+export const PERSONAL_NOTES_CHANGED_EVENT = 'bulamu:personal-notes-changed';
 
 const POLL_INTERVAL_MS = 2 * 60 * 1000;
 
@@ -35,10 +36,12 @@ export function useUnreadNotifications(endpoint: string, tokenKey: string, enabl
     const timer = setInterval(refresh, POLL_INTERVAL_MS);
     window.addEventListener('focus', refresh);
     window.addEventListener(NOTIFICATIONS_CHANGED_EVENT, refresh);
+    window.addEventListener(PERSONAL_NOTES_CHANGED_EVENT, refresh);
     return () => {
       clearInterval(timer);
       window.removeEventListener('focus', refresh);
       window.removeEventListener(NOTIFICATIONS_CHANGED_EVENT, refresh);
+      window.removeEventListener(PERSONAL_NOTES_CHANGED_EVENT, refresh);
     };
   }, [refresh, enabled]);
 

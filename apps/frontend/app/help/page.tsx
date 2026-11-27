@@ -43,6 +43,11 @@ const faqCategories: FaqCategory[] = [
           'For 12 hours - a full shift. Tick "Keep me signed in for 30 days" when signing in to stay signed in on that device for a month; use it only on a device that is yours. Changing or resetting your password signs you out everywhere. Offline, you are never signed out in the middle of work - it waits until the device is back online.',
       },
       {
+        question: 'Can I keep personal notes or reminders?',
+        answer:
+          'Yes. Open Notes from the menu to jot down important points, one bullet per line, and add an optional reminder date. Notes are private to your account and are separate from patient records; use the patient record for patient details.',
+      },
+      {
         question: "How do I correct a patient's details, or remove a patient registered by mistake?",
         answer:
           'Open the patient and choose Edit details to correct their name, phone, address or next of kin - front desk, nurses, doctors and administrators can do this, and each change is recorded. Administrators also see Delete patient, for test or duplicate registrations: the patient leaves every list, but nothing is erased.',

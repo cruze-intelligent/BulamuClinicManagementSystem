@@ -41,6 +41,7 @@ import { patientAuthRoutes } from './routes/patient-auth.routes';
 import { patientPortalRoutes } from './routes/patient-portal.routes';
 import { patientAccessRoutes } from './routes/patient-access.routes';
 import { notificationRoutes } from './routes/notification.routes';
+import { personalNotesRoutes } from './routes/personal-notes.routes';
 import { patientAccountClosureRoutes } from './routes/patient-account-closure.routes';
 import { chatRoutes } from './routes/chat.routes';
 import { SERVER_ERROR_MESSAGE } from './lib/http-error';
@@ -222,6 +223,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await server.register(patientPortalRoutes);
   await server.register(patientAccessRoutes);
   await server.register(notificationRoutes);
+  await server.register(personalNotesRoutes);
   await server.register(patientAccountClosureRoutes);
   await server.register(chatRoutes);
 

@@ -33,6 +33,7 @@ model User {
   chatGroupMemberships ChatThreadMember[]
   chatThreadPins ChatThreadPin[]
   chatThreadReads ChatThreadRead[]
+  personalNotes PersonalNote[]
   // Notification types this user has switched email off for (in-app
   // notifications are always kept - only the email copy is optional).
   emailOptOuts NotificationType[] @default([])
@@ -122,6 +123,27 @@ model PasswordResetToken {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+// Private scratch notes and reminders for a signed-in account. These are not
+// part of a patient's clinical record. Exactly one owner is set per note.
+model PersonalNote {
+  id               String          @id @default(uuid())
+  userId           String?
+  user             User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  patientAccountId String?
+  patientAccount   PatientAccount?  @relation(fields: [patientAccountId], references: [id], onDelete: Cascade)
+  title            String          @default("")
+  body             String
+  reminderAt       DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([userId, reminderAt, completedAt])
+  @@index([patientAccountId, createdAt])
+  @@index([patientAccountId, reminderAt, completedAt])
 }
 
 model Clinic {
@@ -1414,6 +1436,7 @@ model PatientAccount {
   appointmentRequests AppointmentRequest[]
   accessOtps        PatientAccessOtp[]
   notifications     Notification[]
+  personalNotes     PersonalNote[]
   chatThreads   ChatThread[]
   chatMessages  ChatMessage[] @relation("ChatMessagePatientAuthor")
   chatMessageLikes ChatMessageLike[] @relation("ChatMessageLikePatient")

@@ -28,6 +28,7 @@ it in the other.
 | Facility and staff account details | While the facility is active; after facility deletion, 5 years (same as clinical) | Erase |
 | Subscription, payment and receipt records | 7 years | Erase |
 | Patient Portal account | Until the patient closes it | Erased on closure |
+| Personal notes and reminders | Until the user deletes them, their staff account is deactivated, their facility is deleted, or they close their Patient Portal account | Erase |
 | Notifications | 90 days | Erase |
 | Sign-in / verification links and codes | Until they expire (10 min code, 1 h reset link, 72 h invitation) | Remove |
 | Audit trail | 7 years | Erase |
@@ -50,6 +51,7 @@ it in the other.
 | Subscription / payment | `Subscription`, `Payment` | Retained. The free-trial receipt is a zero-amount, completed `Payment`. | Manual, 7 years |
 | Patient Portal account | `PatientAccount` | `POST /patient-portal/account/close` (see section 3) | Immediately (personal data); the tombstone row stays for audit |
 | Notifications | `Notification` | Removed lazily: a recipient's notifications older than 90 days are deleted whenever they open their list. Deleted on patient account closure. | Automatic |
+| Personal notes and reminders | `PersonalNote` | Deleted when a staff account is deactivated, a facility is deleted, or a Patient Portal account is closed. The owner can delete individual notes at any time. | Automatic |
 | Set-up / reset links, verification codes | `PasswordResetToken`, `PatientPasswordResetToken`, `PatientAccessOtp` | Expire; expired and used rows are removed the next time a new one is issued for that account. Deleted on patient account closure. | Automatic |
 | Audit trail | `AuditLog` | Retained; no delete path | Manual, 7 years |
 | Staff activity and sign-in records | `UserActivityDay`, `LoginEvent`, `User.lastSeenAt`/`lastLoginAt` | Rows older than 400 days are deleted whenever the platform operator opens the analytics page. Activity rows are deleted with the user. They record that a person used the system, never what they viewed or changed. | Automatic |
@@ -59,7 +61,7 @@ it in the other.
 `POST /patient-portal/account/close` with `{ password }` (the patient's own
 password; rate limited). In one transaction it:
 
-1. deletes every document the patient uploaded (files and rows);
+1. deletes every document the patient uploaded (files and rows), and the patient's private notes and reminders;
 2. unlinks every facility's `Patient` row from the account and clears the
    portal email held on it - the clinical record itself stays;
 3. revokes all active access grants;

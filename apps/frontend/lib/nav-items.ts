@@ -1,6 +1,6 @@
 import {
   ArrowRightLeft, BarChart3, BedDouble, Bell, Building2, CalendarDays, ClipboardList, CreditCard, Crown, FileCheck2, FileText, FlaskConical, HelpCircle,
-  History, Home, MapPinned, MessageSquare, Package, Pill, Receipt, ScanLine, Stethoscope, Users, Wallet, type LucideIcon,
+  History, Home, MapPinned, MessageSquare, NotebookPen, Package, Pill, Receipt, ScanLine, Stethoscope, Users, Wallet, type LucideIcon,
 } from 'lucide-react';
 
 // The sidebar menu: what each role sees. The guided walkthrough points at these
@@ -14,6 +14,7 @@ export const NAV_ITEMS: NavItem[] = [
   { name: 'Demos', path: '/super-admin/demos', icon: FlaskConical, roles: ['SUPER_ADMIN'] },
   { name: 'Support messages', path: '/super-admin/messages', icon: MessageSquare, roles: ['SUPER_ADMIN'] },
   { name: 'Dashboard', path: '/dashboard', icon: Home, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
+  { name: 'Notes', path: '/notes', icon: NotebookPen, roles: ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
   { name: 'Messages', path: '/messages', icon: MessageSquare, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
   { name: 'Patients', path: '/patients', icon: Users, roles: ['ADMIN', 'DOCTOR', 'PHARMACIST', 'NURSE', 'STAFF', 'LAB_TECH', 'RADIOGRAPHER'] },
   { name: 'Appointments', path: '/appointments', icon: CalendarDays, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'STAFF'] },
@@ -40,7 +41,7 @@ export const NAV_ITEMS: NavItem[] = [
 ];
 
 /** In everyone's menu, whatever the administrator leaves out. */
-export const ALWAYS_SHOWN = ['/dashboard', '/notifications', '/help'];
+export const ALWAYS_SHOWN = ['/dashboard', '/notes', '/notifications', '/help'];
 
 /**
  * The menu for a person: what their roles (their own and any others they also

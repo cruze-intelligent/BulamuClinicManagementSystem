@@ -72,7 +72,7 @@ function NavLinks({
             {!compact && <span className="truncate">{item.name}</span>}
             {badge > 0 && (
               <span
-                aria-label={`${badge} unread`}
+                aria-label={`${badge} ${item.path === '/notes' ? 'reminders due' : 'unread'}`}
                 className={`rounded-full bg-emerald-600 px-1.5 text-[11px] font-semibold leading-5 text-white ${
                   compact ? 'absolute right-1 top-1' : 'ml-auto'
                 }`}
@@ -111,7 +111,8 @@ export function Sidebar() {
     Boolean(user) && user?.role !== 'SUPER_ADMIN'
   );
   const unreadMessages = useUnreadNotifications(user?.role === 'SUPER_ADMIN' ? '/chat/super-admin/unread-count' : '/chat/unread-count', 'token', Boolean(user));
-  const badges = { '/notifications': unreadNotifications, '/messages': unreadMessages, '/super-admin/messages': unreadMessages };
+  const dueNotes = useUnreadNotifications('/notes/due-count', 'token', Boolean(user));
+  const badges = { '/notes': dueNotes, '/notifications': unreadNotifications, '/messages': unreadMessages, '/super-admin/messages': unreadMessages };
 
   if (!mounted || !user) return null;
 

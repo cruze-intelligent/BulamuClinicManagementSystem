@@ -590,6 +590,7 @@ export async function clinicRoutes(fastify: FastifyInstance) {
 
       const authUser = getAuthUser(request);
       await prisma.$transaction([
+        prisma.personalNote.deleteMany({ where: { user: { is: { clinicId: id } } } }),
         prisma.clinic.update({
           where: { id },
           data: { deletedAt: new Date(), deletedBy: authUser.userId, isActive: false },

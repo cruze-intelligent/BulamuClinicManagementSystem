@@ -175,7 +175,10 @@ export async function userRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const user = await prisma.user.update({ where: { id }, data: { isActive: false }, select: SAFE_USER });
+      const [, user] = await prisma.$transaction([
+        prisma.personalNote.deleteMany({ where: { userId: id } }),
+        prisma.user.update({ where: { id }, data: { isActive: false }, select: SAFE_USER }),
+      ]);
       await recordAudit({
         entity: 'User', recordId: user.id, clinicId: target.clinicId,
         action: 'DEACTIVATE', actorUserId: authUser.userId, actorRole: authUser.role,

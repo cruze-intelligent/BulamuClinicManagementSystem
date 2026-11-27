@@ -40,6 +40,12 @@ const SCHEDULE: Array<{ category: string; includes: string; kept: string; after:
     after: 'Erased immediately on closure. See section 4.4.',
   },
   {
+    category: 'Personal notes and reminders',
+    includes: 'Private bullet notes and reminder dates saved by a staff member or Patient Portal user. These are not part of a patient’s clinical record.',
+    kept: 'Until the owner deletes them, a staff account is deactivated, the facility is deleted, or a Patient Portal account is closed.',
+    after: 'Permanently erased.',
+  },
+  {
     category: 'Notifications',
     includes: 'The in-app notifications shown to staff and patients.',
     kept: '90 days.',
@@ -73,7 +79,7 @@ const SCHEDULE: Array<{ category: string; includes: string; kept: string; after:
 
 export default function DataRetentionPage() {
   return (
-    <LegalLayout title="Data Retention and Deletion Policy" effectiveDate="21 September 2026">
+    <LegalLayout title="Data Retention and Deletion Policy" effectiveDate="27 November 2026">
       <p>
         This policy explains how long Bulamu Medical Facility OS (&quot;Bulamu&quot;) keeps information, and exactly
         what happens to it when a record, a staff account, a Patient Portal account or a whole facility is deleted or
@@ -152,17 +158,17 @@ export default function DataRetentionPage() {
         The person can no longer sign in, and any session that is already open stops working on its next request. The
         records they created remain in place and stay attributed to them, so that clinical history and the audit trail
         stay accurate. Their name and email address remain on the facility&apos;s staff list, marked as deactivated,
-        for as long as the facility account is active.
+        for as long as the facility account is active. Their personal notes and reminders are erased immediately.
       </p>
 
       <h3 className="text-base font-semibold text-slate-950">4.3 A facility is deleted</h3>
       <p>
         Deleting a facility is carried out only by Cruze and requires the facility&apos;s exact name to be confirmed.
         From that moment all of the facility&apos;s staff lose access, and the facility is removed from every directory
-        and listing. Its clinical records are not erased on that day: they are retained, restricted, for the clinical
-        retention period and then permanently erased. A facility that wishes to keep a copy of its data should ask us
-        for an export before deletion (see section 6). Patients who hold Patient Portal accounts can still see their
-        own records in the portal.
+        and listing. Their personal notes and reminders are erased. Its clinical records are not erased on that day:
+        they are retained, restricted, for the clinical retention period and then permanently erased. A facility that
+        wishes to keep a copy of its data should ask us for an export before deletion (see section 6). Patients who
+        hold Patient Portal accounts can still see their own records in the portal.
       </p>
 
       <h3 className="text-base font-semibold text-slate-950">4.4 A patient closes their Patient Portal account</h3>
@@ -173,9 +179,9 @@ export default function DataRetentionPage() {
       <ul>
         <li>
           <strong>Erased immediately:</strong> the email address and phone number held on the account, the password,
-          notification preferences, notifications, and any outstanding sign-in links or verification codes. The
-          email address the facility recorded for portal purposes is also removed from the patient&apos;s facility
-          records.
+          notification preferences, notifications, personal notes and reminders, and any outstanding sign-in links or
+          verification codes. The email address the facility recorded for portal purposes is also removed from the
+          patient&apos;s facility records.
         </li>
         <li>
           <strong>Deleted immediately:</strong> every document the patient uploaded themselves.

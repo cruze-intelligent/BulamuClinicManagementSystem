@@ -57,6 +57,7 @@ CI (`.github/workflows/ci.yml`) runs type-checking, both test suites, and both p
 - Inter-facility referrals (`/referrals`) and a facility hierarchy (district/sub-county/parish)
 - Community health worker household-visit capture (`/chw-visit`) for Community Outreach / Mobile Unit facilities, fully offline
 - Installable PWA with service worker, app-shell caching (every page and its scripts, so pages never opened before still work offline), IndexedDB local records, offline mutation queue, and sync status badge; a step-by-step install guide for Android, iPhone/iPad and computers is on the Help page and public at `/install`
+- Private personal notes and dated reminders for facility staff and Patient Portal users, with due reminders surfaced in their navigation and removed under the documented retention policy
 - Sign-in lasts a 12-hour shift, or 30 days with "Keep me signed in"; changing or resetting a password ends every session on every device, and an ended session goes straight back to sign-in (never while offline, so field work isn't interrupted)
 - Timestamp-based deterministic sync conflict resolution with tombstone deletes and a Sync Activity panel (audit log + conflict log)
 - HMIS 105 outpatient reporting across 7 sections (attendance by age/gender cohort, epidemic surveillance, essential medicines, family planning, maternal health, other services, referrals)
